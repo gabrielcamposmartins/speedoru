@@ -1,0 +1,23 @@
+[gd_resource type="Resource" script_class="CarConfig" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/car/car_config.gd" id="1_cfg"]
+
+[resource]
+script = ExtResource("1_cfg")
+car_name = "Akane R-01"
+parts = {
+"engine_cover": "standard",
+"front_wing": "standard",
+"nose": "standard",
+"rear_wing": "standard",
+"rim": "covered",
+"sidepods": "downwash",
+"tyre": "slick"
+}
+primary_color = Color(0.847, 0.118, 0.173, 1)
+secondary_color = Color(0.945, 0.949, 0.965, 1)
+accent_color = Color(0.071, 0.643, 0.91, 1)
+rim_color = Color(0.106, 0.11, 0.133, 1)
+helmet_color = Color(1, 0.824, 0.122, 1)
+suit_color = Color(0.847, 0.118, 0.173, 1)
+tyre_compound = 1

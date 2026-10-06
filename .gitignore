@@ -1,0 +1,10 @@
+# Godot: cache de importação e dados do editor (recriados ao abrir o projeto)
+.godot/
+# Saída da exportação e do instalador
+build/
+# Backups do Blender
+*.blend1
+# Configuração do servidor dedicado (tem o token do banco) — use server.cfg.example
+server.cfg
+# Python
+__pycache__/

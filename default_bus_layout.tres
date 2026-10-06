@@ -1,0 +1,35 @@
+[gd_resource type="AudioBusLayout" format=3 uid="uid://bmbjttvo2fikq"]
+
+[sub_resource type="AudioEffectHardLimiter" id="Limiter"]
+ceiling_db = -0.5
+
+[sub_resource type="AudioEffectCompressor" id="Compressor"]
+threshold = -16.0
+ratio = 3.0
+gain = 2.0
+attack_us = 3000.0
+release_ms = 150.0
+
+[sub_resource type="AudioEffectLowPassFilter" id="Helmet"]
+cutoff_hz = 5500.0
+resonance = 0.6
+
+[resource]
+bus/0/effect/0/effect = SubResource("Limiter")
+bus/0/effect/0/enabled = true
+bus/1/name = &"Car"
+bus/1/solo = false
+bus/1/mute = false
+bus/1/bypass_fx = false
+bus/1/volume_db = 5.0
+bus/1/send = &"Master"
+bus/1/effect/0/effect = SubResource("Compressor")
+bus/1/effect/0/enabled = true
+bus/1/effect/1/effect = SubResource("Helmet")
+bus/1/effect/1/enabled = false
+bus/2/name = &"Music"
+bus/2/solo = false
+bus/2/mute = false
+bus/2/bypass_fx = false
+bus/2/volume_db = -6.0
+bus/2/send = &"Master"

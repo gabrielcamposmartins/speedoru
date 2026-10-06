@@ -1,0 +1,147 @@
+# Publica uma versão do jogo para Windows.
+#
+# Só a main publica, e só por tag: ao criar `vX.Y.Z` na main, esta action baixa o Godot e os
+# templates de exportação, importa o projeto, roda os testes rápidos, exporta o jogo, monta o
+# instalador (Inno Setup, por usuário, sem administrador) e cria a release com:
+#
+#   Speedoru-X.Y.Z-setup.exe   o instalador desta versão
+#   Speedoru-setup.exe         o mesmo arquivo com nome fixo: releases/latest/download/Speedoru-setup.exe
+#                              sempre baixa a versão mais nova (link para botões de download)
+#   SHA256SUMS.txt             para conferir o que foi baixado
+#
+# Também aceita ser rodada à mão em Actions → Release → Run workflow (escolhendo a tag), útil para
+# repetir uma publicação que falhou.
+
+name: Release
+
+on:
+  push:
+    tags: ['v*.*.*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  GODOT_TAG: 4.7-stable
+  GODOT_TEMPLATES_DIR: 4.7.stable
+
+jobs:
+  windows:
+    name: Instalador (Windows x64)
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: A tag está na main?
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          git fetch --no-tags origin main
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "::error::Esta tag não aponta para um commit da main — publique a partir da main."
+            exit 1
+          fi
+
+      - name: A versão do projeto bate com a tag?
+        id: version
+        run: |
+          version=$(sed -n 's/^config\/version="\(.*\)"$/\1/p' project.godot)
+          if [ -z "$version" ]; then
+            echo "::error::project.godot sem config/version."
+            exit 1
+          fi
+          if [[ "$GITHUB_REF" == refs/tags/* ]] && [ "v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::A tag é $GITHUB_REF_NAME, mas o project.godot diz $version."
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=v$version" >> "$GITHUB_OUTPUT"
+
+      - name: Godot e templates em cache
+        id: cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/godot
+          key: godot-${{ env.GODOT_TAG }}-win64-templates
+
+      - name: Baixa o Godot e os templates de Windows
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          dir="$RUNNER_TEMP/godot"
+          mkdir -p "$dir"
+          base="https://github.com/godotengine/godot/releases/download/$GODOT_TAG"
+          curl -sSfL -o "$dir/godot.zip" "$base/Godot_v${GODOT_TAG}_win64.exe.zip"
+          curl -sSfL -o "$dir/templates.tpz" "$base/Godot_v${GODOT_TAG}_export_templates.tpz"
+          7z x -y -o"$dir" "$dir/godot.zip" > /dev/null
+          # Só o que a exportação de Windows x64 usa (o pacote inteiro tem 1,3 GB)
+          7z x -y -o"$dir" "$dir/templates.tpz" "templates/windows_*_x86_64*" "templates/version.txt" > /dev/null
+          rm "$dir/godot.zip" "$dir/templates.tpz"
+          ls -la "$dir" "$dir/templates"
+
+      - name: Instala os templates
+        run: |
+          dest="$APPDATA/Godot/export_templates/$GODOT_TEMPLATES_DIR"
+          mkdir -p "$dest"
+          cp "$RUNNER_TEMP"/godot/templates/* "$dest/"
+          echo "GODOT=$RUNNER_TEMP/godot/Godot_v${GODOT_TAG}_win64_console.exe" >> "$GITHUB_ENV"
+
+      - name: Importa o projeto
+        run: '"$GODOT" --headless --path . --import'
+
+      # nada de publicar uma versão quebrada
+      - name: Testes rápidos
+        run: |
+          for t in compile_check economy_test settings_test gearbox_test ui_nav_test; do
+            echo "::group::$t"
+            "$GODOT" --headless --path . -s "res://tests/$t.gd"
+            echo "::endgroup::"
+          done
+
+      - name: Exporta o jogo
+        run: |
+          mkdir -p build/windows
+          "$GODOT" --headless --path . --export-release "Windows Desktop" build/windows/Speedoru.exe
+          test -f build/windows/Speedoru.exe || { echo "::error::A exportação não gerou o Speedoru.exe"; exit 1; }
+          ls -la build/windows
+
+      - name: Monta o instalador
+        run: |
+          choco install innosetup --no-progress -y > /dev/null
+          "/c/Program Files (x86)/Inno Setup 6/ISCC.exe" "//DAppVersion=${{ steps.version.outputs.version }}" installer/speedoru.iss
+          cd build/installer
+          cp "Speedoru-${{ steps.version.outputs.version }}-setup.exe" Speedoru-setup.exe
+          sha256sum *.exe > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: Cria a release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: Speedoru ${{ steps.version.outputs.version }}
+          draft: false
+          prerelease: false
+          files: |
+            build/installer/Speedoru-${{ steps.version.outputs.version }}-setup.exe
+            build/installer/Speedoru-setup.exe
+            build/installer/SHA256SUMS.txt
+          body: |
+            Instalador do Speedoru para Windows x64.
+
+            **Instalação:** baixe e execute `Speedoru-${{ steps.version.outputs.version }}-setup.exe`
+            (ou `Speedoru-setup.exe`, o mesmo arquivo). Instala para o usuário atual, sem pedir
+            administrador, em `%LOCALAPPDATA%\Programs\Speedoru`. Para atualizar, instale a versão
+            nova por cima: perfil, configurações e conta continuam.
+
+            O instalador não é assinado com certificado de código, então o SmartScreen avisa —
+            *Mais informações* → *Executar assim mesmo*. Para conferir o arquivo, compare o SHA-256
+            com o `SHA256SUMS.txt` (PowerShell: `Get-FileHash .\Speedoru-setup.exe -Algorithm SHA256`).
+
+            **Multiplayer:** o jogo conecta ao servidor configurado na tela Multiplayer
+            (`endereço:porta`). O próprio executável roda o servidor dedicado:
+            `Speedoru.console.exe --headless -- --server --db-url=<turso/libsql> --db-token=<token>`
+            (veja o `server.cfg.example` na pasta do jogo e o README do repositório).

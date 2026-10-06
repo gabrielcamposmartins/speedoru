@@ -1,0 +1,12 @@
+; Configuração do servidor dedicado (copie para server.cfg ou user://server.cfg).
+; NÃO versione o server.cfg com o token. Variáveis de ambiente e argumentos têm prioridade:
+;   TURSO_DATABASE_URL / TURSO_AUTH_TOKEN   ou   --db-url=... --db-token=... --port=...
+
+[db]
+; Turso na nuvem: libsql://<banco>-<org>.turso.io  (vira https:// sozinho)
+; libSQL local / na VM (docker, sem token): http://127.0.0.1:8080 ou http://db:8080
+url="http://127.0.0.1:8080"
+token=""
+
+[server]
+port=7350

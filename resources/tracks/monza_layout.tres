@@ -1,0 +1,736 @@
+[gd_resource type="Resource" script_class="TrackLayout" load_steps=58 format=3]
+
+[ext_resource type="Script" path="res://scripts/track/track_layout.gd" id="1_layout"]
+[ext_resource type="Script" path="res://scripts/track/track_feature.gd" id="2_feature"]
+
+[sub_resource type="Resource" id="F0"]
+script = ExtResource("2_feature")
+kind = 3
+label = "Muro reta principal E"
+s_start = -650.0
+s_end = 600.0
+side = 0
+distance = 4.5
+rows = 12
+spacing = 40.0
+roof = false
+variant = 1
+
+[sub_resource type="Resource" id="F1"]
+script = ExtResource("2_feature")
+kind = 3
+label = "Muro saída dos boxes"
+s_start = 420.0
+s_end = 600.0
+side = 1
+distance = 5.0
+rows = 12
+spacing = 40.0
+roof = false
+variant = 1
+
+[sub_resource type="Resource" id="F2"]
+script = ExtResource("2_feature")
+kind = 2
+label = "Curva Grande"
+s_start = 760.0
+s_end = 1250.0
+side = 0
+distance = 28.0
+rows = 12
+spacing = 40.0
+roof = false
+variant = 0
+
+[sub_resource type="Resource" id="F3"]
+script = ExtResource("2_feature")
+kind = 0
+label = "Tribuna Centrale"
+s_start = -200.0
+s_end = 200.0
+side = 0
+distance = 3.0
+rows = 33
+spacing = 40.0
+roof = true
+variant = 0
+
+[sub_resource type="Resource" id="F4"]
+script = ExtResource("2_feature")
+kind = 0
+label = "Tribuna Laterale"
+s_start = 230.0
+s_end = 470.0
+side = 0
+distance = 2.0
+rows = 21
+spacing = 40.0
+roof = false
+variant = 1
+
+[sub_resource type="Resource" id="F5"]
+script = ExtResource("2_feature")
+kind = 0
+label = "Tribuna Uscita Parabolica"
+s_start = -640.0
+s_end = -240.0
+side = 0
+distance = 2.0
+rows = 21
+spacing = 40.0
+roof = true
+variant = 2
+
+[sub_resource type="Resource" id="F6"]
+script = ExtResource("2_feature")
+kind = 0
+label = "Tribuna Prima Variante"
+s_start = 560.0
+s_end = 720.0
+side = 0
+distance = 2.0
+rows = 24
+spacing = 40.0
+roof = false
+variant = 0
+
+[sub_resource type="Resource" id="F7"]
+script = ExtResource("2_feature")
+kind = 0
+label = "Tribuna Curva Grande"
+s_start = 820.0
+s_end = 1020.0
+side = 0
+distance = 2.0
+rows = 18
+spacing = 40.0
+roof = false
+variant = 3
+
+[sub_resource type="Resource" id="F8"]
+script = ExtResource("2_feature")
+kind = 0
+label = "Tribuna Roggia"
+s_start = 1760.0
+s_end = 1900.0
+side = 1
+distance = 2.0
+rows = 21
+spacing = 40.0
+roof = false
+variant = 1
+
+[sub_resource type="Resource" id="F9"]
+script = ExtResource("2_feature")
+kind = 0
+label = "Tribuna Lesmo"
+s_start = 2170.0
+s_end = 2320.0
+side = 0
+distance = 2.0
+rows = 15
+spacing = 40.0
+roof = false
+variant = 2
+
+[sub_resource type="Resource" id="F10"]
+script = ExtResource("2_feature")
+kind = 0
+label = "Tribuna Ascari"
+s_start = 3590.0
+s_end = 3760.0
+side = 1
+distance = 2.0
+rows = 18
+spacing = 40.0
+roof = false
+variant = 0
+
+[sub_resource type="Resource" id="F11"]
+script = ExtResource("2_feature")
+kind = 0
+label = "Tribuna Parabolica"
+s_start = 4780.0
+s_end = 5120.0
+side = 0
+distance = 2.0
+rows = 27
+spacing = 40.0
+roof = false
+variant = 0
+
+[sub_resource type="Resource" id="F12"]
+script = ExtResource("2_feature")
+kind = 1
+label = "Prato Lesmo 2"
+s_start = 2540.0
+s_end = 2680.0
+side = 0
+distance = 2.0
+rows = 9
+spacing = 40.0
+roof = false
+variant = 0
+
+[sub_resource type="Resource" id="F13"]
+script = ExtResource("2_feature")
+kind = 1
+label = "Prato Serraglio"
+s_start = 2780.0
+s_end = 2960.0
+side = 1
+distance = 2.0
+rows = 8
+spacing = 40.0
+roof = false
+variant = 0
+
+[sub_resource type="Resource" id="F14"]
+script = ExtResource("2_feature")
+kind = 1
+label = "Prato Ascari"
+s_start = 3880.0
+s_end = 3990.0
+side = 0
+distance = 2.0
+rows = 9
+spacing = 40.0
+roof = false
+variant = 0
+
+[sub_resource type="Resource" id="F15"]
+script = ExtResource("2_feature")
+kind = 1
+label = "Prato Curva Grande"
+s_start = 860.0
+s_end = 1000.0
+side = 1
+distance = 2.0
+rows = 8
+spacing = 40.0
+roof = false
+variant = 0
+
+[sub_resource type="Resource" id="F16"]
+script = ExtResource("2_feature")
+kind = 4
+label = "Reta principal E"
+s_start = -650.0
+s_end = 610.0
+side = 0
+distance = 2.0
+rows = 12
+spacing = 40.0
+roof = false
+variant = 0
+
+[sub_resource type="Resource" id="F17"]
+script = ExtResource("2_feature")
+kind = 4
+label = "Saída dos boxes"
+s_start = 420.0
+s_end = 610.0
+side = 1
+distance = 2.0
+rows = 12
+spacing = 40.0
+roof = false
+variant = 4
+
+[sub_resource type="Resource" id="F18"]
+script = ExtResource("2_feature")
+kind = 4
+label = "Prima Variante"
+s_start = 610.0
+s_end = 760.0
+side = 2
+distance = 2.0
+rows = 12
+spacing = 40.0
+roof = false
+variant = 2
+
+[sub_resource type="Resource" id="F19"]
+script = ExtResource("2_feature")
+kind = 4
+label = "Roggia"
+s_start = 1700.0
+s_end = 1960.0
+side = 2
+distance = 2.0
+rows = 12
+spacing = 40.0
+roof = false
+variant = 6
+
+[sub_resource type="Resource" id="F20"]
+script = ExtResource("2_feature")
+kind = 4
+label = "Lesmo"
+s_start = 2150.0
+s_end = 2700.0
+side = 2
+distance = 2.0
+rows = 12
+spacing = 40.0
+roof = false
+variant = 1
+
+[sub_resource type="Resource" id="F21"]
+script = ExtResource("2_feature")
+kind = 4
+label = "Ascari"
+s_start = 3550.0
+s_end = 4000.0
+side = 2
+distance = 2.0
+rows = 12
+spacing = 40.0
+roof = false
+variant = 3
+
+[sub_resource type="Resource" id="F22"]
+script = ExtResource("2_feature")
+kind = 4
+label = "Rettifilo Centro"
+s_start = 4000.0
+s_end = 4800.0
+side = 2
+distance = 2.0
+rows = 12
+spacing = 40.0
+roof = false
+variant = 5
+
+[sub_resource type="Resource" id="F23"]
+script = ExtResource("2_feature")
+kind = 4
+label = "Parabolica"
+s_start = 4780.0
+s_end = 5140.0
+side = 2
+distance = 2.0
+rows = 12
+spacing = 40.0
+roof = false
+variant = 7
+
+[sub_resource type="Resource" id="F24"]
+script = ExtResource("2_feature")
+kind = 5
+label = "Freada Prima Variante"
+s_start = 470.0
+s_end = 720.0
+side = 0
+distance = 1.0
+rows = 12
+spacing = 36.0
+roof = false
+variant = 0
+
+[sub_resource type="Resource" id="F25"]
+script = ExtResource("2_feature")
+kind = 5
+label = "Roggia"
+s_start = 1680.0
+s_end = 1830.0
+side = 1
+distance = 1.0
+rows = 12
+spacing = 36.0
+roof = false
+variant = 2
+
+[sub_resource type="Resource" id="F26"]
+script = ExtResource("2_feature")
+kind = 5
+label = "Lesmo"
+s_start = 2100.0
+s_end = 2250.0
+side = 0
+distance = 1.0
+rows = 12
+spacing = 36.0
+roof = false
+variant = 5
+
+[sub_resource type="Resource" id="F27"]
+script = ExtResource("2_feature")
+kind = 5
+label = "Ascari"
+s_start = 3500.0
+s_end = 3650.0
+side = 1
+distance = 1.0
+rows = 12
+spacing = 36.0
+roof = false
+variant = 7
+
+[sub_resource type="Resource" id="F28"]
+script = ExtResource("2_feature")
+kind = 5
+label = "Parabolica"
+s_start = 4700.0
+s_end = 4880.0
+side = 0
+distance = 1.0
+rows = 12
+spacing = 36.0
+roof = false
+variant = 9
+
+[sub_resource type="Resource" id="F29"]
+script = ExtResource("2_feature")
+kind = 5
+label = "Rettifilo Centro"
+s_start = 4100.0
+s_end = 4700.0
+side = 1
+distance = 2.0
+rows = 12
+spacing = 110.0
+roof = false
+variant = 11
+
+[sub_resource type="Resource" id="F30"]
+script = ExtResource("2_feature")
+kind = 5
+label = "Serraglio"
+s_start = 2950.0
+s_end = 3500.0
+side = 0
+distance = 2.0
+rows = 12
+spacing = 120.0
+roof = false
+variant = 13
+
+[sub_resource type="Resource" id="F31"]
+script = ExtResource("2_feature")
+kind = 6
+label = "Reta principal"
+s_start = -650.0
+s_end = 600.0
+side = 2
+distance = 0.0
+rows = 12
+spacing = 60.0
+roof = false
+variant = 0
+
+[sub_resource type="Resource" id="F32"]
+script = ExtResource("2_feature")
+kind = 6
+label = "Circuito E"
+s_start = 610.0
+s_end = 4810.0
+side = 0
+distance = 1.0
+rows = 12
+spacing = 130.0
+roof = false
+variant = 0
+
+[sub_resource type="Resource" id="F33"]
+script = ExtResource("2_feature")
+kind = 6
+label = "Circuito D"
+s_start = 675.0
+s_end = 4810.0
+side = 1
+distance = 1.0
+rows = 12
+spacing = 130.0
+roof = false
+variant = 0
+
+[sub_resource type="Resource" id="F34"]
+script = ExtResource("2_feature")
+kind = 6
+label = "Parabolica"
+s_start = 4816.0
+s_end = 5140.0
+side = 2
+distance = 1.0
+rows = 12
+spacing = 60.0
+roof = false
+variant = 0
+
+[sub_resource type="Resource" id="F35"]
+script = ExtResource("2_feature")
+kind = 8
+label = "Largada"
+s_start = 20.0
+s_end = 20.0
+side = 2
+distance = 2.0
+rows = 12
+spacing = 40.0
+roof = false
+variant = 0
+
+[sub_resource type="Resource" id="F36"]
+script = ExtResource("2_feature")
+kind = 7
+label = "Ponte reta principal"
+s_start = -430.0
+s_end = -430.0
+side = 2
+distance = 2.0
+rows = 12
+spacing = 40.0
+roof = false
+variant = 0
+
+[sub_resource type="Resource" id="F37"]
+script = ExtResource("2_feature")
+kind = 7
+label = "Ponte Curva Grande"
+s_start = 1300.0
+s_end = 1300.0
+side = 2
+distance = 2.0
+rows = 12
+spacing = 40.0
+roof = false
+variant = 4
+
+[sub_resource type="Resource" id="F38"]
+script = ExtResource("2_feature")
+kind = 7
+label = "Ponte Serraglio"
+s_start = 3020.0
+s_end = 3020.0
+side = 2
+distance = 2.0
+rows = 12
+spacing = 40.0
+roof = false
+variant = 8
+
+[sub_resource type="Resource" id="F39"]
+script = ExtResource("2_feature")
+kind = 7
+label = "Ponte Rettifilo"
+s_start = 4450.0
+s_end = 4450.0
+side = 2
+distance = 2.0
+rows = 12
+spacing = 40.0
+roof = false
+variant = 12
+
+[sub_resource type="Resource" id="F40"]
+script = ExtResource("2_feature")
+kind = 9
+label = "Prima Variante"
+s_start = 610.0
+s_end = 610.0
+side = 2
+distance = 2.0
+rows = 12
+spacing = 40.0
+roof = false
+variant = 0
+
+[sub_resource type="Resource" id="F41"]
+script = ExtResource("2_feature")
+kind = 9
+label = "Roggia"
+s_start = 1823.0
+s_end = 1823.0
+side = 1
+distance = 2.0
+rows = 12
+spacing = 40.0
+roof = false
+variant = 0
+
+[sub_resource type="Resource" id="F42"]
+script = ExtResource("2_feature")
+kind = 9
+label = "Lesmo 1"
+s_start = 2192.0
+s_end = 2192.0
+side = 0
+distance = 2.0
+rows = 12
+spacing = 40.0
+roof = false
+variant = 0
+
+[sub_resource type="Resource" id="F43"]
+script = ExtResource("2_feature")
+kind = 9
+label = "Lesmo 2"
+s_start = 2552.0
+s_end = 2552.0
+side = 0
+distance = 2.0
+rows = 12
+spacing = 40.0
+roof = false
+variant = 0
+
+[sub_resource type="Resource" id="F44"]
+script = ExtResource("2_feature")
+kind = 9
+label = "Ascari"
+s_start = 3631.0
+s_end = 3631.0
+side = 1
+distance = 2.0
+rows = 12
+spacing = 40.0
+roof = false
+variant = 0
+
+[sub_resource type="Resource" id="F45"]
+script = ExtResource("2_feature")
+kind = 9
+label = "Parabolica"
+s_start = 4816.0
+s_end = 4816.0
+side = 0
+distance = 2.0
+rows = 12
+spacing = 40.0
+roof = false
+variant = 0
+
+[sub_resource type="Resource" id="F46"]
+script = ExtResource("2_feature")
+kind = 10
+label = "Bandeirolas reta principal"
+s_start = -650.0
+s_end = 600.0
+side = 2
+distance = 0.0
+rows = 0
+spacing = 90.0
+roof = false
+variant = 0
+
+[sub_resource type="Resource" id="F47"]
+script = ExtResource("2_feature")
+kind = 10
+label = "Bandeirolas Prima Variante"
+s_start = 600.0
+s_end = 800.0
+side = 2
+distance = 0.0
+rows = 0
+spacing = 60.0
+roof = false
+variant = 0
+
+[sub_resource type="Resource" id="F48"]
+script = ExtResource("2_feature")
+kind = 10
+label = "Bandeirolas Curva Grande"
+s_start = 800.0
+s_end = 1300.0
+side = 2
+distance = 0.0
+rows = 0
+spacing = 120.0
+roof = false
+variant = 0
+
+[sub_resource type="Resource" id="F49"]
+script = ExtResource("2_feature")
+kind = 10
+label = "Bandeirolas Roggia"
+s_start = 1700.0
+s_end = 1950.0
+side = 2
+distance = 0.0
+rows = 0
+spacing = 60.0
+roof = false
+variant = 0
+
+[sub_resource type="Resource" id="F50"]
+script = ExtResource("2_feature")
+kind = 10
+label = "Bandeirolas Lesmo"
+s_start = 2100.0
+s_end = 2700.0
+side = 2
+distance = 0.0
+rows = 0
+spacing = 100.0
+roof = false
+variant = 0
+
+[sub_resource type="Resource" id="F51"]
+script = ExtResource("2_feature")
+kind = 10
+label = "Bandeirolas Serraglio"
+s_start = 2700.0
+s_end = 3500.0
+side = 2
+distance = 0.0
+rows = 0
+spacing = 160.0
+roof = false
+variant = 0
+
+[sub_resource type="Resource" id="F52"]
+script = ExtResource("2_feature")
+kind = 10
+label = "Bandeirolas Ascari"
+s_start = 3500.0
+s_end = 4000.0
+side = 2
+distance = 0.0
+rows = 0
+spacing = 80.0
+roof = false
+variant = 0
+
+[sub_resource type="Resource" id="F53"]
+script = ExtResource("2_feature")
+kind = 10
+label = "Bandeirolas Rettifilo"
+s_start = 4000.0
+s_end = 4800.0
+side = 2
+distance = 0.0
+rows = 0
+spacing = 160.0
+roof = false
+variant = 0
+
+[sub_resource type="Resource" id="F54"]
+script = ExtResource("2_feature")
+kind = 10
+label = "Bandeirolas Parabolica"
+s_start = 4800.0
+s_end = 5140.0
+side = 2
+distance = 0.0
+rows = 0
+spacing = 80.0
+roof = false
+variant = 0
+
+[resource]
+script = ExtResource("1_layout")
+centerline = "res://assets/track/monza/monza_centerline.csv"
+raceline = "res://assets/track/monza/monza_raceline.csv"
+start_offset = 300.0
+width_scale = 1.15
+min_half_width = 5.5
+pit_side = -1
+pit_entry_s = -560.0
+pit_exit_s = 420.0
+pit_taper = 90.0
+garage_count = 20
+garage_width = 12.0
+garage_center_s = 0.0
+pit_building_length = 480.0
+features = Array[ExtResource("2_feature")]([SubResource("F0"), SubResource("F1"), SubResource("F2"), SubResource("F3"), SubResource("F4"), SubResource("F5"), SubResource("F6"), SubResource("F7"), SubResource("F8"), SubResource("F9"), SubResource("F10"), SubResource("F11"), SubResource("F12"), SubResource("F13"), SubResource("F14"), SubResource("F15"), SubResource("F16"), SubResource("F17"), SubResource("F18"), SubResource("F19"), SubResource("F20"), SubResource("F21"), SubResource("F22"), SubResource("F23"), SubResource("F24"), SubResource("F25"), SubResource("F26"), SubResource("F27"), SubResource("F28"), SubResource("F29"), SubResource("F30"), SubResource("F31"), SubResource("F32"), SubResource("F33"), SubResource("F34"), SubResource("F35"), SubResource("F36"), SubResource("F37"), SubResource("F38"), SubResource("F39"), SubResource("F40"), SubResource("F41"), SubResource("F42"), SubResource("F43"), SubResource("F44"), SubResource("F45"), SubResource("F46"), SubResource("F47"), SubResource("F48"), SubResource("F49"), SubResource("F50"), SubResource("F51"), SubResource("F52"), SubResource("F53"), SubResource("F54")])

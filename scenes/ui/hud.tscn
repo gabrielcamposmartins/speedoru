@@ -1,0 +1,80 @@
+[gd_scene load_steps=5 format=3]
+
+[ext_resource type="Script" path="res://scripts/ui/hud.gd" id="1_hud"]
+[ext_resource type="Shader" path="res://shaders/speed_lines.gdshader" id="2_lines"]
+[ext_resource type="Script" path="res://scripts/ui/garage_panel.gd" id="3_garage"]
+
+[sub_resource type="ShaderMaterial" id="Mat_lines"]
+shader = ExtResource("2_lines")
+shader_parameter/intensity = 0.0
+
+[node name="HUD" type="CanvasLayer"]
+script = ExtResource("1_hud")
+
+[node name="SpeedLines" type="ColorRect" parent="."]
+unique_name_in_owner = true
+material = SubResource("Mat_lines")
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="Help" type="PanelContainer" parent="."]
+offset_left = 20.0
+offset_top = 20.0
+
+[node name="HelpLabel" type="Label" parent="Help"]
+theme_override_font_sizes/font_size = 14
+text = "W/↑ acelerar · Espaço frear · S/↓ ré (automático) · A/D esterçar · Alt boost
+Shift DRS · Q/E marchas (manual: … 1 → N → R, ré acelera com W) · G câmbio auto/manual · T controle de tração
+[ / ] balanço de freio · C câmera · V olhar para trás · O órbita
+R recolocar o carro · F reparar · M música · N horário · B ambiente · Tab garagem
+Esc pausa · F10 configurações (teclas, tela, gráficos, áudio) · PgUp/PgDn classificação
+1/2/3 pneu do pit · H esconde esta ajuda"
+
+[node name="TopRight" type="VBoxContainer" parent="."]
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -424.0
+offset_top = 20.0
+offset_right = -24.0
+grow_horizontal = 0
+theme_override_constants/separation = 2
+alignment = 2
+
+[node name="CarNameLabel" type="Label" parent="TopRight"]
+unique_name_in_owner = true
+text = "Akane R-01"
+horizontal_alignment = 2
+
+[node name="CameraLabel" type="Label" parent="TopRight"]
+unique_name_in_owner = true
+text = "Câmera"
+horizontal_alignment = 2
+
+[node name="HandlingLabel" type="Label" parent="."]
+unique_name_in_owner = true
+anchors_preset = 5
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -300.0
+offset_top = 150.0
+offset_right = 300.0
+offset_bottom = 210.0
+grow_horizontal = 2
+horizontal_alignment = 1
+
+[node name="Garage" type="PanelContainer" parent="."]
+unique_name_in_owner = true
+visible = false
+anchors_preset = 9
+anchor_bottom = 1.0
+offset_left = 20.0
+offset_top = 130.0
+offset_right = 420.0
+offset_bottom = -30.0
+grow_vertical = 2
+script = ExtResource("3_garage")

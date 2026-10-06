@@ -1,0 +1,64 @@
+[gd_scene load_steps=14 format=3]
+
+[ext_resource type="Script" path="res://scripts/track/test_track.gd" id="1_track"]
+[ext_resource type="Shader" path="res://shaders/ground_grass.gdshader" id="2_grass"]
+[ext_resource type="Script" path="res://scripts/track/test_circuit.gd" id="3_circuit"]
+[ext_resource type="PackedScene" path="res://scenes/car/f1_car.tscn" id="4_car"]
+[ext_resource type="Script" path="res://scripts/camera/race_camera.gd" id="5_cam"]
+[ext_resource type="Shader" path="res://shaders/outline_post.gdshader" id="6_outline"]
+[ext_resource type="PackedScene" path="res://scenes/ui/hud.tscn" id="7_hud"]
+[ext_resource type="PackedScene" path="res://scenes/env/daylight.tscn" id="8_day"]
+
+[sub_resource type="WorldBoundaryShape3D" id="GroundShape"]
+
+[sub_resource type="ShaderMaterial" id="GrassMat"]
+shader = ExtResource("2_grass")
+
+[sub_resource type="PlaneMesh" id="GroundMesh"]
+material = SubResource("GrassMat")
+size = Vector2(3000, 3000)
+
+[sub_resource type="ShaderMaterial" id="OutlineMat"]
+render_priority = 1
+shader = ExtResource("6_outline")
+
+[sub_resource type="QuadMesh" id="OutlineQuad"]
+material = SubResource("OutlineMat")
+size = Vector2(2, 2)
+
+[node name="TestTrack" type="Node3D"]
+script = ExtResource("1_track")
+
+[node name="Daylight" parent="." instance=ExtResource("8_day")]
+
+[node name="Ground" type="StaticBody3D" parent="."]
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Ground"]
+shape = SubResource("GroundShape")
+
+[node name="Mesh" type="MeshInstance3D" parent="Ground"]
+mesh = SubResource("GroundMesh")
+
+[node name="Circuit" type="Node3D" parent="."]
+script = ExtResource("3_circuit")
+
+[node name="F1Car" parent="." instance=ExtResource("4_car")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.05, -30)
+
+[node name="RaceCamera" type="Camera3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.5, -37)
+physics_interpolation_mode = 2
+current = true
+fov = 68.0
+far = 3000.0
+script = ExtResource("5_cam")
+target_path = NodePath("../F1Car")
+
+[node name="Outline" type="MeshInstance3D" parent="RaceCamera"]
+cast_shadow = 0
+extra_cull_margin = 16384.0
+mesh = SubResource("OutlineQuad")
+
+[node name="HUD" parent="." instance=ExtResource("7_hud")]
+car_path = NodePath("../F1Car")
+camera_path = NodePath("../RaceCamera")

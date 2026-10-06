@@ -1,0 +1,16 @@
+# Padrão: o git normaliza as quebras de linha no repositório.
+* text=auto
+
+# Binários
+*.png binary
+*.jpg binary
+*.wav binary
+*.ogg binary
+*.mp3 binary
+*.glb binary
+*.blend binary
+*.ttf binary
+*.otf binary
+*.exe binary
+*.res binary
+*.scn binary
