@@ -252,6 +252,9 @@ func _build_gameplay() -> void:
 	_header("Pista")
 	_option("gameplay", "racing_line", "Linha ideal (L na pista)", ["Desligada", "Só nas frenagens e curvas", "Completa"],
 		"setas no chão: verde acelera, amarelo no limite, vermelho freie")
+	_header("Jogo")
+	_toggle("gameplay", "auto_update", "Atualizar o jogo sozinho ao abrir",
+		"baixa e instala a versão nova do GitHub em silêncio; o jogo reabre sozinho")
 
 
 func _build_controls() -> void:
@@ -404,8 +407,9 @@ func _build_performance() -> void:
 	_option("performance", "overlay", "Mostrar", ["Desligado", "Só FPS", "Detalhado (FPS, CPU, GPU, RAM)"])
 	_option("performance", "corner", "Posição", ["Superior esquerdo", "Superior direito", "Inferior esquerdo",
 		"Inferior direito", "Topo, no centro"])
+	_option("performance", "online", "Em corridas online", ["Como acima", "FPS e latência", "Detalhado (com latência)"])
 	var info := Label.new()
-	info.text = "Faixa fina na borda escolhida. Detalhado: FPS (média e mínimo), mini gráfico do tempo de quadro, CPU = tempo do processador na lógica do jogo + na física, por quadro, GPU = tempo de renderização medido, RAM usada pelo jogo, memória de vídeo e draw calls."
+	info.text = "Faixa fina na borda escolhida. Detalhado: FPS (média e mínimo), mini gráfico do tempo de quadro, CPU = tempo do processador na lógica do jogo + na física, por quadro, GPU = tempo de renderização medido, RAM usada pelo jogo, memória de vídeo e draw calls. Conectado ao servidor, mostra também a latência (ida e volta até o servidor, em ms); nas corridas online o monitor liga sozinho (FPS e latência), a não ser que você escolha \"Como acima\"."
 	info.theme_type_variation = "RetroMuted"
 	info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_content.add_child(info)

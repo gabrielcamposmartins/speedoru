@@ -37,6 +37,9 @@ var _crypto := Crypto.new()
 ##   giros só mudam pelo servidor; o equipamento muda aqui na hora e vai para o servidor, que
 ##   confere o que a conta tem e devolve a conta valendo.
 var mode := "local"
+## Conectado a um servidor que aceita o carro do aparelho: itens da coleção local também contam
+## como "tem" (para montar o carro). PENDENTE (produção): o servidor validar a posse.
+var extra_owned := {}
 
 
 func _ready() -> void:
@@ -146,7 +149,22 @@ func apply_requested_equipped(eq: Dictionary) -> void:
 # Coleção
 # ---------------------------------------------------------------------------
 func owns(id: String) -> bool:
-	return ShopCatalog.is_free(id) or owned.has(id)
+	return ShopCatalog.is_free(id) or owned.has(id) or extra_owned.has(id)
+
+
+## Equipamento só com estrutura válida (cores, peças e engenharia que existem, nos limites), sem
+## conferir se a conta tem os itens. Usado pelo servidor enquanto aceita o carro do aparelho
+## (NetProtocol.TRUST_CLIENT_CAR).
+static func sanitize_equipped(eq: Dictionary) -> Dictionary:
+	var tmp := PlayerProfile.new()
+	tmp.mode = "server"
+	for id in ShopCatalog.ITEMS:
+		tmp.owned[id] = true
+	tmp.equipped = default_equipped()
+	tmp.apply_requested_equipped(eq)
+	var out := tmp.equipped.duplicate(true)
+	tmp.free()
+	return out
 
 
 ## Peças que a conta tem de um tipo (gratuitas incluídas).

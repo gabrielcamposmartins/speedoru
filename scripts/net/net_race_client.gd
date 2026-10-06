@@ -7,7 +7,9 @@ extends Node
 ##   não chegar, porque o servidor aplica a diferença).
 ## * Recebe os instantâneos (30/s) e desenha todos os carros um pouco no passado
 ##   (NetProtocol.INTERP_DELAY), interpolando entre dois instantâneos; se faltar um, estica a
-##   última posição pela velocidade por até 0,25 s.
+##   última posição pela velocidade por até 0,25 s. O relógio da interpolação anda um passo de
+##   física por vez (corrigindo devagar para o relógio do servidor): com a hora real, dois passos
+##   no mesmo quadro teriam o mesmo instante e o carro andaria aos trancos.
 ## * Repassa o estado da prova (5/s) e os acontecimentos ao RaceManager.
 
 const ACTIONS := ["shift_up", "shift_down", "toggle_gearbox", "pit_limiter", "toggle_tc", "brake_bias_forward",
@@ -19,6 +21,7 @@ var _snaps: Array[Dictionary] = []
 var _offset := 0.0
 var _has_offset := false
 var _seq := 0
+var _render_t := -1.0
 var _counts := PackedFloat32Array([0, 0, 0, 0, 0, 0, 0, 0])
 var _net: Node
 
@@ -79,11 +82,16 @@ func _on_state(d: Dictionary) -> void:
 		manager.apply_net_state(d)
 
 
-func _physics_process(_delta: float) -> void:
+func _physics_process(delta: float) -> void:
 	_send_input()
 	if _snaps.is_empty():
 		return
-	var rt := _now() + _offset - NetProtocol.INTERP_DELAY
+	var target := _now() + _offset - NetProtocol.INTERP_DELAY
+	if _render_t < 0.0 or absf(target - _render_t) > 0.25:
+		_render_t = target
+	else:
+		_render_t += delta + (target - _render_t) * 0.05
+	var rt := _render_t
 	var a: Dictionary = _snaps[0]
 	var b: Dictionary = {}
 	for k in _snaps.size():
@@ -149,6 +157,10 @@ func _apply(car: F1Car, a: Dictionary, b: Dictionary, w: float, extra: float) ->
 		car.wheel_broken[k] = broken & (1 << k) != 0
 	car.tire_usage = s["usage"]
 	car.brake_bias_front = s["bias"]
+	var da: PackedFloat32Array = a["drop"]
+	var db: PackedFloat32Array = b["drop"]
+	for k in 4:
+		car.puppet_wheel_drop[k] = lerpf(da[k], db[k], w)
 
 
 ## Comandos do jogador para o servidor. Com o menu de pausa aberto, solta os pedais.

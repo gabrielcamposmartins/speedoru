@@ -81,8 +81,8 @@ const DEFAULTS := {
 	"display": {"window_mode": 0, "resolution": 2, "vsync": 1, "max_fps": 0, "ui_scale": 0, "fov": 68.0},
 	"graphics": {"preset": 2, "render_scale": 1.0, "upscaler": 0, "msaa": 2, "screen_aa": 1, "taa": false,
 		"shadows": 2, "ssao": true, "ssil": false, "glow": true, "volumetric_fog": true, "lod": 2},
-	"performance": {"overlay": 0, "corner": 2},
-	"gameplay": {"racing_line": 2},
+	"performance": {"overlay": 0, "corner": 2, "online": 1},
+	"gameplay": {"racing_line": 2, "auto_update": true},
 	"audio": {"master": 1.0, "car": 1.0, "music": 1.0, "music_on": true, "track": 0, "mute_unfocused": true},
 }
 
@@ -408,7 +408,7 @@ func apply_all() -> void:
 	_apply_display()
 	_apply_graphics()
 	_apply_audio()
-	_overlay.configure(get_value("performance", "overlay"), get_value("performance", "corner"))
+	_configure_overlay()
 
 
 func _apply(section: String, key: String) -> void:
@@ -420,7 +420,12 @@ func _apply(section: String, key: String) -> void:
 		"audio":
 			_apply_audio()
 		"performance":
-			_overlay.configure(get_value("performance", "overlay"), get_value("performance", "corner"))
+			_configure_overlay()
+
+
+func _configure_overlay() -> void:
+	_overlay.online_mode = int(get_value("performance", "online"))
+	_overlay.configure(get_value("performance", "overlay"), get_value("performance", "corner"))
 
 
 func _apply_display(only := "") -> void:

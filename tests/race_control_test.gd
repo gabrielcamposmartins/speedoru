@@ -68,16 +68,23 @@ func _run() -> void:
 			all_limited = false
 	_check(all_limited, "bots ligam o limitador sob amarela")
 	var info := rc.instruction_for(pe)
-	_check(not info.is_empty() and "limitador" in str(info[1]) and "[" in str(info[1]), "jogador recebe a instrução do limitador com a tecla: %s" % (info[1] if not info.is_empty() else ""))
+	_check(not info.is_empty() and "ultrapasse" in str(info[1]) and "safety car sai em" in str(info[1]), "jogador recebe a instrução da amarela: %s" % (info[1] if not info.is_empty() else ""))
 	await _seconds(RaceControl.BOT_PIT_DELAY + 1.0)
 	_check(bot_e.in_pit_stop, "bot batido é levado ao box")
 	_check(bot_e.current_lap() == lap and bot_e.lap_restart, "a volta do bot recomeça (volta %d)" % bot_e.current_lap())
-	# Jogador sem limitador por mais que a tolerância: penalidade
+	# Limitador não é obrigatório sob amarela
+	pe.car.limiter_on = false
 	var pen_before := pe.penalty_seconds
-	await _seconds(RaceControl.LIMITER_GRACE)
-	_check(pe.penalty_seconds >= pen_before + 5.0, "sem limitador sob amarela: +5 s")
-	await _seconds(RaceControl.REPAIR_TIME + 6.0)
-	_check(not rc.is_involved(bot_e) and not rc.yellow and rc.safety_car == null, "conserto terminado: bandeira verde, safety car sai")
+	await _seconds(7.0)
+	_check(is_equal_approx(pe.penalty_seconds, pen_before), "sem limitador sob amarela: sem penalidade")
+	await _seconds(RaceControl.REPAIR_TIME)
+	_check(not rc.is_involved(bot_e) and rc.yellow and rc.safety_car != null, "conserto terminado: a amarela continua até o safety car completar a volta")
+	var sc_lap := rc.sc_end - rc.safety_car.progress
+	_check(sc_lap > 0.0 and sc_lap < manager.track.path.length,
+		"safety car dura uma volta a partir de onde entrou (faltam %.0f m de %.0f)" % [sc_lap, manager.track.path.length])
+	rc.safety_car.progress = rc.sc_end - 1.0
+	await _seconds(0.5)
+	_check(not rc.yellow and rc.safety_car == null, "safety car completou a volta: bandeira verde")
 	var damage := bot_e.car.get_node("Damage") as CarDamage
 	_check(damage.get_overall() > 0.99, "carro do bot consertado")
 	var t := 0.0
@@ -101,7 +108,9 @@ func _run() -> void:
 	await _seconds(0.5)
 	_check(pe.in_pit_stop and pe.current_lap() == p_lap and pe.lap_restart, "tempo esgotado: levado ao box, recomeça a mesma volta")
 	await _seconds(RaceControl.REPAIR_TIME + 4.0)
-	_check(not rc.yellow, "jogador consertado: bandeira verde")
+	_check(not rc.is_involved(pe) and rc.yellow, "jogador consertado; amarela segue com o safety car")
+	rc.safety_car.progress = rc.sc_end - 1.0
+	await _seconds(0.5)
 	# --- Safety car: quem não está envolvido e passa é punido
 	rc.report_crash(bot_e if not bot_e.in_pit_stop else manager.entries[1])
 	await _seconds(0.2)

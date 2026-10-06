@@ -8,6 +8,10 @@ extends CanvasLayer
 ##   da lógica e da física por quadro), GPU (tempo de renderização medido), RAM do jogo, VRAM e
 ##   draw calls.
 ##
+## * Conectado ao servidor: latência (ida e volta até o servidor, em ms, medida pelo ENet). Nas
+##   corridas online o monitor liga sozinho no modo de `online_mode` (padrão: FPS e latência), se o
+##   escolhido nas configurações for menor.
+##
 ## O Godot não expõe o uso total de CPU do sistema; "CPU" aqui é quanto tempo o processador
 ## gasta na lógica do jogo e na física (medidas separadas: podem se sobrepor entre threads).
 
@@ -18,6 +22,8 @@ const HISTORY := 150
 
 var mode := Mode.OFF
 var corner := ScreenCorner.BOTTOM_LEFT
+## Modo mínimo nas corridas online (0 = como o normal).
+var online_mode := 1
 
 var _panel: PerfPanel
 
@@ -34,14 +40,32 @@ func _ready() -> void:
 func configure(p_mode: int, p_corner: int) -> void:
 	mode = p_mode as Mode
 	corner = p_corner as ScreenCorner
+	_layout()
+
+
+## Modo que vale agora (nas corridas online, no mínimo o de online_mode).
+func effective_mode() -> Mode:
+	if RaceManager.online_race and online_mode > 0:
+		return maxi(mode, online_mode) as Mode
+	return mode
+
+
+func _process(_delta: float) -> void:
+	if _panel and _panel.shown_mode != effective_mode():
+		_layout()
+
+
+func _layout() -> void:
 	if _panel == null:
 		return
-	_panel.visible = mode != Mode.OFF
-	_panel.detailed = mode == Mode.DETAILED
-	_panel.custom_minimum_size = Vector2(470, 40) if _panel.detailed else Vector2(84, 24)
+	var m := effective_mode()
+	_panel.shown_mode = m
+	_panel.visible = m != Mode.OFF
+	_panel.detailed = m == Mode.DETAILED
+	_panel.custom_minimum_size = Vector2(540, 40) if _panel.detailed else Vector2(150, 24)
 	_panel.size = _panel.custom_minimum_size
 	var vp_rid := get_viewport().get_viewport_rid()
-	RenderingServer.viewport_set_measure_render_time(vp_rid, mode == Mode.DETAILED)
+	RenderingServer.viewport_set_measure_render_time(vp_rid, m == Mode.DETAILED)
 	var preset: Control.LayoutPreset = [Control.PRESET_TOP_LEFT, Control.PRESET_TOP_RIGHT, Control.PRESET_BOTTOM_LEFT,
 		Control.PRESET_BOTTOM_RIGHT, Control.PRESET_CENTER_TOP][clampi(corner, 0, 4)]
 	_panel.set_anchors_and_offsets_preset(preset, Control.PRESET_MODE_KEEP_SIZE, 8)
@@ -49,6 +73,7 @@ func configure(p_mode: int, p_corner: int) -> void:
 
 class PerfPanel extends Control:
 	var detailed := false
+	var shown_mode := -1
 	var _frames := PackedFloat32Array()
 	var _accum := 0.0
 	var _count := 0
@@ -76,6 +101,18 @@ class PerfPanel extends Control:
 			_worst = 0.0
 		queue_redraw()
 
+	## Latência até o servidor (ms), ou -1 se não está conectado.
+	func _ping() -> int:
+		var net := get_node_or_null("/root/Net")
+		return int(net.ping_ms()) if net and net.has_method("ping_ms") else -1
+
+	func _ping_color(ms: int) -> Color:
+		if ms <= 60:
+			return Retro.c("good")
+		if ms <= 120:
+			return Retro.c("warn")
+		return Retro.c("bad")
+
 	func _fps_color(fps: float) -> Color:
 		if fps >= 55.0:
 			return Retro.c("good")
@@ -91,9 +128,13 @@ class PerfPanel extends Control:
 		var body := Retro.body(600)
 		var muted := Retro.c("muted")
 		var fps := Engine.get_frames_per_second()
+		var ping := _ping()
 		if not detailed:
 			draw_string(disp, Vector2(8, 18), "%d" % fps, HORIZONTAL_ALIGNMENT_LEFT, -1, 15, _fps_color(fps))
-			draw_string(Retro.display(700), Vector2(0, 17), "FPS", HORIZONTAL_ALIGNMENT_RIGHT, size.x - 6, 9, muted)
+			draw_string(Retro.display(700), Vector2(44, 17), "FPS", HORIZONTAL_ALIGNMENT_LEFT, -1, 9, muted)
+			if ping >= 0:
+				draw_string(disp, Vector2(76, 18), "%d" % ping, HORIZONTAL_ALIGNMENT_LEFT, -1, 15, _ping_color(ping))
+				draw_string(Retro.display(700), Vector2(0, 17), "MS", HORIZONTAL_ALIGNMENT_RIGHT, size.x - 6, 9, muted)
 			return
 		# Linha 1: FPS, média/mínimo, tempo de quadro e mini gráfico
 		draw_string(disp, Vector2(8, 17), "%d" % fps, HORIZONTAL_ALIGNMENT_LEFT, -1, 15, _fps_color(fps))
@@ -119,6 +160,8 @@ class PerfPanel extends Control:
 		var draws := Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME)
 		var parts := [["CPU", "%.1f + %.1f ms" % [logic_ms, physics_ms]], ["GPU", "%.1f ms" % gpu_ms],
 			["RAM", "%d MB" % roundi(ram)], ["VRAM", "%d MB" % roundi(vram)], ["DRAW", "%d" % draws]]
+		if ping >= 0:
+			parts.push_front(["PING", "%d ms" % ping])
 		var x := 8.0
 		var f := Retro.display(700)
 		for part in parts:

@@ -2,10 +2,11 @@ class_name NetSnapshot
 extends RefCounted
 ## Instantâneo binário de todos os carros da corrida (servidor → clientes, 30 por segundo).
 ##
-## Cabeçalho: tempo do servidor (f64) e número de carros (u8). Por carro (64 bytes): índice,
+## Cabeçalho: tempo do servidor (f64) e número de carros (u8). Por carro (68 bytes): índice,
 ## posição, rotação, velocidade, giro, marcha, pedais, direção, bandeiras (DRS, boost, limitador,
 ## parado, escondido, TC, ABS, automático), bateria, desgaste dos 4 pneus, composto, dano
-## (asa dianteira/traseira, arrasto, motor), rodas quebradas, uso dos pneus e balanço de freio.
+## (asa dianteira/traseira, arrasto, motor), rodas quebradas, uso dos pneus, balanço de freio e
+## quanto cada roda está abaixo da fixação (suspensão, em mm).
 
 const F_DRS := 1
 const F_BOOST := 2
@@ -76,6 +77,12 @@ static func encode(time: float, entries: Array) -> PackedByteArray:
 		for k in 4:
 			b.put_u8(_u8(car.tire_usage[k] * 0.5))
 		b.put_u8(_u8(car.brake_bias_front))
+		var wheels := car.get_wheels()
+		for k in 4:
+			var drop := 0.04
+			if k < wheels.size() and k < car._mounts.size():
+				drop = car._mounts[k].y - wheels[k].position.y
+			b.put_u8(clampi(roundi(drop * 1000.0), 0, 255))
 	return b.data_array
 
 
@@ -105,6 +112,7 @@ static func decode(data: PackedByteArray) -> Dictionary:
 		c["broken"] = b.get_u8()
 		c["usage"] = PackedFloat32Array([b.get_u8() / 127.5, b.get_u8() / 127.5, b.get_u8() / 127.5, b.get_u8() / 127.5])
 		c["bias"] = b.get_u8() / 255.0
+		c["drop"] = PackedFloat32Array([b.get_u8() / 1000.0, b.get_u8() / 1000.0, b.get_u8() / 1000.0, b.get_u8() / 1000.0])
 		cars[idx] = c
 	return {"t": t, "cars": cars}
 

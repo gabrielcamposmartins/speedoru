@@ -43,6 +43,7 @@ var _equip_timer := 0.0
 var _equip_pending: Variant = null
 var _retry := 0.0
 var _connecting := false
+var _local_owned := {}
 
 
 func _ready() -> void:
@@ -136,7 +137,13 @@ func _on_connected() -> void:
 		cfg.set_value("account", "token", token)
 		cfg.save(account_file)
 	var name := str(cfg.get_value("account", "name", "Jogador"))
-	msg.rpc_id(1, "hello", {"version": NetProtocol.VERSION, "token": token, "name": name})
+	var hello := {"version": NetProtocol.VERSION, "token": token, "name": name}
+	# O carro deste aparelho (visual e engenharia) vai junto: o servidor o usa nas corridas
+	var profile := get_node_or_null("/root/Profile") as PlayerProfile if auto_profile else null
+	if profile and profile.mode == "local":
+		hello["car"] = profile.equipped.duplicate(true)
+		_local_owned = profile.owned.duplicate()
+	msg.rpc_id(1, "hello", hello)
 
 
 func _on_failed() -> void:
@@ -164,11 +171,14 @@ func _set_online(value: bool) -> void:
 	if profile:
 		if online:
 			profile.mode = "remote"
+			# Servidor que aceita o carro do aparelho: a coleção local também vale para montar o carro
+			profile.extra_owned = _local_owned.duplicate() if bool(account.get("trust_car", false)) else {}
 			if not profile.equip_requested.is_connected(_on_equip_requested):
 				profile.equip_requested.connect(_on_equip_requested)
 		else:
 			# Offline: volta ao perfil local do aparelho
 			profile.mode = "local"
+			profile.extra_owned = {}
 			profile.load_profile()
 			profile.changed.emit()
 	connection_changed.emit(online)
@@ -193,6 +203,16 @@ func _on_equip_requested(equipped: Dictionary) -> void:
 	_equip_pending = equipped
 	if _equip_timer <= 0.0:
 		_equip_timer = 0.33
+
+
+## Latência (ida e volta até o servidor, ms, média do ENet); -1 sem conexão.
+func ping_ms() -> int:
+	if is_server or not online or _peer == null:
+		return -1
+	var server := _peer.get_peer(1)
+	if server == null:
+		return -1
+	return int(server.get_statistic(ENetPacketPeer.PEER_ROUND_TRIP_TIME))
 
 
 func send_to_server(type: String, data: Dictionary = {}) -> void:

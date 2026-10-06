@@ -149,6 +149,15 @@ func _run() -> void:
 	r = await a.request("rooms")
 	_check((r.get("rooms", []) as Array).any(func(x: Dictionary) -> bool: return x["id"] == room_id and x["locked"]), "sala aparece na lista com cadeado")
 
+	# --- Carro do aparelho: o servidor aceita até item que a conta não tem (PENDENTE: validar posse)
+	var eq: Dictionary = (a.account["profile"]["equipped"] as Dictionary).duplicate(true)
+	eq["livery"] = "livery_aurora"
+	eq["setup"] = {"downforce_area": 4.6}
+	a.send_to_server("equip", {"equipped": eq})
+	ok = await _wait_for(func() -> bool: return str(a.account["profile"]["equipped"].get("livery", "")) == "livery_aurora", 5.0)
+	_check(ok and float(a.account["profile"]["equipped"]["setup"].get("downforce_area", 0.0)) == 4.6,
+		"servidor aceita o carro do aparelho (pintura não comprada e engenharia)")
+
 	# --- Corrida no servidor
 	r = await a.request("room_start")
 	_check(r.get("ok", false), "anfitrião largou a corrida")
@@ -158,6 +167,9 @@ func _run() -> void:
 		var rs: Dictionary = _got("A", "race_start")
 		var roster: Array = rs["roster"]
 		_check(roster.size() == 2, "grid só com os 2 humanos")
+		var mine: Array = roster.filter(func(d: Dictionary) -> bool: return d["id"] == a_id)
+		_check(not mine.is_empty() and str(mine[0]["profile"]["equipped"]["livery"]) == "livery_aurora",
+			"o carro do grid usa o visual do jogador")
 		var my_idx := -1
 		for d in roster:
 			if d["id"] == a_id:

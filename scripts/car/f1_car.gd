@@ -182,8 +182,13 @@ var tire_wear := PackedFloat32Array([0, 0, 0, 0])
 ## Congela o carro (pit stop, antes da largada): sem tração, freio de mão total.
 var hold := false
 ## Rede (cliente): o carro não tem física própria, só mostra o estado que o servidor manda
-## (corpo cinemático movido pelo NetRaceClient; velocidade, marcha, giro etc. vêm do snapshot).
+## (corpo estático movido pelo NetRaceClient; velocidade, marcha, giro etc. vêm do snapshot).
+## As rodas também são posicionadas aqui (suspensão do servidor, esterço e giro pela velocidade):
+## a suspensão do VehicleBody3D, com o corpo movido por fora, faria as rodas tremerem.
 var puppet := false
+## Rede (cliente): quanto cada roda está abaixo do ponto de fixação (m), vindo do snapshot.
+var puppet_wheel_drop := PackedFloat32Array([0.04, 0.04, 0.04, 0.04])
+var _puppet_spin := PackedFloat32Array([0, 0, 0, 0])
 ## Reparo instantâneo (tecla F); desligado no modo corrida (lá o reparo é no pit stop).
 var allow_quick_repair := true
 ## Efeitos do dano (escritos pelo CarDamage): multiplicadores de downforce, arrasto extra,
@@ -338,8 +343,23 @@ func set_puppet(on: bool) -> void:
 	puppet = on
 	if on:
 		player_controlled = false
-		freeze_mode = RigidBody3D.FREEZE_MODE_KINEMATIC
+		# Estático e sem o retorno de estado da física: o VehicleBody3D regravaria as rodas a cada
+		# passo (raios da suspensão a partir da posição anterior) — era a tremedeira dos pneus
+		freeze_mode = RigidBody3D.FREEZE_MODE_STATIC
 	freeze = on
+	if on:
+		PhysicsServer3D.body_set_state_sync_callback(get_rid(), Callable())
+		# As rodas saem de baixo do VehicleBody3D (num nó no mesmo lugar): só se registra nele a roda
+		# que é filha direta, então o motor deixa de regravar a posição delas
+		if not has_node("PuppetWheels"):
+			var holder := Node3D.new()
+			holder.name = "PuppetWheels"
+			add_child(holder)
+			for w in _wheels:
+				var xf := w.transform
+				remove_child(w)
+				holder.add_child(w)
+				w.transform = xf
 
 
 func _physics_process(delta: float) -> void:
@@ -349,6 +369,7 @@ func _physics_process(delta: float) -> void:
 		forward_speed = linear_velocity.dot(global_basis.z)
 		speed_kmh = absf(forward_speed) * 3.6
 		_drs_amount = move_toward(_drs_amount, 1.0 if drs_open else 0.0, delta * 5.0)
+		_animate_puppet_wheels(delta)
 		_animate_parts()
 		return
 	if player_controlled:
@@ -390,6 +411,15 @@ func _integrate_forces(state: PhysicsDirectBodyState3D) -> void:
 	_alpha.fill(0.0)
 	_set_gear(1)
 	reset_physics_interpolation()
+
+
+func _animate_puppet_wheels(delta: float) -> void:
+	for i in _wheels.size():
+		var w := _wheels[i]
+		_puppet_spin[i] = fposmod(_puppet_spin[i] + forward_speed * delta / maxf(w.wheel_radius, 0.1), TAU)
+		var steer := steering if w.use_as_steering else 0.0
+		var drop := puppet_wheel_drop[i] if i < puppet_wheel_drop.size() else 0.04
+		w.transform = Transform3D(Basis(Vector3.UP, steer) * Basis(Vector3.RIGHT, _puppet_spin[i]), _mounts[i] + Vector3.DOWN * drop)
 
 
 func _read_player_input() -> void:

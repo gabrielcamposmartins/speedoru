@@ -10,16 +10,16 @@ extends Node
 ##   levado ao box (botão, tempo esgotado ou bot) recomeça a volta em andamento: ao sair do box e
 ##   cruzar a linha ela começa de novo, sem contar como completada (quem vai dirigindo até o box
 ##   segue a volta normalmente).
-## * A bandeira amarela acaba quando todos os envolvidos terminam o conserto.
+## * O safety car (e a bandeira amarela) dura uma volta inteira a partir de onde entrou na pista;
+##   uma batida nova durante a amarela não a prolonga. Os consertos seguem independentes dela.
 ## * Sob amarela, para quem não está envolvido (fica a cargo do jogador; quem não segue é punido):
-##   - acionar o limitador (80 km/h) em até LIMITER_GRACE s → senão +5 s;
 ##   - não ultrapassar (a não ser quem está nos boxes ou envolvido) → +5 s por ultrapassagem;
 ##   - não passar o safety car → +10 s.
+##   O limitador não é obrigatório (é só um jeito fácil de andar devagar atrás do safety car).
 ##   Quem não bateu pode aproveitar para trocar pneus; isso não muda o estado da bandeira.
 
 signal flag_changed(yellow: bool)
 
-const LIMITER_GRACE := 6.0
 const BOT_PIT_DELAY := 3.5
 const DEFAULT_LAP := 110.0
 const REPAIR_TIME := 6.0
@@ -35,7 +35,8 @@ var mirror := false
 
 var _yellow_time := 0.0
 var _sc_target := 0.0
-var _limiter_off := {}
+## Progresso em que o safety car termina a volta (onde entrou + uma volta).
+var sc_end := 0.0
 var _flagged := {}
 var _prev_progress := {}
 
@@ -76,7 +77,6 @@ func report_crash(e: RaceEntry) -> void:
 func _start_yellow() -> void:
 	yellow = true
 	_yellow_time = 0.0
-	_limiter_off.clear()
 	_flagged.clear()
 	_prev_progress.clear()
 	var leader := _leader()
@@ -85,9 +85,10 @@ func _start_yellow() -> void:
 		safety_car.name = "SafetyCar"
 		manager.get_parent().add_child(safety_car)
 		safety_car.setup(manager.track, manager.line, leader.progress + 60.0)
+		sc_end = safety_car.progress + manager.track.path.length
 	for e in manager.entries:
 		if e.is_player and not involved.has(e):
-			manager.notify_entry(e, "BANDEIRA AMARELA", "Acione o limitador, não ultrapasse e siga o safety car", false)
+			manager.notify_entry(e, "BANDEIRA AMARELA", "Safety car por uma volta: não ultrapasse e não passe o safety car", false)
 	flag_changed.emit(true)
 
 
@@ -98,7 +99,7 @@ func _end_yellow() -> void:
 		safety_car = null
 	for e in manager.entries:
 		if e.is_player:
-			manager.notify_entry(e, "BANDEIRA VERDE", "Pista liberada: pode desligar o limitador", false)
+			manager.notify_entry(e, "BANDEIRA VERDE", "Safety car saiu: pista liberada", false)
 	flag_changed.emit(false)
 
 
@@ -152,7 +153,8 @@ func on_pit_done(e: RaceEntry) -> void:
 		return
 	involved.erase(e)
 	_flagged.erase(e)
-	if involved.is_empty() and yellow:
+	# Sem safety car (não havia líder/linha ideal): a amarela acaba com o último conserto
+	if involved.is_empty() and yellow and safety_car == null:
 		_end_yellow()
 
 
@@ -176,14 +178,16 @@ func physics_update(delta: float) -> void:
 			if info["time_left"] <= 0.0:
 				manager.notify_entry(e, "BOXES", "Tempo esgotado: levado aos boxes", false)
 				send_to_pit(e)
-	if yellow and involved.is_empty():
-		_end_yellow()
 	if not yellow:
 		return
 	_yellow_time += delta
 	var leader := _leader()
 	if safety_car and leader:
 		safety_car.advance(delta, leader.progress)
+	# O safety car fica uma volta inteira a partir de onde entrou
+	if (safety_car and safety_car.progress >= sc_end) or (safety_car == null and involved.is_empty()):
+		_end_yellow()
+		return
 	_check_rules(delta)
 
 
@@ -191,20 +195,12 @@ func _subject(e: RaceEntry) -> bool:
 	return not (e.retired or e.finished or involved.has(e) or e.in_pit or e.in_pit_stop)
 
 
-func _check_rules(delta: float) -> void:
+func _check_rules(_delta: float) -> void:
 	var subjects: Array[RaceEntry] = []
 	for e in manager.entries:
 		if _subject(e):
 			subjects.append(e)
 	for e in subjects:
-		# Limitador
-		if not e.car.limiter_on:
-			_limiter_off[e] = _limiter_off.get(e, 0.0) + delta
-			if _limiter_off[e] > LIMITER_GRACE and not _flagged.has([e, "limiter"]):
-				_flagged[[e, "limiter"]] = true
-				manager.penalize_entry(e, 5.0, "LIMITADOR", "Bandeira amarela sem o limitador de velocidade")
-		else:
-			_limiter_off[e] = 0.0
 		# Safety car
 		if safety_car and e.progress > safety_car.progress + 2.0 and not _flagged.has([e, "sc"]):
 			_flagged[[e, "sc"]] = true
@@ -237,13 +233,18 @@ func instruction_for(e: RaceEntry) -> Array:
 	if yellow:
 		if e.in_pit_stop:
 			return ["BANDEIRA AMARELA", "Pit stop durante a amarela", false]
-		if not e.car.limiter_on:
-			var left := maxf(LIMITER_GRACE - float(_limiter_off.get(e, 0.0)), 0.0)
-			return ["BANDEIRA AMARELA", "Pressione %s para ativar o limitador de velocidade (%d s)" % [key_label("pit_limiter"), ceili(left)], true]
-		return ["BANDEIRA AMARELA", "Limitador ligado · não ultrapasse · siga o safety car", false]
+		return ["BANDEIRA AMARELA", "Não ultrapasse · não passe o safety car%s" % sc_left_text(), false]
 	if e.in_pit and not e.in_pit_stop and not e.car.limiter_on:
 		return ["BOXES", "Pressione %s para ativar o limitador (80 km/h)" % key_label("pit_limiter"), true]
 	return []
+
+
+## Quanto falta da volta do safety car (" · safety car sai em 2,3 km").
+func sc_left_text() -> String:
+	if safety_car == null:
+		return ""
+	var left := maxf(sc_end - safety_car.progress, 0.0)
+	return " · safety car sai em %s" % ("%.1f km" % (left / 1000.0)).replace(".", ",")
 
 
 ## Nome da tecla (ou botão do controle, se o jogador está usando controle) de uma ação.
@@ -268,13 +269,8 @@ func apply_mirror(d: Dictionary, roster: Array[RaceEntry]) -> void:
 	for idx in inv:
 		if int(idx) < roster.size():
 			involved[roster[int(idx)]] = {"time_left": float(inv[idx][0]), "in_box": bool(inv[idx][1]), "bot_delay": 0.0}
-	_limiter_off.clear()
-	var lim: Dictionary = d.get("limiter_off", {})
-	for idx in lim:
-		if int(idx) < roster.size():
-			_limiter_off[roster[int(idx)]] = float(lim[idx])
 	var sc: Array = d.get("sc", [])
-	if sc.size() == 2 and manager.line:
+	if sc.size() >= 2 and manager.line:
 		if safety_car == null:
 			safety_car = SafetyCar.new()
 			safety_car.name = "SafetyCar"
@@ -282,6 +278,8 @@ func apply_mirror(d: Dictionary, roster: Array[RaceEntry]) -> void:
 			safety_car.setup(manager.track, manager.line, float(sc[0]))
 		_sc_target = float(sc[0])
 		safety_car.speed = float(sc[1])
+		if sc.size() >= 3:
+			sc_end = float(sc[2])
 	elif safety_car:
 		safety_car.queue_free()
 		safety_car = null

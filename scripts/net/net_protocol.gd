@@ -10,7 +10,11 @@ extends RefCounted
 ## Regras de amigos/grupo/ranking/perfil/nível seguem o documento "Pokeru — Regras de amigos,
 ## ranking e perfil", adaptadas para corridas.
 
-const VERSION := 1
+const VERSION := 2
+## O servidor aceita o carro (skins, peças e engenharia) que o jogador traz do aparelho, sem
+## conferir se a conta tem os itens.
+## PENDENTE (produção): desligar e validar no servidor que a conta tem as skins e peças.
+const TRUST_CLIENT_CAR := true
 const DEFAULT_PORT := 7350
 const DEFAULT_HOST := "127.0.0.1"
 const MAX_CLIENTS := 64

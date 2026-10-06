@@ -60,3 +60,5 @@ Name: "{autodesktop}\Speedoru"; Filename: "{app}\Speedoru.exe"; Tasks: desktopic
 
 [Run]
 Filename: "{app}\Speedoru.exe"; Description: "{cm:LaunchProgram,Speedoru}"; Flags: nowait postinstall skipifsilent
+; Atualização automática (o jogo roda este instalador com /VERYSILENT e fecha): abre a versão nova
+Filename: "{app}\Speedoru.exe"; Flags: nowait skipifnotsilent

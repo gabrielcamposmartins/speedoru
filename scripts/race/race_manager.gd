@@ -738,7 +738,7 @@ func _end_player_pit(e: RaceEntry) -> void:
 	e.pit_served = true
 	var damage := e.car.get_node_or_null("Damage") as CarDamage
 	if (damage != null and damage.get_overall() < 0.97) or (control and control.is_involved(e)):
-		e.car.repair()
+		_repair(e)
 	e.car.change_tyres(e.pit_compound)
 	e.car.hold = false
 	e.in_pit_stop = false
@@ -747,6 +747,12 @@ func _end_player_pit(e: RaceEntry) -> void:
 	_show_crew(e, false)
 	if control:
 		control.on_pit_done(e)
+
+
+## Conserto no box. Na rede os clientes reconstroem o carro também (peças arrancadas voltam).
+func _repair(e: RaceEntry) -> void:
+	e.car.repair()
+	net_event.emit({"event": "repair", "idx": e.index})
 
 
 ## Carro destruído: sai da corrida (DNF) e é tirado da pista depois de alguns segundos.
@@ -777,7 +783,7 @@ func end_pit_stop(e: RaceEntry) -> void:
 	e.in_pit_stop = false
 	var damage := e.car.get_node_or_null("Damage") as CarDamage
 	if (damage != null and damage.get_overall() < 0.97) or (control and control.is_involved(e)):
-		e.car.repair()
+		_repair(e)
 	e.pit_count += 1
 	e.compounds_used.append(e.car.config.tyre_compound)
 	_show_crew(e, false)
@@ -1158,17 +1164,14 @@ func net_state() -> Dictionary:
 			e.penalty_seconds, Array(e.penalties), e.retired, e.disqualified, e.pit_count, e.in_pit, e.in_pit_stop,
 			interval_text(e), e.lap_start, e.track_limit_warnings, e.pit_timer, e.lap_invalid, e.lap_restart])
 	var inv := {}
-	var lim := {}
 	if control:
 		for e: RaceEntry in control.involved:
 			inv[e.index] = [control.involved[e]["time_left"], control.involved[e]["in_box"]]
-		for e: RaceEntry in control._limiter_off:
-			lim[e.index] = control._limiter_off[e]
 	return {
 		"state": state, "race_time": race_time, "laps": laps, "entries": list,
 		"fastest": fastest_entry.index if fastest_entry else -1, "fastest_lap": fastest_lap, "leader_finished": leader_finished,
-		"yellow": control.yellow if control else false, "involved": inv, "limiter_off": lim,
-		"sc": [control.safety_car.progress, control.safety_car.speed] if control and control.safety_car else [],
+		"yellow": control.yellow if control else false, "involved": inv,
+		"sc": [control.safety_car.progress, control.safety_car.speed, control.sc_end] if control and control.safety_car else [],
 	}
 
 
@@ -1334,6 +1337,10 @@ func apply_net_event(d: Dictionary) -> void:
 				var damage := roster[idx].car.get_node_or_null("Damage") as CarDamage
 				if damage:
 					damage.detach_piece(str(d.get("piece", "")))
+		"repair":
+			var ri := int(d.get("idx", -1))
+			if ri >= 0 and ri < roster.size():
+				roster[ri].car.repair()
 		"notice":
 			if player_entry:
 				_notify(player_entry, str(d.get("title", "")), str(d.get("detail", "")), bool(d.get("penalty", false)))

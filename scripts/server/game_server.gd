@@ -270,6 +270,13 @@ func _hello(peer: int, data: Dictionary) -> void:
 	var profile := PlayerProfile.new()
 	profile.mode = "server"
 	profile.from_dict(acc["profile"])
+	# O carro do aparelho (skins, peças, engenharia) vale neste servidor.
+	# PENDENTE (produção): validar que a conta tem as skins e peças (TRUST_CLIENT_CAR = false).
+	var car: Variant = data.get("car")
+	if NetProtocol.TRUST_CLIENT_CAR and car is Dictionary:
+		profile.equipped = PlayerProfile.sanitize_equipped(car)
+		acc["profile"] = profile.to_dict()
+		await store.save_account(acc)
 	sessions[peer] = {"account": acc, "profile": profile, "room": "", "party": ""}
 	var was_online := online.has(acc["id"])
 	if not was_online:
@@ -291,6 +298,7 @@ func _account_payload(s: Dictionary) -> Dictionary:
 		"title": acc["title"], "titles": Progression.unlocked_titles(counters),
 		"level": Progression.level_of(counters), "xp": prog.x, "xp_next": prog.y,
 		"counters": counters, "best_lap": acc["best_lap"], "profile": s["profile"].to_dict(),
+		"trust_car": NetProtocol.TRUST_CLIENT_CAR,
 	}
 
 
@@ -345,8 +353,12 @@ func _equip(peer: int, data: Dictionary) -> void:
 	var eq: Variant = data.get("equipped")
 	if not eq is Dictionary:
 		return
-	# Só o que a conta tem (clamp_equipped volta o resto para o gratuito)
-	s["profile"].apply_requested_equipped(eq)
+	if NetProtocol.TRUST_CLIENT_CAR:
+		# PENDENTE (produção): validar a posse em vez de aceitar o carro do aparelho
+		s["profile"].equipped = PlayerProfile.sanitize_equipped(eq)
+	else:
+		# Só o que a conta tem (clamp_equipped volta o resto para o gratuito)
+		s["profile"].apply_requested_equipped(eq)
 	await _commit_account(peer)
 
 
@@ -921,8 +933,12 @@ func _start_race(room_id: String) -> void:
 		if not online.has(m):
 			continue
 		var s: Dictionary = sessions[online[m][0]]
-		players.append({"id": m, "name": s["account"]["name"], "peers": online[m].duplicate(),
-			"profile": s["profile"].to_dict()})
+		var pd: Dictionary = s["profile"].to_dict()
+		if NetProtocol.TRUST_CLIENT_CAR:
+			# Carro aceito do aparelho: na pista todos os itens valem (senão o perfil os trocaria
+			# pelos gratuitos ao montar o carro). PENDENTE (produção): validar a posse.
+			pd["owned"] = ShopCatalog.ITEMS.keys()
+		players.append({"id": m, "name": s["account"]["name"], "peers": online[m].duplicate(), "profile": pd})
 	var session := RaceSession.new()
 	session.name = "Race_" + room_id
 	races.add_child(session)

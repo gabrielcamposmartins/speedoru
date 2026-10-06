@@ -105,6 +105,15 @@ O instalador não é assinado com certificado de código, então o SmartScreen a
 *Mais informações* → *Executar assim mesmo*. Cada release publica o `SHA256SUMS.txt`
 (`Get-FileHash .\Speedoru-setup.exe -Algorithm SHA256` no PowerShell para conferir).
 
+**Atualização automática:** ao abrir, o jogo instalado consulta a última release no GitHub; se
+houver versão mais nova, baixa o `Speedoru-setup.exe`, confere o SHA-256 com o `SHA256SUMS.txt`
+da release, roda o instalador em silêncio (`/VERYSILENT`, sem janela nem administrador) e fecha;
+o instalador termina e abre o jogo de novo. Um aviso no canto mostra o progresso; sem internet ou
+sem release, o jogo abre normalmente. Se o download terminar no meio de uma corrida, a instalação
+espera a volta ao menu. Desliga em **Configurações → Jogo → Atualizar o jogo sozinho ao abrir**
+(`scripts/update/auto_updater.gd`; não roda no editor, no servidor dedicado nem com `--no-update`).
+Quem está na 0.1.0 precisa instalar a 0.2.0 na mão uma vez (a 0.1.0 não tinha o atualizador).
+
 A pasta do jogo tem também o `Speedoru.console.exe` (o mesmo jogo, com console), que roda o
 servidor dedicado: `Speedoru.console.exe --headless -- --server --db-url=... --db-token=...`
 (veja [Multiplayer](#multiplayer-servidor-dedicado--turso)).
@@ -368,15 +377,17 @@ Visual synthwave + monitor CRT + HUD de ficção científica (`scripts/ui/retro.
     estava recomeça: ao sair do box e cruzar a linha ela começa de novo, sem contar como completada
     (você perde a distância que tinha andado nela). Indo dirigindo até o box, a volta segue normal.
     Bots batidos vão ao box sozinhos em ~3,5 s;
-  - os outros: "Pressione [P] para ativar o limitador" (6 s de tolerância).
-- **Regras sob amarela** (fica a cargo dos jogadores; quem não segue é punido): limitador ligado
-  (+5 s), não ultrapassar (+5 s por carro passado; pode passar quem está nos boxes ou envolvido
-  na batida, e os envolvidos podem passar todos para chegar ao box) e não passar o **safety car**
-  (+10 s). O safety car entra à frente do líder com a giroflex âmbar, anda a 70 km/h na linha ideal
-  e aparece no minimapa (SC). Quem não bateu pode aproveitar para trocar pneus; isso não muda a
-  bandeira.
-- **Fim:** quando todos os envolvidos terminam o conserto no box: bandeira verde, o safety car sai.
-- Bots respeitam tudo: ligam o limitador, não ultrapassam e ficam atrás do safety car.
+  - os outros: "Não ultrapasse · não passe o safety car · safety car sai em 3,2 km".
+- **Regras sob amarela** (fica a cargo dos jogadores; quem não segue é punido): não ultrapassar
+  (+5 s por carro passado; pode passar quem está nos boxes ou envolvido na batida, e os envolvidos
+  podem passar todos para chegar ao box) e não passar o **safety car** (+10 s). O limitador **não
+  é obrigatório** sob amarela (só um jeito fácil de andar devagar atrás do safety car). O safety
+  car entra à frente do líder com a giroflex âmbar, anda a 70 km/h na linha ideal e aparece no
+  minimapa (SC). Quem não bateu pode aproveitar para trocar pneus; isso não muda a bandeira.
+- **Fim:** o safety car fica **uma volta inteira** a partir de onde entrou na pista (uma batida
+  nova durante a amarela não a prolonga); completada a volta, bandeira verde e ele sai. Os
+  consertos seguem independentes da bandeira.
+- Bots respeitam tudo: não ultrapassam e ficam atrás do safety car (usam o limitador para isso).
 - O **semáforo** tem som: um bipe a cada coluna acesa e um tom agudo quando as luzes apagam.
 
 ## Linha ideal
@@ -545,6 +556,8 @@ Tudo é aplicado na hora e salvo em `user://settings.cfg`
   tempo de quadro, CPU = tempo da lógica e da física por quadro, GPU medida, RAM do jogo, VRAM,
   draw calls, objetos, processador e placa de vídeo) e o canto onde aparece. O Godot não expõe o
   uso total de CPU do sistema, por isso o monitor mostra o tempo que o jogo gasta no processador.
+  Conectado ao servidor, mostra também a **latência** (ida e volta até o servidor, em ms, do ENet).
+  "Em corridas online" (padrão: FPS e latência) liga o monitor sozinho nas corridas no servidor.
 - **Áudio:** volume geral, do carro e da música; música liga/desliga; faixa ou playlist; silenciar
   com a janela em segundo plano.
 
@@ -653,8 +666,12 @@ mesmo PC: `-- --account=segundo` (outra conta). `-- --offline` não conecta. Sem
 segue offline com o perfil local do aparelho (solo, loja e estúdio locais).
 
 **Conectado** (`Profile.mode = "remote"`): créditos, coleção e equipamento vêm do servidor; o giro
-da loja é feito lá; mudar visual/engenharia manda o pedido e o servidor aceita só o que a conta
-tem; a corrida solo manda o resultado e o servidor confere (voltas, tempo plausível, dificuldade
+da loja é feito lá. **O carro do aparelho vale no servidor**: ao conectar, o jogo manda o visual
+(pintura, cores, peças, acabamentos) e a engenharia do perfil local, e o servidor usa esse carro
+nas corridas; a coleção local também conta para montar o carro no Estúdio enquanto conectado.
+**PENDENTE (produção):** hoje o servidor aceita o carro sem conferir se a conta tem as skins e
+peças (`NetProtocol.TRUST_CLIENT_CAR = true`, só a estrutura é validada); para o servidor de
+produção, desligar e validar a posse no servidor; a corrida solo manda o resultado e o servidor confere (voltas, tempo plausível, dificuldade
 liberada pelo nível) e paga.
 
 **Regras** (do documento do Pokeru, adaptadas para corridas):
@@ -728,6 +745,8 @@ godot --headless --path . -s res://tests/compile_check.gd   # carrega todos os s
 godot --headless --path . -s res://tests/ccd_probe.gd       # carro não "para do nada" em zebra/raspão a 320 km/h e não atravessa muros
 godot --headless --path . -s res://tests/highspeed_probe.gd # pneus em alta velocidade: carga, aderência, boost, toque de direção, batente
 godot --headless --path . -s res://tests/net_test.gd        # multiplayer de ponta a ponta (precisa do libSQL local)
+godot --headless --path . -s res://tests/puppet_wheel_test.gd # rodas dos carros da rede: altura do servidor, esterço e giro, sem tremer
+godot --headless --path . -s res://tests/updater_test.gd    # atualizador: versões e download/SHA-256 da última release (internet)
 godot --path . -s res://tests/capture_online.gd -- <pasta> <porta> --offline  # telas do multiplayer + corrida online
 ```
 
