@@ -177,7 +177,7 @@ func _run() -> void:
 		a.send_to_server("race_cmd", {"cmd": "loaded"})
 		b.send_to_server("race_cmd", {"cmd": "loaded"})
 		ok = await _wait_for(func() -> bool:
-			return states["A"].any(func(s: Dictionary) -> bool: return int(s.get("state", 0)) == RaceManager.State.RACING), 20.0)
+			return states["A"].any(func(s: Dictionary) -> bool: return int(s.get("state", 0)) == RaceManager.State.RACING), 40.0)
 		_check(ok, "luzes apagaram no servidor (estado RACING chegou)")
 		_check(states["A"].any(func(s: Dictionary) -> bool: return s.get("event", "") == "lights"), "evento das luzes chegou")
 		var start_pos: Vector3 = snaps["A"][-1]["cars"][my_idx]["pos"] if not snaps["A"].is_empty() else Vector3.ZERO

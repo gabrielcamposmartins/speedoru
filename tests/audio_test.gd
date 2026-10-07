@@ -3,7 +3,8 @@ extends SceneTree
 ##   godot --headless --path . -s res://tests/audio_test.gd
 ## Confere as camadas do motor (2 giros vizinhos, equal power, pitch = rpm/giro do loop), trocas
 ## de marcha, estouros ao aliviar, pneu cantando, brita, zebra e batida; e o som dos rivais
-## (canal próprio, mais alcance, estéreo marcado, reforço quando perto da câmera).
+## (canal próprio, mais alcance, estéreo marcado, reforço quando perto da câmera); plateia nas
+## arquibancadas (murmúrio em loop perto da câmera, torcida na largada).
 
 var scene: Node3D
 var track: RaceTrack
@@ -40,6 +41,7 @@ func _run() -> void:
 	await _surfaces()
 	await _crash()
 	await _rivals()
+	await _crowd()
 	print("Falhas: %d" % failures)
 	quit(1 if failures > 0 else 0)
 
@@ -208,3 +210,29 @@ func _rivals() -> void:
 	_check(near > 5.0 and far < 0.5, "rival perto da câmera fica mais alto (+%.1f dB perto, +%.1f dB a 120 m)" % [near, far])
 	cam.queue_free()
 	rival_car.queue_free()
+
+
+## Plateia: alto-falantes nas arquibancadas, murmúrio em loop só perto da câmera, torcida na largada.
+func _crowd() -> void:
+	var crowds := root.get_tree().get_nodes_in_group("crowd_audio")
+	var speakers := 0
+	for c: CrowdAudio in crowds:
+		speakers += c._murmurs.size()
+	_check(crowds.size() >= 3 and speakers >= crowds.size(), "plateia: %d arquibancadas com %d alto-falantes" % [crowds.size(), speakers])
+	var murmur := load("res://assets/audio/crowd/crowd_murmur.wav") as AudioStreamWAV
+	_check(murmur != null and murmur.loop_mode == AudioStreamWAV.LOOP_FORWARD, "murmúrio da plateia em loop")
+	var stand: CrowdAudio = crowds[0]
+	var cam := Camera3D.new()
+	scene.add_child(cam)
+	cam.current = true
+	cam.global_position = stand._points[0] + Vector3(0, 2, 10)
+	await _physics(90)
+	_check(stand._murmurs.any(func(m: AudioStreamPlayer3D) -> bool: return m.playing), "perto da arquibancada: murmúrio tocando")
+	cam.global_position = stand._points[0] + Vector3(0, 300, 900)
+	await _physics(90)
+	_check(not stand._murmurs.any(func(m: AudioStreamPlayer3D) -> bool: return m.playing), "longe: murmúrio parado (sem gastar mixagem)")
+	cam.global_position = stand._points[0] + Vector3(0, 2, 10)
+	await _physics(90)
+	stand.on_race_event("start")
+	_check(stand._shots.any(func(sh: AudioStreamPlayer3D) -> bool: return sh.playing), "largada: a arquibancada torce")
+	cam.queue_free()

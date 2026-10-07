@@ -135,6 +135,11 @@ static func done() -> void:
 		instance.finish()
 
 
+## Ainda na tela (carregando ou no fade de saída).
+static func is_shown() -> bool:
+	return instance != null and instance._root != null and instance._root.visible
+
+
 static func is_loading() -> bool:
 	return instance != null and instance.active
 

@@ -214,7 +214,14 @@ troca por materiais toon (`scripts/car/car_livery.gd`).
   - *Perseguição*: com vida — afasta ao acelerar/no boost e aproxima na frenagem, desliza para
     fora e inclina um pouco nas curvas olhando para dentro delas, acompanha a derrapagem, treme de
     leve em alta velocidade, nas zebras e na brita e forte nas batidas; o FOV abre no boost. As
-    forças G são medidas no passo de física (sem picos quando o FPS difere da física).
+    forças G são medidas no passo de física (sem picos quando o FPS difere da física). Toques
+    pequenos no volante quase não mexem a câmera (desvios abaixo de ~8° são seguidos devagar e o
+    olhar/deslize têm zona morta); curvas de verdade, na velocidade normal.
+  - *Apresentação antes da largada* (`IntroDirector`): com os carros no grid, a câmera passa por
+    cada um do pole para trás (close pela frente, legenda "P3 · nome · dificuldade") e termina
+    numa órbita no seu carro que entrega para a perseguição; depois vem o semáforo. O HUD some
+    durante a apresentação; Enter / A pula; desliga em Configurações → Jogo. No online o servidor
+    espera a duração dela antes das luzes (todos largam juntos).
   - *Piloto*: olhos do piloto com a cabeça escondida (camada de render `CarAssembly.HEAD_LAYER`),
     inércia da cabeça com as forças G e olhar acompanhando o esterço; vê braços, volante girando
     com display e os retrovisores.
@@ -533,6 +540,11 @@ Todos os sons são sintetizados por `tools/generate_car_sounds.py` (Python + num
 - **Mixagem:** `default_bus_layout.tres` — bus `Car` (o seu carro) com compressor e um passa-baixa
   ligado só na câmera do piloto (som abafado pelo capacete); limitador no `Master`. Os sons são 3D
   com efeito Doppler. Volumes na garagem (Tab → Som) e no inspetor do nó `Audio`.
+- **Plateia** (`scripts/track/crowd_audio.gd`, sons de `tools/generate_crowd_sounds.py` em
+  `assets/audio/crowd/`): murmúrio baixo em loop em alto-falantes ao longo de cada arquibancada
+  (só tocam perto da câmera), palmas e torcida discretas de vez em quando, quando o seu carro passa
+  rápido perto, na largada e na sua chegada. Bus `Crowd`. Tudo sintetizado (vozes com formantes e
+  sílabas irregulares, palmas aleatórias, eco de estádio).
 - **Carros em volta** (bots e outros jogadores, `CarAudio.make_rival`): bus próprio `Rivals` (o
   compressor do seu motor não os abafa; o volume "Carro" vale para os dois), som que chega de mais
   longe, estéreo mais marcado (dá para saber de que lado vem) e até +7 dB quando o carro está perto

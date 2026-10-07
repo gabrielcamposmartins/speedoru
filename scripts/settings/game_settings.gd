@@ -82,7 +82,7 @@ const DEFAULTS := {
 	"graphics": {"preset": 2, "render_scale": 1.0, "upscaler": 0, "msaa": 2, "screen_aa": 1, "taa": false,
 		"shadows": 2, "ssao": true, "ssil": false, "glow": true, "volumetric_fog": true, "lod": 2},
 	"performance": {"overlay": 0, "corner": 2, "online": 1},
-	"gameplay": {"racing_line": 2, "auto_update": true},
+	"gameplay": {"racing_line": 2, "auto_update": true, "race_intro": true},
 	"audio": {"master": 1.0, "car": 1.0, "music": 1.0, "music_on": true, "track": 0, "mute_unfocused": true},
 }
 

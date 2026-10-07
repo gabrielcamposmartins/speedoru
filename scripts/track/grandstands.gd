@@ -202,6 +202,15 @@ static func _build_one(track: RaceTrack, f: TrackFeature, side: int, rng: Random
 	node.add_child(mi)
 	if not crowd.is_empty():
 		node.add_child(make_crowd(crowd, crowd_data, track.crowd_visibility))
+		# Som da plateia: alto-falantes a cada ~45 m, no meio da arquibancada
+		var sound := CrowdAudio.new()
+		sound.name = "CrowdAudio"
+		var step := maxi(idxs.size() / 6, 22)
+		for k in range(step / 2, idxs.size(), step):
+			sound.points.append(track.edge_point(idxs[k], side, dist[k] + back * 0.5, base_h + rows * rise * 0.5))
+		if sound.points.is_empty():
+			sound.points.append(track.edge_point(idxs[idxs.size() / 2], side, dist[idxs.size() / 2] + back * 0.5, top * 0.5))
+		node.add_child(sound)
 	back_poly.reverse()
 	front_poly.append_array(back_poly)
 	track.footprints.append(front_poly)

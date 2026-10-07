@@ -252,6 +252,8 @@ func _build_gameplay() -> void:
 	_header("Pista")
 	_option("gameplay", "racing_line", "Linha ideal (L na pista)", ["Desligada", "Só nas frenagens e curvas", "Completa"],
 		"setas no chão: verde acelera, amarelo no limite, vermelho freie")
+	_toggle("gameplay", "race_intro", "Apresentação antes da largada",
+		"câmera passa por cada carro no grid e orbita o seu (Enter / A pula)")
 	_header("Jogo")
 	_toggle("gameplay", "auto_update", "Atualizar o jogo sozinho ao abrir",
 		"baixa e instala a versão nova do GitHub em silêncio; o jogo reabre sozinho")

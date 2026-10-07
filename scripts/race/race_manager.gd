@@ -309,7 +309,14 @@ func _start_race() -> void:
 		get_tree().paused = false
 		LoadingScreen.done()
 	state_changed.emit(state)
-	await get_tree().create_timer(2.5, false).timeout
+	# Apresentação dos carros e órbita no seu (o carro fica parado até ela acabar)
+	if IntroDirector.enabled(get_tree()):
+		player_entry.car.hold = true
+		await _play_intro()
+		player_entry.car.hold = false
+		await get_tree().create_timer(1.0, false).timeout
+	else:
+		await get_tree().create_timer(2.5, false).timeout
 	for entry in entries:
 		_grid_positions[entry] = entry.car.global_position
 	if track.start_lights:
@@ -382,9 +389,15 @@ func _init_position(entry: RaceEntry) -> void:
 	entry.progress = (entry.crossings - 1) * track.path.length + entry.s
 
 
+## Plateia (CrowdAudio de todas as arquibancadas): "start" ou "finish".
+func _crowd(kind: String) -> void:
+	get_tree().call_group("crowd_audio", "on_race_event", kind)
+
+
 func _on_lights_out() -> void:
 	state = State.RACING
 	race_time = 0.0
+	_crowd("start")
 	for entry in entries:
 		entry.lap_start = 0.0
 		if not entry.is_player:
@@ -492,6 +505,7 @@ func _on_line_crossed(e: RaceEntry) -> void:
 			e.bot.profile = _slow_profile(e.bot.profile)
 		if e.is_player and net == Net.OFF:
 			_pay_player()
+			_crowd("finish")
 		if (e.is_player and net == Net.OFF) or _all_finished() or (net == Net.SERVER and _humans_done()):
 			state = State.FINISHED
 			state_changed.emit(state)
@@ -1005,6 +1019,15 @@ static func format_time(t: float) -> String:
 	return "%d:%06.3f" % [m, t - m * 60.0]
 
 
+## Apresentação dos carros (IntroDirector); termina quando ela acaba (ou é pulada).
+func _play_intro() -> void:
+	var intro := IntroDirector.new()
+	intro.name = "Intro"
+	add_child(intro)
+	intro.play.call_deferred(self)
+	await intro.finished
+
+
 # ---------------------------------------------------------------------------
 # Rede: servidor
 # ---------------------------------------------------------------------------
@@ -1094,7 +1117,12 @@ func _build_net_grid() -> void:
 func net_go() -> void:
 	state_changed.emit(state)
 	net_event.emit({"event": "grid"})
-	await get_tree().create_timer(2.5, false).timeout
+	# Tempo da apresentação dos clientes (todos largam juntos); os humanos ficam parados
+	for id in humans:
+		humans[id].car.hold = true
+	await get_tree().create_timer(IntroDirector.length(roster.size()) + 1.0, false).timeout
+	for id in humans:
+		humans[id].car.hold = false
 	for entry in entries:
 		_grid_positions[entry] = entry.car.global_position
 	var hold_time := randf_range(0.2, 3.0)
@@ -1332,6 +1360,10 @@ func apply_net_state(d: Dictionary) -> void:
 	if player_entry and player_entry.finished and new_state == State.RACING:
 		new_state = State.FINISHED
 	if new_state != state:
+		if new_state == State.RACING:
+			_crowd("start")
+		elif new_state == State.FINISHED and player_entry and player_entry.finished:
+			_crowd("finish")
 		state = new_state as State
 		state_changed.emit(state)
 		if state == State.FINISHED:
@@ -1341,7 +1373,13 @@ func apply_net_state(d: Dictionary) -> void:
 ## Acontecimentos que o servidor manda na hora (luzes, peça arrancada, aviso para este jogador).
 func apply_net_event(d: Dictionary) -> void:
 	match str(d.get("event", "")):
+		"grid":
+			if IntroDirector.enabled(get_tree()) and player_entry:
+				_play_intro()
 		"lights":
+			var intro := get_node_or_null("Intro") as IntroDirector
+			if intro:
+				intro.skip()
 			if track.start_lights:
 				track.start_lights.run_sequence(float(d.get("hold", 1.0)))
 		"detach":

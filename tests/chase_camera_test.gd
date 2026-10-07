@@ -71,6 +71,24 @@ func _run() -> void:
 	car.throttle_input = 0.5
 	while car.speed_kmh > 130.0:
 		await physics_frame
+	# Toque curto no volante (0,15 s): a câmera quase não deve se mexer
+	var cam_fwd := -cam.global_basis.z
+	var car_fwd := car.global_basis.z
+	var early := 0.0
+	car.steer_input = 0.35
+	for i in 120:
+		if i == 18:
+			car.steer_input = 0.0
+		await physics_frame
+		if i < 42:
+			early = maxf(early, rad_to_deg((-cam.global_basis.z).angle_to(cam_fwd)))
+	var car_turn := rad_to_deg(car.global_basis.z.angle_to(car_fwd))
+	print("    toque no volante: carro virou %.2f°, câmera %.2f° nos primeiros 0,35 s" % [car_turn, early])
+	_check(early < 1.2, "toque curto no volante: a câmera quase não reage na hora (%.2f°)" % early)
+	car.throttle_input = 0.0
+	while car.speed_kmh > 130.0:
+		await physics_frame
+	car.throttle_input = 0.5
 	car.steer_input = 0.6
 	await _frames(90)
 	var xf := car.get_global_transform_interpolated()

@@ -70,10 +70,14 @@ static func _chevron_mesh() -> ArrayMesh:
 	return st.commit()
 
 
+## Escondida por fora (apresentação antes da largada).
+var suppressed := false
+
+
 func _process(_delta: float) -> void:
 	if car == null or multimesh == null:
 		return
-	visible = mode > 0
+	visible = mode > 0 and not suppressed
 	if not visible:
 		return
 	# Posição do carro ao longo da pista; as setas começam alguns metros à frente

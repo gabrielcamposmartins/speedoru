@@ -62,6 +62,13 @@ var onboard_rear := {
 @export var shake_impact := 0.22
 ## FOV a mais com o boost ligado.
 @export var boost_fov := 6.0
+## Toques pequenos no volante quase não mexem a câmera: desvios de direção menores que
+## small_turn_deg são seguidos devagar (small_turn_smoothing); curvas de verdade, na velocidade
+## normal. O olhar para dentro da curva e o deslize lateral só começam acima de uma zona morta.
+@export var small_turn_deg := 8.0
+@export var small_turn_smoothing := 0.6
+@export var look_deadzone := 0.18
+@export var swing_deadzone_g := 0.6
 
 @export_group("Piloto (1ª pessoa)")
 ## Posição dos olhos no espaço do carro.
@@ -94,6 +101,8 @@ var onboard_rear := {
 
 var target: F1Car
 var looking_back := false
+## Câmera controlada por fora (apresentação antes da largada, IntroDirector).
+var cinematic := false
 var _onboard_gear: CarOnboard
 var _direction := Vector3.BACK
 var _height := 1.9
@@ -104,6 +113,8 @@ var _raw_g := Vector3.ZERO
 var _trauma := 0.0
 var _shake_t := 0.0
 var _chase_pull := 0.0
+var _look_yaw := 0.0
+var _cam_lat_g := 0.0
 var _noise := FastNoiseLite.new()
 var _prev_velocity := Vector3.ZERO
 var _prev_pos := Vector3.ZERO
@@ -140,6 +151,20 @@ func _apply_fov_setting(settings: GameSettings) -> void:
 	driver_fov = base_fov + 10.0
 
 
+## Depois de uma cena controlada por fora: a perseguição recomeça atrás do carro, sem salto.
+func reset_after_cinematic() -> void:
+	if target:
+		var fwd := target.global_basis.z
+		fwd.y = 0.0
+		if fwd.length_squared() > 0.001:
+			_direction = fwd.normalized()
+		_height = far_height if mode == Mode.CHASE_FAR else chase_height
+	_chase_pull = 0.0
+	_look_yaw = 0.0
+	_cam_lat_g = 0.0
+	reset_physics_interpolation()
+
+
 func get_mode_name() -> String:
 	return MODE_NAMES[mode]
 
@@ -166,7 +191,7 @@ func _unhandled_input(event: InputEvent) -> void:
 
 
 func _process(delta: float) -> void:
-	if target == null:
+	if target == null or cinematic:
 		return
 	var xf := target.get_global_transform_interpolated()
 	looking_back = mode != Mode.ORBIT and Input.is_action_pressed("look_back")
@@ -219,20 +244,29 @@ func _update_chase(xf: Transform3D, delta: float, back: float) -> void:
 	if vel.length() > 8.0:
 		var slide := clampf(absf(target.body_slip_angle) / 0.5, 0.0, 1.0) * chase_slide_follow
 		forward = forward.slerp(vel.normalized(), slide).normalized()
-	_direction = _direction.slerp(forward, 1.0 - exp(-direction_smoothing * delta)).normalized()
+	# Desvio pequeno (toque no volante): a câmera segue devagar; curva de verdade: rápido
+	var diff := rad_to_deg(_direction.angle_to(forward))
+	var follow := lerpf(small_turn_smoothing, direction_smoothing, smoothstep(small_turn_deg * 0.4, small_turn_deg * 1.6, diff))
+	_direction = _direction.slerp(forward, 1.0 - exp(-follow * delta)).normalized()
 	_height = lerpf(_height, height, 1.0 - exp(-4.0 * delta))
 	# Inércia: afasta acelerando, aproxima freando (G longitudinal suavizado)
 	var pull := clampf(_head_g.z * chase_accel_pull, -1.1, 0.9) * life
 	_chase_pull = lerpf(_chase_pull, pull, 1.0 - exp(-3.0 * delta))
 	var left := Vector3.UP.cross(_direction).normalized()
-	var lat_g := clampf(_head_g.x, -4.0, 4.0)
+	# G lateral com zona morta e resposta mais lenta (toques curtos não balançam a câmera)
+	var g_in := clampf(_head_g.x, -4.0, 4.0)
+	g_in = signf(g_in) * maxf(absf(g_in) - swing_deadzone_g, 0.0)
+	_cam_lat_g = lerpf(_cam_lat_g, g_in, 1.0 - exp(-2.5 * delta))
+	var lat_g := _cam_lat_g
 	# Olhar para trás: a câmera dá a volta por cima/lado do carro (sem atravessá-lo).
 	var dir := _direction.rotated(Vector3.UP, PI * back)
 	var focus := xf.origin + Vector3.UP * 0.55
 	var pos := focus - dir * (lerpf(distance, distance * 0.85, back) + _chase_pull) 		+ Vector3.UP * (_height + sin(PI * back) * 0.8 - clampf(_head_g.y, -2.0, 2.0) * 0.05 * life) 		- left * lat_g * chase_lateral_swing * life
 	# Olha para dentro da curva (velocidade de giro do carro)
-	var yaw_rate := clampf(target.angular_velocity.y, -1.5, 1.5)
-	var look := focus + dir * 4.0 + left * yaw_rate * chase_look_into_turn * life
+	var yaw_in := clampf(target.angular_velocity.y, -1.5, 1.5)
+	yaw_in = signf(yaw_in) * maxf(absf(yaw_in) - look_deadzone, 0.0)
+	_look_yaw = lerpf(_look_yaw, yaw_in, 1.0 - exp(-2.5 * delta))
+	var look := focus + dir * 4.0 + left * _look_yaw * chase_look_into_turn * life
 	pos += _shake(delta, life)
 	var up := Vector3.UP.rotated(dir, -lat_g * chase_roll_per_g * life)
 	global_transform = Transform3D(Basis(), pos).looking_at(look, up)
