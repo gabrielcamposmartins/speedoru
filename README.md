@@ -17,8 +17,8 @@ pousado na plataforma. A câmera fica a nordeste do carro (frente-direita) e orb
 com o mouse gira, a roda aproxima. O carro fica à direita; à esquerda, os botões grandes
 (`scripts/menu/menu_ui.gd`):
 
-- **Jogar solo:** modo, voltas, adversários, dificuldade, largada, horário e ambiente → Correr
-  (carrega Monza). Na corrida o horário/ambiente ficam como escolhidos (N/B só no treino livre) e
+- **Jogar solo:** pista (Monza ou Mônaco), modo, voltas, adversários, dificuldade, largada, horário
+  e ambiente → Correr. Na corrida o horário/ambiente ficam como escolhidos (N/B só no treino livre) e
   o carro não muda: a garagem do Tab só existe no treino livre (e pausa o jogo enquanto aberta).
 - **Multiplayer:** salas, amigos, grupo, ranking e perfil (veja [Multiplayer](#multiplayer-servidor-dedicado--turso)); convites e avisos aparecem em qualquer tela do menu.
 - **Garagem:** Estúdio, Galeria e Loja, com o carro mudando na hora ao lado. No Estúdio e na
@@ -213,7 +213,8 @@ troca por materiais toon (`scripts/car/car_livery.gd`).
   (1ª pessoa) e capô (só rodas da frente, bico e retrovisores); órbita separada.
   - *Perseguição*: com vida — afasta ao acelerar/no boost e aproxima na frenagem, desliza para
     fora e inclina um pouco nas curvas olhando para dentro delas, acompanha a derrapagem, treme de
-    leve em alta velocidade, nas zebras e na brita e forte nas batidas; o FOV abre no boost. As
+    leve em alta velocidade e nas zebras, bem mais fora da pista (brita sacode mais que a grama,
+    `shake_offtrack`) e forte nas batidas; o FOV abre no boost. As
     forças G são medidas no passo de física (sem picos quando o FPS difere da física). Toques
     pequenos no volante quase não mexem a câmera (desvios abaixo de ~8° são seguidos devagar e o
     olhar/deslize têm zona morta); curvas de verdade, na velocidade normal.
@@ -273,7 +274,8 @@ difícil ou mista) e posição de largada. Tudo em `scripts/race/`:
 - **Pneus:** desgaste por roda conforme a potência dissipada no contato (escorregar, travar,
   patinar, curva no limite) e o composto (macio gasta ~55% mais rápido, duro ~32% mais devagar);
   pneu gasto perde até 32% de aderência. O HUD mostra quanto resta de cada pneu.
-- **Boxes:** a entrada fica logo depois da Parabolica; uma coluna de luz marca o seu box; pare na
+- **Boxes:** a entrada fica logo depois da Parabolica; o retângulo da sua vaga ganha uma borda
+  luminosa discreta (linha no chão e um véu baixo pulsando, `shaders/track/pit_box_glow.gdshader`); pare na
   vaga para o pit stop (sorteado entre 2 e 4 s a cada parada, + 5 s se precisar trocar peças
   danificadas; ao sair aparece "PIT STOP 2,8 s"); 1/2/3 escolhem o composto; mecânicos da equipe
   aparecem em volta do carro. Os bots também param de 2 a 4 s.
@@ -292,7 +294,24 @@ difícil ou mista) e posição de largada. Tudo em `scripts/race/`:
 - **DRS** (escolhido ao criar a corrida — Jogar solo ou ajustes da sala): **livre** ou **só a até
   1 s do carro da frente** (tempo nas marcas de progresso, as mesmas dos intervalos; o líder e quem
   está nos boxes não têm). Com a regra, o "DRS" do painel fica destacado quando está disponível e
-  apagado quando não está. No online o servidor decide (`tests/drs_rule_test.gd`).
+  apagado quando não está, e aparece **"DRS LIBERADO"** no centro da tela quando passa a valer.
+- **Devolver a posição:** ganhar uma posição de forma irregular — ultrapassar sob bandeira amarela
+  ou passar alguém por fora da pista — mostra **"DEVOLVA A POSIÇÃO PARA XXX"** com contagem de 12 s;
+  deixando o carro passar, fica sem penalidade ("POSIÇÃO DEVOLVIDA"); senão, +5 s. Vale para o
+  jogador (os bots são punidos na hora) (`tests/give_back_test.gd`). No online o servidor decide (`tests/drs_rule_test.gd`).
+- **Vácuo** (`scripts/race/slipstream.gd`): atrás de outro carro, a mais de ~80 km/h, há uma faixa
+  no rastro dele onde o **arrasto aerodinâmico some** — total colado (3–14 m) e no centro, sumindo
+  até 42 m e para os lados (a faixa abre um pouco com a distância). Vale para todos (bots e
+  online; o servidor calcula). Pista visual discreta: as linhas de velocidade ficam azuladas e
+  aparecem antes, e o painel mostra "VÁCUO" aceso no lugar do câmbio (`tests/slipstream_test.gd`:
+  em roda livre a 250 km/h o carro perde 28 km/h em 1 s sozinho e 11 km/h no vácuo).
+- **Classificatória** (`scripts/race/qualifying.gd`; escolhida no Jogar solo, no menu da corrida e
+  na sala online): sem, 1, 2 ou 3 voltas cronometradas, com ou sem colisão entre os carros. Os
+  carros saem espalhados pela pista, fazem a volta de saída e as cronometradas; vale a melhor volta
+  válida. Sair da pista (as quatro rodas além da borda e da zebra) ou levar qualquer penalidade
+  **anula a volta** (sem somar segundos); ir rápido ao box recomeça como volta de saída. No fim o
+  grid é a ordem das melhores voltas (sem tempo larga atrás), os carros são consertados e a corrida
+  larga do zero (`tests/qualifying_test.gd`).
 - **Pausa na largada:** pausar com o semáforo acendendo congela a sequência; ao voltar ela continua
   (`tests/start_pause_test.gd`).
 - **Boxes:** os bots fazem fila indiana na pista dos boxes (seguem quem está entrando, parado ou
@@ -346,8 +365,9 @@ e a meta de longo prazo). Catálogo e regras em `scripts/economy/shop_catalog.gd
   sensibilidade à carga), Direção (esterço em baixa/alta, velocidade do volante), Motor e câmbio
   (relação final, giros de troca do automático, freio-motor), Suspensão (molas, amortecedores,
   alturas e barras estabilizadoras por eixo) e Assistências (margem). Cada parâmetro tem nome
-  amigável, limites que fazem sentido, slider, ajuste grosso (−− / ++) e fino (− / +), ↺ para
-  voltar ao de fábrica e um tooltip em cartão (`Retro.make_tooltip`: explicação com quebra de
+  amigável, limites que fazem sentido, um slider largo com trilho fino e uma marca no valor de
+  fábrica, botões redondos − / + (passo fino; com Shift, grosso), ↺ ao lado do valor só quando ele
+  mudou (volta ao de fábrica) e um tooltip em cartão (`Retro.make_tooltip`: explicação com quebra de
   linha, valor atual, de fábrica, limites, passos e o efeito do botão). Fica salvo no perfil
   (`equipped.setup`, só o que mudou) e vale na corrida. Potência, desgaste e regras não entram
   (são iguais para todos). Catálogo em `scripts/economy/car_setup.gd`.
@@ -493,7 +513,9 @@ Fill e Rim acompanham a câmera ativa durante o jogo, não projetam sombra nem a
 (energia e ângulos no inspetor do `Daylight`). O ambiente tem céu anime, luz ambiente mista,
 tonemapping ACES, SSAO leve, bloom suave e **neblina**: exponencial com perspectiva aérea para a
 distância e uma névoa baixa volumétrica (`FogVolume` "GroundMist" com queda por altura) que se
-acumula perto do chão e nos vales. MSAA 4x no projeto.
+acumula perto do chão e nos vales (as duas a 72% da densidade dos presets, `Daylight.FOG_SCALE`).
+MSAA 4x no projeto. Na garagem o carro assenta na plataforma e fica preso nela (nivelado e
+congelado; solta para assentar de novo quando a engenharia muda).
 
 **Contorno anime:** `shaders/outline_post.gdshader` não desenha linha em superfícies com rugosidade 0
 — grama 3D, bandeirolas, barreiras e muretas, arquibancadas e público, prédio dos boxes (com vidro e anúncios), postes do alambrado, postes de luz,
@@ -550,8 +572,15 @@ Todos os sons são sintetizados por `tools/generate_car_sounds.py` (Python + num
   `assets/audio/crowd/`): murmúrio baixo em loop em alto-falantes ao longo de cada arquibancada
   (só tocam perto da câmera), palmas e torcida de vez em quando, quando o seu carro passa rápido
   perto, na largada e na sua chegada. Bus `Crowd`. Volume medido contra o motor na reta dos boxes:
-  ~4 dB abaixo dos carros, com presença na faixa da voz (1–4 kHz) para não sumir sob o motor. Tudo sintetizado (vozes com formantes e
-  sílabas irregulares, palmas aleatórias, eco de estádio).
+  ~4 dB abaixo dos carros, com presença na faixa da voz (1–4 kHz) para não sumir sob o motor. Tudo
+  sintetizado: o murmúrio são ~260 vozes falando (cada sílaba uma vogal com formantes F1/F2/F3 reais,
+  excitada por ruído e pulsos glotais com entonação), a torcida um "uuuh/aaah" subindo de tom com
+  gritos e assobios, palmas aleatórias, **buzinas de ar** (a corneta de arquibancada; espontâneas,
+  na passagem do carro, largada e chegada) e eco de estádio.
+- **Marcha lenta:** cada carro tem a marcha lenta um pouco diferente (giro com leve oscilação e
+  combustão irregular nos loops de giro baixo) e os rivais parados ficam mais baixos — antes os 10
+  carros no grid no mesmo giro somavam um zumbido de tom puro de 200 Hz
+  (`tests/audio_hum_probe.gd` grava a saída silenciando um bus de cada vez).
 - **Carros em volta** (bots e outros jogadores, `CarAudio.make_rival`): bus próprio `Rivals` (o
   compressor do seu motor não os abafa; o volume "Carro" vale para os dois), som que chega de mais
   longe, estéreo mais marcado (dá para saber de que lado vem) e até +7 dB quando o carro está perto
@@ -684,6 +713,59 @@ cena: fica no filho `Generated`.
   `pit_complex.gd`, `grandstands.gd`, `track_props.gd`, `track_terrain.gd`, `track_trees.gd`,
   `track_scenery.gd`, `grass_field.gd` geram cada parte).
 
+## Mônaco (circuito de rua)
+
+`scenes/tracks/monaco.tscn` + `resources/tracks/monaco_layout.tres`. A pista é escolhida no menu
+solo e nas salas do multiplayer (`RaceSettings.TRACKS`; a sala manda `track` para o servidor, que
+monta a cena certa, e para os clientes no `race_start`).
+
+- **Traçado e relevo reais:** linha central da relação 148194 "Circuit de Monaco" do
+  OpenStreetMap (3,30 km, no sentido da corrida, começando na linha de chegada), suavizada. A 5ª
+  coluna do CSV é a **elevação**: `TrackPath` interpola a altura e o referencial da pista (`frame_at`)
+  acompanha a rampa. Perfil ajustado nos pontos conhecidos: reta dos boxes ~6 m, Sainte Dévote ~9 m,
+  subida do Beau Rivage (até ~8%), Massenet/Casino ~44 m, descida pelo Mirabeau e pelo grampo do
+  Grand Hotel (raio ~9 m), Portier ~12 m, túnel caindo até ~6 m, Nouvelle Chicane, Tabac, Piscine
+  ~2,6 m junto ao mar, Rascasse e Antony Noghès.
+- **Gerador offline:** `python tools/build_monaco.py [--debug pasta]` lê os dados do OSM salvos em
+  `tools/data/monaco/` (prédios, costa, píeres, piscinas, parques, ruas) e grava em
+  `assets/track/monaco/`: o CSV da pista, `monaco_city.json` (grade de alturas de 4 m resolvida por
+  relaxação — encosta subindo para o interior, chão no nível da pista perto dela e por cima do
+  túnel —, muros do cais pelo contorno do mar, 1.333 prédios com altura pelas etiquetas do OSM ou
+  pelo tamanho, recortados onde invadiriam a pista, ruas, árvores, pontões e ~230 barcos) e
+  `monaco_shore.png` (distância até a terra e máscara do porto, para o shader do mar). As áreas
+  planas da pista (boxes, arquibancadas, escapes) ficam em `FLAT_ZONES`/`BARRIER_ZONES` no script e
+  precisam bater com o `.tres`.
+- **Cidade** (`track_city.gd`): terreno em blocos com cor por uso (calçada, parques, encosta),
+  colisão só perto da pista; cais de pedra; ruas; piscinas; prédios com fachadas coloridas e janelas
+  procedurais (`shaders/track/city_building.gdshader`: venezianas verdes, varandas modernas,
+  vitrines no térreo), mansardas de zinco, telhados de telha, casas de máquinas; o **Casino** com
+  as torres e cúpulas de cobre; palmeiras e árvores; morros dos Alpes Marítimos e o casario de
+  Beausoleil além da área dos dados (`build_backdrop`).
+- **Túnel** (`track_tunnel.gd`): 371 m sob o Fairmont, paredes de azulejo, teto com duas fileiras
+  de luminárias, luzes de sódio, portais nas bocas e sondas de reflexo com ambiente escuro (dentro
+  fica na penumbra). Sem alambrado lá dentro.
+- **Mar e porto** (`track_harbour.gd`, `shaders/track/water.gdshader`): ondas no vértice (calmas no
+  porto), dois normal maps rolando, turquesa junto ao cais e azul profundo ao largo, fresnel com o
+  céu, brilho do sol e espuma nos cais e nas cristas; um anel liso até o horizonte. Pontões
+  flutuantes, iates enormes de popa no cais, lanchas e veleiros nos pontões, superiates fundeados
+  (MultiMesh com balanço e cor do casco no shader `boat.gdshader`) e lanchas navegando ao largo com
+  rastro de espuma.
+- **Noite:** ~50 postes de rua (`LIGHTS` com `variant = 1`: coluna fina atrás da barreira, braço
+  curvo sobre a pista e luz quente) nos pontos-chave da volta, e parte das janelas dos prédios
+  acende (`city_building.gdshader`, `TrackCity.set_night`).
+- **Ambiente:** as copas das árvores seguem o tema (outono laranja, sakura rosa, fantasia roxa) e
+  as palmeiras puxam um pouco para ele (`TrackCity.apply_biome`).
+- **Área de escape:** a faixa asfaltada entre a pista e a barreira é o piso `RUNOFF` — anda como
+  asfalto, mas conta como fora da pista para os limites (cortar a chicane por ela é infração).
+- Nenhum prédio cobre a pista fora do túnel (o gerador descarta plantas que, mesmo recortadas,
+  ainda atravessam a rua; o teste confere).
+- **Boxes apertados** entre a reta e a Piscine (20 garagens de 7 m, sem paddock); barreiras a
+  1,6 m da pista, com escapes em Sainte Dévote, grampo, chicane e Rascasse.
+- Recordes: a volta mais rápida da conta (ranking) continua sendo a de Monza; Mônaco guarda o
+  recorde em `best_lap_monaco` nos contadores. Volta mínima plausível por pista
+  (`NetProtocol.MIN_LAP_BY_TRACK`).
+- Dados: © colaboradores do OpenStreetMap, licença ODbL (https://www.openstreetmap.org/copyright).
+
 ## Multiplayer (servidor dedicado + Turso)
 
 Servidor **autoritativo**: um processo Godot sem janela (`--server`) é dono de tudo que vale —
@@ -725,9 +807,11 @@ liberada pelo nível) e paga.
 - **Presença**: online / em corrida (nada guardado); aviso quando um amigo entra.
 - **Grupo** até 4: só o líder convida amigos online e escolhe a partida (contra bots, fila ou
   Custom); se o líder sai ou sobra um, o grupo se desfaz.
-- **Salas**: corrida rápida (fila, larga quando todos marcam pronto), Custom (nome, senha, voltas
-  3/5/10/15, bots e dificuldade, horário, ambiente; o anfitrião larga), contra bots (do grupo).
-  Quem está na sala Custom convida amigos online, e o convidado entra mesmo com senha. Até 10 carros.
+- **Salas**: corrida rápida (fila, larga quando todos marcam pronto), Custom (nome, senha, pista,
+  voltas 3/5/10/15, bots e dificuldade, **corredores no grid** 2–14 — jogadores + bots; a sala
+  aceita até 10 jogadores —, classificatória e colisão nela, DRS, horário, ambiente; o anfitrião
+  larga), contra bots (do grupo). Quem está na sala Custom convida amigos online, e o convidado
+  entra mesmo com senha.
 - **Ranking**: Geral, Vitórias, Ganhos, Volta mais rápida; Geral = soma de round(valor ÷ líder ×
   1000) por aba; só valores > 0; empates por nome e id dividem a posição (1, 2, 2, 4); 50 linhas e
   a sua; cache de 15 s; sem temporadas.
@@ -772,7 +856,9 @@ godot --headless --path . -s res://tests/damage_test.gd     # dano: dirigir sem 
 godot --path . -s res://tests/capture_crash.gd -- <pasta>    # screenshots de uma batida
 godot --path . -s res://tests/capture_moods.gd -- <pasta>    # todos os horários × ambientes
 godot --path . -s res://tests/capture_boost.gd -- <pasta>    # boost, marcas de pneu, sombra, fantasia
-godot --headless --path . -s res://tests/race_test.gd -- 3 9 3  # corrida de 3 voltas, 9 bots, dificuldade mista
+godot --headless --path . -s res://tests/race_test.gd -- 3 9 3  # corrida de 3 voltas, 9 bots, dificuldade mista (+ monaco no fim = em Mônaco)
+godot --headless --path . -s res://tests/monaco_test.gd     # Mônaco: traçado, desnível, pisos, túnel coberto, cidade, porto, carro na rampa
+godot --path . -s res://tests/monaco_shots.gd -- <pasta> [horário] [ambiente] [prefixo]  # screenshots de Mônaco
 godot --path . -s res://tests/capture_race.gd -- <pasta>     # menu, grid, HUD da corrida, boxes, mecânicos
 godot --path . -s res://tests/capture_loading.gd -- <pasta>  # tela de carregamento (circuito e grid)
 godot --path . -s res://tests/capture_ui.gd -- <pasta>       # HUD em cada paleta + garagem
@@ -794,6 +880,11 @@ godot --headless --path . -s res://tests/chase_camera_test.gd # câmera de perse
 godot --headless --path . -s res://tests/bot_yield_test.gd  # bots dão passagem ao jogador (fácil/médio), o difícil defende, amarela
 godot --headless --path . -s res://tests/start_pause_test.gd # pausa na largada congela o semáforo
 godot --headless --path . -s res://tests/drs_rule_test.gd   # DRS livre ou só a até 1 s do carro da frente
+godot --headless --path . -s res://tests/slipstream_test.gd # vácuo: força no rastro e perda de velocidade com e sem
+godot --headless --path . -s res://tests/qualifying_test.gd # classificatória: volta anulada, grid pelos tempos, colisão
+godot --headless --path . -s res://tests/give_back_test.gd  # devolver a posição: resolvido deixando passar, +5 s se não
+godot --headless --path . -s res://tests/track_bot_probe.gd -- monaco 2 2 [adversários]  # bot sozinho: onde bate/perde tempo
+godot --path . -s res://tests/audio_hum_probe.gd -- <pasta>  # grava o som silenciando um bus de cada vez (zumbidos)
 godot --headless --path . -s res://tests/offtrack_probe.gd  # fora da pista: velocidade perdida e aderência lateral por piso
 godot --path . -s res://tests/capture_online.gd -- <pasta> <porta> --offline  # telas do multiplayer + corrida online
 ```

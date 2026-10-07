@@ -78,8 +78,9 @@ static func build(track: RaceTrack, parent: Node3D) -> void:
 	for k in canopy_points.size() - 1:
 		TrackFlags.bunting(cloth, canopy_points[k], canopy_points[k + 1], 0.5, 0.75, k * 2)
 	_pit_wall_stands(track, structure)
-	var footprint := _paddock(track, structure, glass, floor_mb, front)
-	track.footprints.append(footprint)
+	if lay.paddock_depth > 0.0:
+		var footprint := _paddock(track, structure, glass, floor_mb, front)
+		track.footprints.append(footprint)
 
 	var mi := MeshInstance3D.new()
 	mi.name = "Building"
@@ -208,7 +209,7 @@ static func _paddock(track: RaceTrack, mb: MeshBuilder, glass: MeshBuilder, floo
 	var half := lay.pit_building_length * 0.5 + 30.0
 	var s0 := lay.garage_center_s - half
 	var s1 := lay.garage_center_s + half
-	var depth := DEPTH + 75.0
+	var depth := DEPTH + lay.paddock_depth
 	var outer := PackedVector2Array()
 	var s := s0
 	while s <= s1 + 0.01:
@@ -218,21 +219,22 @@ static func _paddock(track: RaceTrack, mb: MeshBuilder, glass: MeshBuilder, floo
 		if s + 10.0 <= s1 + 0.01:
 			var c := _module_frame(track, s + 10.0, front) * Vector3(DEPTH, 0.0, 0.0)
 			var d := _module_frame(track, s + 10.0, front) * Vector3(depth, 0.0, 0.0)
-			floor_mb.quad(Vector3(a.x, 0.01, a.z), Vector3(b.x, 0.01, b.z), Vector3(d.x, 0.01, d.z), Vector3(c.x, 0.01, c.z),
+			floor_mb.quad(a + Vector3.UP * 0.01, b + Vector3.UP * 0.01, d + Vector3.UP * 0.01, c + Vector3.UP * 0.01,
 				Color(0.4, 0.41, 0.45), Vector3.UP)
 		s += 10.0
-	# Motorhomes
-	var teams := lay.team_colors.size()
+	# Motorhomes (só se o paddock tiver espaço)
+	var teams := lay.team_colors.size() if lay.paddock_depth >= 30.0 else 0
+	var mx := DEPTH + lay.paddock_depth * 0.533
 	for t in teams:
 		var st := lay.garage_center_s + (t - (teams - 1) * 0.5) * (lay.pit_building_length / teams)
 		var xf := _module_frame(track, st, front)
 		var color := lay.team_colors[t]
-		mb.box(_at(xf, DEPTH + 40.0, 1.6, 0), Vector3(6.0, 3.2, 16.0), color, WHITE)
-		mb.box(_at(xf, DEPTH + 40.0, 4.4, 0), Vector3(6.0, 2.4, 16.0), WHITE, GREY)
-		glass.quad(xf * Vector3(DEPTH + 36.98, 3.6, -7.5), xf * Vector3(DEPTH + 36.98, 3.6, 7.5),
-			xf * Vector3(DEPTH + 36.98, 5.2, 7.5), xf * Vector3(DEPTH + 36.98, 5.2, -7.5), GLASS, -xf.basis.x)
+		mb.box(_at(xf, mx, 1.6, 0), Vector3(6.0, 3.2, 16.0), color, WHITE)
+		mb.box(_at(xf, mx, 4.4, 0), Vector3(6.0, 2.4, 16.0), WHITE, GREY)
+		glass.quad(xf * Vector3(mx - 3.02, 3.6, -7.5), xf * Vector3(mx - 3.02, 3.6, 7.5),
+			xf * Vector3(mx - 3.02, 5.2, 7.5), xf * Vector3(mx - 3.02, 5.2, -7.5), GLASS, -xf.basis.x)
 		# Toldo
-		mb.box(_at(xf, DEPTH + 34.5, 3.0, 0), Vector3(5.0, 0.12, 14.0), color.lightened(0.3))
+		mb.box(_at(xf, mx - 5.5, 3.0, 0), Vector3(5.0, 0.12, 14.0), color.lightened(0.3))
 	# Área sem árvores: da fachada até o fundo do paddock
 	var a0 := _module_frame(track, s0, front) * Vector3(-2.0, 0, 0)
 	var a1 := _module_frame(track, s1, front) * Vector3(-2.0, 0, 0)

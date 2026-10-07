@@ -19,6 +19,7 @@ const TOP_SPEED := 94.0
 const EDGE_MARGIN := 1.3
 
 var path: TrackPath
+var margin := EDGE_MARGIN
 var lateral := PackedFloat32Array()
 var positions := PackedVector3Array()
 var curvature := PackedFloat32Array()
@@ -27,6 +28,7 @@ var curvature := PackedFloat32Array()
 static func build(track: RaceTrack, csv_path: String) -> RacingLine:
 	var line := RacingLine.new()
 	line.path = track.path
+	line.margin = track.layout.line_margin if track.layout else EDGE_MARGIN
 	line._compute_lateral(csv_path)
 	line._compute_geometry()
 	return line
@@ -37,22 +39,36 @@ func speed_profile(grip_scale: float, brake_scale: float, accel_scale := 1.0) ->
 	var n := path.size()
 	var v := PackedFloat32Array()
 	v.resize(n)
+	var ds := path.spacing
+	# Rampa (fração) entre i e i+1 e curvatura vertical (1/m, + = vale): pistas com relevo
+	var grade := PackedFloat32Array()
+	var vert := PackedFloat32Array()
+	grade.resize(n)
+	vert.resize(n)
+	for i in n:
+		grade[i] = (path.points[(i + 1) % n].y - path.points[i].y) / ds
+		var h := 4
+		vert[i] = (path.points[(i + h) % n].y - 2.0 * path.points[i].y + path.points[(i - h + n) % n].y) / (h * h * ds * ds)
 	for i in n:
 		var k := absf(curvature[i])
 		var denom := k - LAT_C * G * grip_scale
 		v[i] = TOP_SPEED if denom <= 1e-5 else minf(sqrt(LAT_A0 * G * grip_scale / denom), TOP_SPEED)
-	var ds := path.spacing
-	# Frenagem (para trás) e aceleração (para frente), duas voltas para fechar o laço
+		# Na lombada o carro fica leve (menos aderência); no vale, mais
+		if vert[i] != 0.0 and v[i] < TOP_SPEED:
+			var load := clampf(1.0 + vert[i] * v[i] * v[i] / G, 0.55, 1.2)
+			v[i] *= sqrt(load)
+	# Frenagem (para trás) e aceleração (para frente), duas voltas para fechar o laço. Na descida
+	# a gravidade tira frenagem e dá aceleração (e o contrário na subida).
 	for pass_i in 2:
 		for k in range(n - 1, -1, -1):
 			var i := k
 			var j := (i + 1) % n
-			var a_brake := (1.9 + 0.00028 * v[j] * v[j]) * G * brake_scale
-			v[i] = minf(v[i], sqrt(v[j] * v[j] + 2.0 * a_brake * ds))
+			var a_brake := (1.9 + 0.00028 * v[j] * v[j]) * G * brake_scale + G * grade[i]
+			v[i] = minf(v[i], sqrt(v[j] * v[j] + 2.0 * maxf(a_brake, 1.0) * ds))
 	for pass_i in 2:
 		for i in n:
 			var j := (i + 1) % n
-			var a_acc := minf(1.25 * G, 760000.0 * accel_scale / (800.0 * maxf(v[i], 5.0))) - 0.00055 * v[i] * v[i]
+			var a_acc := minf(1.25 * G, 760000.0 * accel_scale / (800.0 * maxf(v[i], 5.0))) - 0.00055 * v[i] * v[i] - G * grade[i]
 			v[j] = minf(v[j], sqrt(v[i] * v[i] + 2.0 * maxf(a_acc, 0.2) * ds))
 	return v
 
@@ -112,7 +128,7 @@ func _compute_lateral(csv_path: String) -> void:
 				+ lateral[(i + 1) % n] + lateral[(i + 2) % n]) / 6.0
 		lateral = smoothed
 	for i in n:
-		lateral[i] = clampf(lateral[i], -path.width_right[i] + EDGE_MARGIN, path.width_left[i] - EDGE_MARGIN)
+		lateral[i] = clampf(lateral[i], -path.width_right[i] + margin, path.width_left[i] - margin)
 
 
 func _compute_geometry() -> void:

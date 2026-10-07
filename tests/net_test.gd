@@ -144,7 +144,7 @@ func _run() -> void:
 	_check(r.get("ok", false), "B entrou com a senha")
 	r = await b.request("room_settings", {"laps": 3})
 	_check(not r.get("ok", true), "só o anfitrião muda a sala")
-	r = await a.request("room_settings", {"laps": 3, "bots": false, "difficulty": 0, "drs": 1})
+	r = await a.request("room_settings", {"laps": 3, "bots": false, "difficulty": 0, "drs": 1, "track": "monaco"})
 	_check(r.get("ok", false), "anfitrião ajustou: 3 voltas, sem bots")
 	r = await a.request("rooms")
 	_check((r.get("rooms", []) as Array).any(func(x: Dictionary) -> bool: return x["id"] == room_id and x["locked"]), "sala aparece na lista com cadeado")
@@ -168,6 +168,7 @@ func _run() -> void:
 		var roster: Array = rs["roster"]
 		_check(roster.size() == 2, "grid só com os 2 humanos")
 		_check(int(rs["settings"].get("drs", 0)) == 1, "regra do DRS da sala (até 1 s) chega à corrida")
+		_check(str(rs["settings"].get("track", "")) == "monaco", "pista da sala (Mônaco) chega à corrida")
 		var mine: Array = roster.filter(func(d: Dictionary) -> bool: return d["id"] == a_id)
 		_check(not mine.is_empty() and str(mine[0]["profile"]["equipped"]["livery"]) == "livery_aurora",
 			"o carro do grid usa o visual do jogador")

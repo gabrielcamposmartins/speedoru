@@ -372,13 +372,15 @@ func _solo_result(peer: int, data: Dictionary) -> void:
 	var race_time := float(data.get("race_time", 0.0))
 	var best := float(data.get("best_lap", 0.0))
 	var finished := bool(data.get("finished", false))
+	var track := RaceSettings.valid_track(str(data.get("track", "monza")))
+	var min_lap := NetProtocol.min_lap(track)
 	var counters: Dictionary = s["account"]["counters"]
 	var problems := []
 	if laps > laps_total:
 		problems.append("voltas demais")
-	if laps > 0 and race_time < laps * NetProtocol.MIN_PLAUSIBLE_LAP:
+	if laps > 0 and race_time < laps * min_lap:
 		problems.append("tempo de corrida impossível")
-	if best > 0.0 and best < NetProtocol.MIN_PLAUSIBLE_LAP:
+	if best > 0.0 and best < min_lap:
 		problems.append("volta impossível")
 	var cc := counters.duplicate()
 	cc["items"] = s["profile"].owned.size()
@@ -390,7 +392,7 @@ func _solo_result(peer: int, data: Dictionary) -> void:
 	var record := {
 		"pos": int(data.get("pos", 0)), "total": int(data.get("total", 1)), "grid": int(data.get("grid", 0)),
 		"finished": finished, "penalty": float(data.get("penalty", 0.0)), "best_lap": best,
-		"consistency": Progression.consistency_of(data.get("lap_times", [])), "laps": laps,
+		"consistency": Progression.consistency_of(data.get("lap_times", [])), "laps": laps, "track": track,
 	}
 	var reward := await _apply_result(peer, record, difficulty, bool(data.get("dsq", false)), bool(data.get("fastest", false)), "solo")
 	_ok(peer, data, {"reward": reward})
@@ -419,9 +421,16 @@ func _apply_result(peer: int, record: Dictionary, difficulty: int, dsq: bool, fa
 	if kind == "online":
 		c["online_races"] = int(c.get("online_races", 0)) + 1
 	var best := float(record.get("best_lap", 0.0))
-	if best >= NetProtocol.MIN_PLAUSIBLE_LAP and (acc["best_lap"] <= 0.0 or best < acc["best_lap"]):
-		acc["best_lap"] = best
-		_ranking_time = -1000.0  # recorde novo derruba o cache do ranking
+	var track := RaceSettings.valid_track(str(record.get("track", "monza")))
+	if track == "monza":
+		# O recorde da conta (ranking) é o de Monza
+		if best >= NetProtocol.MIN_PLAUSIBLE_LAP and (acc["best_lap"] <= 0.0 or best < acc["best_lap"]):
+			acc["best_lap"] = best
+			_ranking_time = -1000.0  # recorde novo derruba o cache do ranking
+	elif best >= NetProtocol.min_lap(track):
+		var key := "best_lap_" + track
+		if float(c.get(key, 0.0)) <= 0.0 or best < float(c.get(key, 0.0)):
+			c[key] = best
 	record["credits"] = reward
 	await store.add_match(acc["id"], kind, record)
 	await _commit_account(peer)
@@ -709,7 +718,7 @@ func _new_room(kind: String, name: String, host_id: String) -> Dictionary:
 	return {
 		"id": _id("r"), "kind": kind, "name": name.substr(0, 24), "host": host_id, "password": "",
 		"members": [], "ready": {}, "state": "lobby", "session": null, "invited": {},
-		"settings": {"laps": 5, "difficulty": 1, "bots": true, "drs": 0, "time_of_day": 0, "biome": 0, "max": NetProtocol.MAX_ROOM_PLAYERS},
+		"settings": {"track": "monza", "laps": 5, "difficulty": 1, "bots": true, "cars": NetProtocol.MAX_ROOM_PLAYERS, "quali_laps": 0, "quali_collisions": true, "drs": 0, "time_of_day": 0, "biome": 0, "max": NetProtocol.MAX_ROOM_PLAYERS},
 	}
 
 
@@ -752,6 +761,17 @@ func _apply_room_settings(room: Dictionary, data: Dictionary) -> void:
 		st["bots"] = bool(data["bots"])
 	if data.has("drs"):
 		st["drs"] = clampi(int(data["drs"]), 0, 1)
+	if data.has("track"):
+		st["track"] = RaceSettings.valid_track(str(data["track"]))
+	if data.has("quali_laps"):
+		st["quali_laps"] = clampi(int(data["quali_laps"]), 0, 3)
+	if data.has("quali_collisions"):
+		st["quali_collisions"] = bool(data["quali_collisions"])
+	if data.has("cars") and room["kind"] == "custom":
+		# Total do grid; a sala aceita até esse número de jogadores (nunca menos que os que já estão)
+		var members: int = (room["members"] as Array).size()
+		st["cars"] = clampi(int(data["cars"]), maxi(2, members), NetProtocol.MAX_GRID)
+		st["max"] = clampi(int(st["cars"]), members, NetProtocol.MAX_ROOM_PLAYERS)
 	if data.has("time_of_day"):
 		st["time_of_day"] = clampi(int(data["time_of_day"]), 0, 2)
 	if data.has("biome"):

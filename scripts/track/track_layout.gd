@@ -8,10 +8,22 @@ extends Resource
 @export_file("*.csv") var centerline := ""
 ## Linha de corrida (CSV x,y) usada pelos bots; vazio = gerada pela curvatura.
 @export_file("*.csv") var raceline := ""
+## Folga (m) entre o centro do carro na linha de corrida e a borda da pista (pistas estreitas: mais).
+@export var line_margin := 1.3
+## Agressividade dos bots nesta pista (multiplica aderência e frenagem do perfil de velocidade).
+@export var bot_pace := 1.0
 ## Distância (m) do 1º ponto do CSV até a linha de largada.
 @export var start_offset := 0.0
 @export var width_scale := 1.0
 @export var min_half_width := 5.0
+## Nome mostrado no menu.
+@export var display_name := ""
+
+@export_group("Cidade")
+## Dados de um circuito de rua (gerados por tools/build_monaco.py): terreno, costa, prédios, ruas,
+## árvores, píeres e barcos. Com isso o RaceTrack gera a cidade, o mar e o túnel no lugar do
+## campo (terreno com montanhas, árvores, folhagem, pinheiros, cenário e grama).
+@export_file("*.json") var city := ""
 
 @export_group("Automático")
 @export var auto_kerbs := true
@@ -37,6 +49,8 @@ extends Resource
 ## Centro do prédio dos boxes (s).
 @export var garage_center_s := 0.0
 @export var pit_building_length := 560.0
+## Profundidade do paddock atrás dos boxes (piso e motorhomes); 0 = sem paddock.
+@export var paddock_depth := 75.0
 @export var team_colors: PackedColorArray = PackedColorArray([
 	Color("d7263d"), Color("1f5fd6"), Color("ff8a1d"), Color("12b886"), Color("7a2cf0"),
 	Color("f2f2f2"), Color("e8256f"), Color("16161d"), Color("ffd23f"), Color("2ab7ca"),

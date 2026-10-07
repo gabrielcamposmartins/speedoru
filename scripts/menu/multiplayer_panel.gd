@@ -360,12 +360,22 @@ func _build_room() -> void:
 	grid.add_theme_constant_override("h_separation", 12)
 	grid.add_theme_constant_override("v_separation", 6)
 	card.add_child(grid)
+	_setting(grid, "Pista", RaceSettings.TRACKS.map(func(t: Dictionary) -> String: return t["name"]),
+		RaceSettings.track_index(str(st.get("track", "monza"))), editable,
+		func(i: int) -> void: _ask("room_settings", {"track": RaceSettings.TRACKS[i]["id"]}))
 	_setting(grid, "Voltas", NetProtocol.ROOM_LAPS.map(func(x: int) -> String: return str(x)), NetProtocol.ROOM_LAPS.find(int(st.get("laps", 5))), editable,
 		func(i: int) -> void: _ask("room_settings", {"laps": NetProtocol.ROOM_LAPS[i]}))
 	_setting(grid, "Bots", ["Com bots", "Sem bots"], 0 if st.get("bots", true) else 1, editable and room.get("kind", "") == "custom",
 		func(i: int) -> void: _ask("room_settings", {"bots": i == 0}))
+	_setting(grid, "Corredores", NetProtocol.ROOM_CARS.map(func(x: int) -> String: return "%d no grid" % x),
+		maxi(NetProtocol.ROOM_CARS.find(int(st.get("cars", NetProtocol.MAX_ROOM_PLAYERS))), 0), editable and room.get("kind", "") == "custom",
+		func(i: int) -> void: _ask("room_settings", {"cars": NetProtocol.ROOM_CARS[i]}))
 	_setting(grid, "Dificuldade", DIFFICULTIES, int(st.get("difficulty", 1)), editable,
 		func(i: int) -> void: _ask("room_settings", {"difficulty": i}))
+	_setting(grid, "Classificatória", ["Sem", "1 volta", "2 voltas", "3 voltas"], int(st.get("quali_laps", 0)), editable,
+		func(i: int) -> void: _ask("room_settings", {"quali_laps": i}))
+	_check(grid, "Colisão na classif.", bool(st.get("quali_collisions", true)), editable,
+		func(on: bool) -> void: _ask("room_settings", {"quali_collisions": on}))
 	_setting(grid, "DRS", ["Livre", "Até 1 s do carro da frente"], int(st.get("drs", 0)), editable,
 		func(i: int) -> void: _ask("room_settings", {"drs": i}))
 	_setting(grid, "Horário", Array(DaylightPresets.TIME_NAMES), int(st.get("time_of_day", 0)), editable,
@@ -438,6 +448,19 @@ func _build_room() -> void:
 	actions.add_child(_button("Sair da sala", func() -> void: _ask("room_leave")))
 	if _friends.is_empty():
 		net.send_to_server("friends")
+
+
+## Ajuste liga/desliga da sala: caixa de marcar para o anfitrião, texto para os outros.
+func _check(grid: GridContainer, label: String, value: bool, editable: bool, action: Callable) -> void:
+	grid.add_child(_label(label.to_upper(), "RetroKicker"))
+	if editable:
+		var cb := CheckBox.new()
+		cb.text = "Sim" if value else "Não"
+		cb.button_pressed = value
+		cb.toggled.connect(action)
+		grid.add_child(cb)
+	else:
+		grid.add_child(_label("Sim" if value else "Não"))
 
 
 func _setting(grid: GridContainer, label: String, items: Array, selected: int, editable: bool, action: Callable) -> void:

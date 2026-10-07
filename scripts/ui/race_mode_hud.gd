@@ -121,7 +121,7 @@ func _open_settings() -> void:
 
 func _on_state(state: int) -> void:
 	var show_race := state != RaceManager.State.MENU
-	standings.visible = show_race and state != RaceManager.State.PRACTICE
+	standings.visible = show_race and state != RaceManager.State.PRACTICE and state != RaceManager.State.QUALIFYING
 	minimap.visible = show_race
 	flag_panel.visible = show_race
 	info.visible = show_race
@@ -210,7 +210,7 @@ func _button(box: Container, text: String, on_press: Callable, primary := false)
 func _show_menu() -> void:
 	if menu:
 		return
-	var box := _panel("SPEEDORU", "MONZA", 600, 0.88)
+	var box := _panel("SPEEDORU", _track_name(), 600, 0.88)
 	menu = box.get_meta("root")
 	var sub := Label.new()
 	sub.text = "Escolha o modo de jogo"
@@ -228,6 +228,16 @@ func _show_menu() -> void:
 		func(i: int) -> void: RaceSettings.difficulty = i)
 	_option(box, "Largada", ["Pole position", "Meio do grid", "Última fila"], RaceSettings.grid,
 		func(i: int) -> void: RaceSettings.grid = i as RaceSettings.Grid)
+	_option(box, "DRS", ["Livre", "Só a até 1 s do carro da frente"], RaceSettings.drs_rule,
+		func(i: int) -> void: RaceSettings.drs_rule = i)
+	_option(box, "Classificatória", ["Sem", "1 volta", "2 voltas", "3 voltas"], RaceSettings.quali_laps,
+		func(i: int) -> void: RaceSettings.quali_laps = i)
+	var quali_row: Control = box.get_child(box.get_child_count() - 1)
+	var cb := CheckBox.new()
+	cb.text = "Colisão"
+	cb.button_pressed = RaceSettings.quali_collisions
+	cb.toggled.connect(func(on: bool) -> void: RaceSettings.quali_collisions = on)
+	quali_row.add_child(cb)
 	_option(box, "Horário", Array(DaylightPresets.TIME_NAMES), RaceSettings.time_of_day,
 		func(i: int) -> void: RaceSettings.time_of_day = i)
 	_option(box, "Ambiente", Array(DaylightPresets.BIOME_NAMES), RaceSettings.biome,
@@ -500,9 +510,10 @@ class Minimap extends Control:
 			draw_circle(pos, 12.0 + pulse * 3.0, Color(Retro.c("accent_2"), 0.18))
 			draw_circle(pos, 8.0, Retro.c("bg"))
 			draw_circle(pos, 6.0, Retro.c("accent_2"))
-		Retro.draw_label(self, Retro.display(800), Vector2(14, size.y - 14), "MONZA", HORIZONTAL_ALIGNMENT_LEFT, -1, 12,
-			Retro.c("accent_2"))
-		Retro.draw_label(self, Retro.body(500), Vector2(0, size.y - 14), "5,79 km", HORIZONTAL_ALIGNMENT_RIGHT, size.x - 14, 12,
+		Retro.draw_label(self, Retro.display(800), Vector2(14, size.y - 14), track.layout.display_name.to_upper(),
+			HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Retro.c("accent_2"))
+		var km := ("%.2f km" % (track.path.length / 1000.0)).replace(".", ",") if track and track.path else ""
+		Retro.draw_label(self, Retro.body(500), Vector2(0, size.y - 14), km, HORIZONTAL_ALIGNMENT_RIGHT, size.x - 14, 12,
 			Retro.c("muted"))
 
 
@@ -592,6 +603,9 @@ class RaceInfo extends Control:
 	var _flash_color := Color.WHITE
 	var _fastest_seen := 0.0
 	var _fastest_flash := 0.0
+	## DRS liberado pela regra de 1 s (aviso curto quando passa a valer)
+	var _drs_flash := 0.0
+	var _drs_was := true
 
 	func _ready() -> void:
 		mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -609,8 +623,14 @@ class RaceInfo extends Control:
 		if m.fastest_lap > 0.0 and absf(m.fastest_lap - _fastest_seen) > 0.0005:
 			_fastest_seen = m.fastest_lap
 			_fastest_flash = FLASH
+		if e and e.car:
+			var allowed := e.car.drs_rule_active and e.car.drs_allowed and m.state == RaceManager.State.RACING
+			if allowed and not _drs_was and e.car.speed_kmh > 80.0:
+				_drs_flash = 2.5
+			_drs_was = allowed
 		_lap_flash = maxf(_lap_flash - d, 0.0)
 		_fastest_flash = maxf(_fastest_flash - d, 0.0)
+		_drs_flash = maxf(_drs_flash - d, 0.0)
 		queue_redraw()
 
 	func _on_lap(e: RaceEntry, lap: float) -> void:
@@ -637,8 +657,19 @@ class RaceInfo extends Control:
 		var body := Retro.body(600)
 		var cx := size.x * 0.5
 		var practice := m.state == RaceManager.State.PRACTICE
+		var quali := m.state == RaceManager.State.QUALIFYING
 		var current := m.race_time - e.lap_start if e.crossings >= 1 else 0.0
 		var top := "TREINO LIVRE" if practice else "P%d/%d" % [e.position, m.entries.size()]
+		if quali:
+			top = "CLASSIFICATÓRIA"
+			if m.quali and m.quali.data.has(e):
+				var qd: Dictionary = m.quali.data[e]
+				if qd["done"]:
+					top += " · CONCLUÍDA"
+				elif qd["start"] < 0.0:
+					top += " · VOLTA DE SAÍDA"
+				else:
+					top += " · %d/%d%s" % [int(qd["laps"]) + 1, m.quali.laps, " ANULADA" if qd["invalid"] else ""]
 		var back := Rect2(cx - 175, 0, 350, 128 if practice else 156)
 		draw_rect(back, Color(Retro.c("bg"), 0.36))
 		Retro.draw_corners(self, back.grow(1.0), Color(Retro.c("accent"), 0.6), 10.0, 2.0)
@@ -676,7 +707,7 @@ class RaceInfo extends Control:
 			else:
 				Retro.draw_label(self, Retro.display(700), Vector2(0, 126), line, HORIZONTAL_ALIGNMENT_CENTER, size.x, 12,
 					Color(Retro.FASTEST, 0.95))
-		if not practice:
+		if not practice and not quali:
 			var done := e.pit_count >= RaceSettings.mandatory_pits
 			var pit_text := "PIT OBRIGATÓRIO: FEITO" if done else "PIT OBRIGATÓRIO: PENDENTE"
 			var font := Retro.display(700)
@@ -686,6 +717,21 @@ class RaceInfo extends Control:
 			draw_rect(chip, Color(col, 0.12))
 			draw_rect(chip, Color(col, 0.6), false, 1.0)
 			draw_string(font, Vector2(chip.position.x, chip.position.y + 14), pit_text, HORIZONTAL_ALIGNMENT_CENTER, w, 10, col)
+		if m.give_backs.has(e):
+			# Posição ganha de forma irregular: devolver antes do prazo
+			var gb: Dictionary = m.give_backs[e]
+			var left := maxf(float(gb["until"]) - m.race_time, 0.0)
+			var blink := fmod(m.race_time, 0.8) < 0.55
+			Retro.draw_glow_text(self, disp, Vector2(0, 192), "DEVOLVA A POSIÇÃO PARA %s" % (gb["target"] as RaceEntry).code,
+				HORIZONTAL_ALIGNMENT_CENTER, size.x, 22, Retro.c("warn") if blink else Retro.c("text"), Retro.c("warn"))
+			Retro.draw_label(self, Retro.display(700), Vector2(0, 214), "%s · %d s para deixar passar ou +%ds" % [gb["title"], ceili(left),
+				roundi(float(gb["seconds"]))], HORIZONTAL_ALIGNMENT_CENTER, size.x, 12, Retro.c("warn"))
+		elif _drs_flash > 0.0:
+			var a := clampf(_drs_flash / 0.5, 0.0, 1.0)
+			Retro.draw_glow_text(self, disp, Vector2(0, 192), "DRS LIBERADO", HORIZONTAL_ALIGNMENT_CENTER, size.x, 22,
+				Color(Retro.c("good"), a), Retro.c("good"))
+			Retro.draw_label(self, Retro.display(700), Vector2(0, 212), "a menos de 1 s do carro da frente · aperte o DRS",
+				HORIZONTAL_ALIGNMENT_CENTER, size.x, 11, Color(Retro.c("good"), a))
 		if m.state == RaceManager.State.GRID:
 			Retro.draw_glow_text(self, disp, Vector2(0, 192), "AGUARDE AS LUZES APAGAREM", HORIZONTAL_ALIGNMENT_CENTER, size.x,
 				22, Retro.c("bad"), Retro.c("bad"))
@@ -765,3 +811,10 @@ class FlagPanel extends Control:
 		Retro.draw_label(self, Retro.body(600), Vector2(x, 48), str(info[1]), HORIZONTAL_ALIGNMENT_LEFT, size.x - x - 12, 16,
 			Color.WHITE if urgent else Retro.c("text_2"))
 		Retro.draw_corners(self, r.grow(1.0), Color(col, 0.8), 10.0, 2.0)
+
+
+## Nome da pista em jogo (do layout; antes de a pista existir, o escolhido no menu).
+func _track_name() -> String:
+	if manager and manager.track and manager.track.layout and manager.track.layout.display_name != "":
+		return manager.track.layout.display_name.to_upper()
+	return RaceSettings.track_name(RaceSettings.track).to_upper()

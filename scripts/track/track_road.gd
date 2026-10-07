@@ -15,6 +15,8 @@ const LINE := Color(0.95, 0.95, 0.97)
 const KERB_RED := Color(0.86, 0.1, 0.13)
 const KERB_WHITE := Color(0.97, 0.97, 0.98)
 const GRAVEL := Color(0.52, 0.45, 0.36)
+## Circuito de rua: faixa de asfalto mais clara entre a borda e a barreira (a calçada da cidade).
+const VERGE := Color(0.3, 0.3, 0.33)
 const LINE_WIDTH := 0.25
 
 
@@ -24,6 +26,7 @@ static func build(track: RaceTrack, parent: Node3D) -> void:
 	var road := MeshBuilder.new()
 	var kerbs := MeshBuilder.new()
 	var gravel := MeshBuilder.new()
+	var runoff := MeshBuilder.new()
 	var paint := MeshBuilder.new()
 	for i in n:
 		var j := (i + 1) % n
@@ -43,6 +46,16 @@ static func build(track: RaceTrack, parent: Node3D) -> void:
 			var kw_j := track.layout.kerb_width * smoothstep(0.0, 1.0, track.kerb[k][j])
 			if kw_i > 0.05 or kw_j > 0.05:
 				_kerb(kerbs, p, i, j, side, e_i, e_j, kw_i, kw_j)
+			if track.city:
+				# Do fim da zebra (ou da faixa dos boxes, onde ela afunila) até a barreira
+				var pit_side: bool = side == track.layout.pit_side
+				var in_i := maxf(kw_i, track.pit_width[i] if pit_side else 0.0)
+				var in_j := maxf(kw_j, track.pit_width[j] if pit_side else 0.0)
+				var b_i := track.barrier[k][i]
+				var b_j := track.barrier[k][j]
+				if b_i > in_i + 0.05 or b_j > in_j + 0.05:
+					_strip(runoff, p, i, j, side * (e_i + in_i), side * (e_j + in_j), side * (e_i + maxf(b_i, in_i) + 0.2),
+						side * (e_j + maxf(b_j, in_j) + 0.2), ROAD_Y - 0.004, VERGE)
 			var g_i := track.gravel[k][i]
 			var g_j := track.gravel[k][j]
 			if g_i > 0.3 or g_j > 0.3:
@@ -63,6 +76,7 @@ static func build(track: RaceTrack, parent: Node3D) -> void:
 	_add_surface(parent, "Road", road, TrackMaterials.surface("asphalt"), TrackSurface.Type.ASPHALT)
 	_add_surface(parent, "Kerbs", kerbs, TrackMaterials.surface("kerb"), TrackSurface.Type.KERB)
 	_add_surface(parent, "Gravel", gravel, TrackMaterials.surface("gravel"), TrackSurface.Type.GRAVEL)
+	_add_surface(parent, "Runoff", runoff, TrackMaterials.surface("asphalt"), TrackSurface.Type.RUNOFF)
 	var mi := MeshInstance3D.new()
 	mi.name = "Paint"
 	mi.mesh = paint.commit(null, TrackMaterials.surface("paint"))

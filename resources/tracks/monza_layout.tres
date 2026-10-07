@@ -724,6 +724,7 @@ centerline = "res://assets/track/monza/monza_centerline.csv"
 raceline = "res://assets/track/monza/monza_raceline.csv"
 start_offset = 300.0
 width_scale = 1.15
+display_name = "Monza"
 min_half_width = 5.5
 pit_side = -1
 pit_entry_s = -560.0

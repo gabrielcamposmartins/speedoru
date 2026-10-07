@@ -29,7 +29,7 @@ signal net_event(data: Dictionary)
 
 enum Net { OFF, SERVER, CLIENT }
 
-enum State { MENU, PRACTICE, GRID, RACING, FINISHED }
+enum State { MENU, PRACTICE, GRID, RACING, FINISHED, QUALIFYING }
 
 const CHECKPOINT := 25.0
 ## Duração sorteada de cada pit stop (s), sem contar conserto.
@@ -86,6 +86,8 @@ var player_reward := -1
 var net := Net.OFF
 ## Regra do DRS: 0 = livre, 1 = só a até DRS_GAP s do carro da frente.
 var drs_rule := 0
+## Classificatória em andamento (ou a última que rodou).
+var quali: Qualifying
 const DRS_GAP := 1.0
 ## Configuração da corrida em rede, definida antes de a cena entrar na árvore. Servidor:
 ## {laps, difficulty, bots, players: [{id, name, profile}]}; cliente: {me, roster, settings}.
@@ -307,6 +309,12 @@ func _start_race() -> void:
 				continue
 			a.car.add_collision_exception_with(b.car)
 			_ghost_pairs.append([a, b])
+	if RaceSettings.quali_laps > 0:
+		if LoadingScreen.is_loading():
+			await _loading_step(1.0, "Pronto")
+			get_tree().paused = false
+			LoadingScreen.done()
+		await _run_qualifying(RaceSettings.quali_laps, RaceSettings.quali_collisions)
 	for entry in entries:
 		entry.car.global_transform = track.get_grid_transform(entry.grid_slot)
 		entry.car.linear_velocity = Vector3.ZERO
@@ -387,7 +395,8 @@ func _spawn_bot(index: int, driver: Array, level: int) -> F1Car:
 func _profile(level: int) -> PackedFloat32Array:
 	if not _profiles.has(level):
 		var preset: Array = BotDriver.PRESETS[level]
-		_profiles[level] = line.speed_profile(preset[0], preset[1], preset[2])
+		var pace := track.layout.bot_pace
+		_profiles[level] = line.speed_profile(preset[0] * pace, preset[1] * pace, preset[2])
 	return _profiles[level]
 
 
@@ -432,7 +441,7 @@ func _physics_process(delta: float) -> void:
 	if net == Net.CLIENT:
 		_client_physics(delta)
 		return
-	var racing := state == State.RACING or state == State.FINISHED or state == State.PRACTICE
+	var racing := state == State.RACING or state == State.FINISHED or state == State.PRACTICE or state == State.QUALIFYING
 	if racing:
 		race_time += delta
 	_wrong_way_cooldown -= delta
@@ -444,11 +453,17 @@ func _physics_process(delta: float) -> void:
 		_update_entry(entry, delta, racing)
 	if state == State.GRID:
 		_check_jump_start()
-	_update_ghosts()
+	if state == State.QUALIFYING:
+		quali.physics_update(delta)
+	else:
+		_update_ghosts()
 	_update_positions()
 	_update_drs_rule()
+	_update_give_backs()
+	Slipstream.update_all(_cars(), delta)
 	if control:
 		control.physics_update(delta)
+	_restored.clear()
 
 
 func _update_entry(e: RaceEntry, delta: float, racing: bool) -> void:
@@ -484,6 +499,9 @@ func _update_entry(e: RaceEntry, delta: float, racing: bool) -> void:
 
 
 func _on_line_crossed(e: RaceEntry) -> void:
+	if state == State.QUALIFYING:
+		quali.on_cross(e)
+		return
 	if e.lap_restart:
 		# Saindo do box depois da ida rápida: a mesma volta começa de novo aqui (não é completada)
 		e.lap_restart = false
@@ -546,6 +564,7 @@ func _report_solo_result(e: RaceEntry) -> void:
 		"race_time": e.finish_time if e.finished else race_time, "best_lap": e.best_lap, "finished": e.finished and not e.retired,
 		"dsq": e.disqualified, "pos": final_classification().find(e) + 1, "total": entries.size(), "grid": e.grid_slot + 1,
 		"penalty": e.penalty_seconds, "lap_times": Array(e.lap_times), "fastest": fastest_entry == e,
+		"track": RaceSettings.track,
 	})
 	if res.get("ok", false):
 		player_reward = int(res.get("reward", 0))
@@ -589,7 +608,7 @@ func _update_positions() -> void:
 ## DRS por regra: a até DRS_GAP s do carro da frente (tempo nas marcas de progresso, as mesmas
 ## dos intervalos); o líder e quem está nos boxes não têm. Livre / treino: sempre permitido.
 func _update_drs_rule() -> void:
-	var active := drs_rule == 1 and state != State.PRACTICE
+	var active := drs_rule == 1 and state != State.PRACTICE and state != State.QUALIFYING
 	for e in entries:
 		e.car.drs_rule_active = active
 		e.car.drs_allowed = not active or drs_gap_ok(e)
@@ -735,35 +754,42 @@ func _update_pit(e: RaceEntry, delta: float) -> void:
 
 
 ## Coluna de luz sobre o box do jogador (aparece na pista dos boxes).
+## Vaga do jogador nos boxes: o retângulo pintado ganha uma borda luminosa discreta (linha no chão e
+## um véu baixo de luz, pulsando), visível ao entrar nos boxes.
 func _make_box_marker() -> void:
-	var mesh := CylinderMesh.new()
-	mesh.top_radius = 1.6
-	mesh.bottom_radius = 1.6
-	mesh.height = 8.0
-	mesh.cap_top = false
-	mesh.cap_bottom = false
-	var mat := StandardMaterial3D.new()
-	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	mat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
-	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
-	var grad := Gradient.new()
-	grad.set_color(0, Color(1, 1, 1, 0.0))
-	grad.set_color(1, Color(1, 1, 1, 0.9))
-	var tex := GradientTexture2D.new()
-	tex.gradient = grad
-	tex.fill_from = Vector2(0, 0)
-	tex.fill_to = Vector2(0, 1)
-	mat.albedo_texture = tex
-	mat.albedo_color = Color("35f0d6")
-	mesh.material = mat
+	const LENGTH := 6.7
+	const WIDTH := 3.7
+	const VEIL := 0.45
+	const LINE := 0.14
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var corners := [Vector3(-WIDTH, 0, -LENGTH), Vector3(WIDTH, 0, -LENGTH), Vector3(WIDTH, 0, LENGTH), Vector3(-WIDTH, 0, LENGTH)]
+	for k in 4:
+		var a: Vector3 = corners[k] * 0.5
+		var b: Vector3 = corners[(k + 1) % 4] * 0.5
+		var inward := -(a + b).normalized() * Vector3(1, 0, 1)
+		# Véu vertical
+		for v in [[a, 0.0], [b, 0.0], [b + Vector3.UP * VEIL, 1.0], [a, 0.0], [b + Vector3.UP * VEIL, 1.0], [a + Vector3.UP * VEIL, 1.0]]:
+			st.set_uv(Vector2(0.0, v[1]))
+			st.add_vertex(v[0] + Vector3.UP * 0.03)
+		# Linha no chão (por dentro da borda)
+		var ai: Vector3 = a + inward.normalized() * LINE
+		var bi: Vector3 = b + inward.normalized() * LINE
+		for v in [a, b, bi, a, bi, ai]:
+			st.set_uv(Vector2(0.0, 0.0))
+			st.add_vertex(v + Vector3.UP * 0.03)
+	var mesh := st.commit()
+	var mat := ShaderMaterial.new()
+	mat.shader = load("res://shaders/track/pit_box_glow.gdshader")
+	mesh.surface_set_material(0, mat)
 	_box_marker = MeshInstance3D.new()
 	_box_marker.name = "PlayerBoxMarker"
 	_box_marker.mesh = mesh
 	_box_marker.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	_box_marker.visible = false
 	get_parent().add_child(_box_marker)
-	_box_marker.global_position = track.get_pit_box_transform(player_entry.garage if player_entry else 0).origin + Vector3.UP * 4.0
+	var xf := track.get_pit_box_transform(player_entry.garage if player_entry else 0)
+	_box_marker.global_transform = Transform3D(xf.basis, xf.origin - xf.basis.y * 0.05)
 
 
 func _begin_player_pit(e: RaceEntry) -> void:
@@ -889,6 +915,8 @@ func _update_track_limits(e: RaceEntry, delta: float) -> void:
 	if e.in_pit or e.car.hold:
 		e.off_time = 0.0
 		return
+	if e.off_time <= 0.0:
+		e.off_ahead = []
 	var on_track := 0
 	var in_contact := 0
 	for k in e.car.tire_surface.size():
@@ -903,12 +931,24 @@ func _update_track_limits(e: RaceEntry, delta: float) -> void:
 		if e.off_time <= 0.0:
 			e.off_start_progress = e.progress
 			e.off_distance = 0.0
+			# Quem estava logo à frente ao sair da pista (para saber quem ele passou por fora)
+			e.off_ahead = []
+			for o in entries:
+				if o != e and not o.retired and o.progress > e.progress and o.progress - e.progress < 80.0:
+					e.off_ahead.append(o)
 		e.off_time += delta
 		e.off_distance += speed * delta
 	elif on_track >= 2 and e.off_time > 0.0:
 		var gained := (e.progress - e.off_start_progress) - e.off_distance
 		if e.off_time > 0.25 and speed > 5.0:
-			if gained > 10.0:
+			var passed: RaceEntry = null
+			for o: RaceEntry in e.off_ahead:
+				if o.progress < e.progress and not o.in_pit and not o.retired:
+					passed = o
+			if passed and (e.is_player or e.is_human) and state == State.RACING:
+				# Passou alguém por fora da pista: dá para devolver a posição antes da penalidade
+				request_give_back(e, passed, 5.0, "VANTAGEM INDEVIDA", "Passou %s por fora da pista" % passed.code)
+			elif gained > 10.0:
 				_penalize(e, 5.0, "VANTAGEM INDEVIDA", "Cortou a pista e ganhou %.0f m" % gained)
 			else:
 				e.track_limit_warnings += 1
@@ -966,6 +1006,10 @@ func _entry_of(car: F1Car) -> RaceEntry:
 
 
 func _penalize(e: RaceEntry, seconds: float, title: String, detail: String) -> void:
+	if state == State.QUALIFYING:
+		# Na classificatória a penalidade só anula a volta
+		quali.invalidate(e, title)
+		return
 	if state == State.PRACTICE:
 		_notify(e, title, detail + " (treino: sem penalidade)", false)
 		return
@@ -1076,7 +1120,7 @@ func _build_net_grid() -> void:
 	players.shuffle()
 	var count := players.size()
 	if bool(net_setup.get("bots", true)):
-		count = maxi(count, NetProtocol.MAX_ROOM_PLAYERS)
+		count = maxi(count, clampi(int(net_setup.get("cars", NetProtocol.MAX_ROOM_PLAYERS)), 2, NetProtocol.MAX_GRID))
 	var difficulty := clampi(int(net_setup.get("difficulty", 1)), 0, 3)
 	var bot_count := count - players.size()
 	var bot_levels: Array[int] = []
@@ -1148,6 +1192,17 @@ func _build_net_grid() -> void:
 
 ## Largada da corrida em rede (todos carregaram ou o tempo de espera acabou).
 func net_go() -> void:
+	var q_laps := int(net_setup.get("quali_laps", 0))
+	if q_laps > 0:
+		net_event.emit({"event": "quali"})
+		await _run_qualifying(q_laps, bool(net_setup.get("quali_collisions", true)))
+		for entry in entries:
+			entry.car.global_transform = track.get_grid_transform(entry.grid_slot)
+			entry.car.linear_velocity = Vector3.ZERO
+			entry.car.angular_velocity = Vector3.ZERO
+			entry.car.reset_physics_interpolation()
+			entry.car.hold = not entry.is_player
+			_init_position(entry)
 	state_changed.emit(state)
 	net_event.emit({"event": "grid"})
 	# Tempo da apresentação dos clientes (todos largam juntos); os humanos ficam parados
@@ -1331,6 +1386,8 @@ func _start_net_client() -> void:
 func _client_physics(delta: float) -> void:
 	if state == State.RACING or state == State.FINISHED:
 		race_time += delta
+	# Vácuo só para o visual (a física é do servidor)
+	Slipstream.update_all(_cars(), delta)
 	var p := track.path
 	for e in roster:
 		var pr := p.project(e.car.global_position)
@@ -1408,6 +1465,10 @@ func apply_net_state(d: Dictionary) -> void:
 ## Acontecimentos que o servidor manda na hora (luzes, peça arrancada, aviso para este jogador).
 func apply_net_event(d: Dictionary) -> void:
 	match str(d.get("event", "")):
+		"quali":
+			# Classificatória antes do grid: sem apresentação agora (ela vem no "grid")
+			state = State.QUALIFYING
+			state_changed.emit(state)
 		"grid":
 			if IntroDirector.enabled(get_tree()) and player_entry:
 				_play_intro()
@@ -1438,3 +1499,75 @@ func apply_net_event(d: Dictionary) -> void:
 				state = State.FINISHED
 				state_changed.emit(state)
 				race_finished.emit()
+
+
+# ---------------------------------------------------------------------------
+# Devolver a posição
+# ---------------------------------------------------------------------------
+## Prazo (s) para devolver uma posição ganha de forma irregular.
+const GIVE_BACK_TIME := 12.0
+## entry -> {target, until, seconds, title, detail}
+var give_backs := {}
+var _restored := {}
+
+
+## O jogador ganhou a posição de `target` de forma irregular: aviso para devolvê-la; se não devolver
+## no prazo, leva a penalidade.
+func request_give_back(e: RaceEntry, target: RaceEntry, seconds: float, title: String, detail: String) -> void:
+	if state == State.QUALIFYING:
+		quali.invalidate(e, title)
+		return
+	if give_backs.has(e):
+		# Já devendo uma posição: a nova infração vale direto
+		_penalize(e, seconds, title, detail)
+		return
+	give_backs[e] = {"target": target, "until": race_time + GIVE_BACK_TIME, "seconds": seconds, "title": title, "detail": detail}
+	_notify(e, "DEVOLVA A POSIÇÃO", "%s · deixe %s passar em %d s ou leve +%ds" % [detail, target.code, int(GIVE_BACK_TIME), roundi(seconds)], true)
+
+
+## `passer` voltou à frente de `e`: se era a posição que `e` devia, está resolvido (true).
+func give_back_restored(e: RaceEntry, passer: RaceEntry) -> bool:
+	if give_backs.has(e) and give_backs[e]["target"] == passer:
+		give_backs.erase(e)
+		_restored[e] = passer
+		_notify(e, "POSIÇÃO DEVOLVIDA", "Sem penalidade", false)
+		return true
+	# Já resolvido neste passo (a troca de volta não é uma ultrapassagem irregular de quem recebeu)
+	if _restored.get(e) == passer:
+		_restored.erase(e)
+		return true
+	return false
+
+
+func _update_give_backs() -> void:
+	for e: RaceEntry in give_backs.keys():
+		var d: Dictionary = give_backs[e]
+		var target: RaceEntry = d["target"]
+		if target.retired or target.in_pit or e.retired or e.finished:
+			give_backs.erase(e)
+		elif target.progress > e.progress + 2.0:
+			give_back_restored(e, target)
+		elif race_time > float(d["until"]):
+			give_backs.erase(e)
+			_penalize(e, d["seconds"], d["title"], d["detail"] + " (não devolveu a posição)")
+
+
+## Classificatória (solo ou servidor): ao voltar, entries[].grid_slot é o grid novo e o estado volta a GRID.
+func _run_qualifying(q_laps: int, collisions: bool) -> void:
+	quali = Qualifying.new()
+	quali.name = "Qualifying"
+	add_child(quali)
+	quali.setup(self, q_laps, collisions)
+	await quali.run()
+	state = State.GRID
+	race_time = 0.0
+	leader_finished = false
+
+
+## Carros na pista (para o vácuo).
+func _cars() -> Array:
+	var out := []
+	for e in entries:
+		if e.car and not e.retired:
+			out.append(e.car)
+	return out

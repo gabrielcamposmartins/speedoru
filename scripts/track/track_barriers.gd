@@ -55,19 +55,29 @@ static func build(track: RaceTrack, parent: Node3D) -> void:
 			else:
 				_wall(walls, track, i, j, side, d_i, d_j, thick, height,
 					[[0.0, 0.3, STEEL_DARK], [0.3, 0.58, STEEL], [0.58, 0.64, STEEL_DARK], [0.64, 0.92, STEEL], [0.92, height, STEEL_DARK]])
-			# Alambrado sobre a barreira
+			# Circuito de rua: muro de contenção sob a barreira (onde a pista passa acima do chão
+			# ao lado, ex. Mirabeau sobre o Mirabeau Bas)
+			if track.city:
+				var back_i := d_i + thick
+				var back_j := d_j + thick
+				walls.quad(track.edge_point(i, side, back_i, -12.0), track.edge_point(j, side, back_j, -12.0),
+					track.edge_point(j, side, back_j, 0.05), track.edge_point(i, side, back_i, 0.05),
+					CONCRETE * 0.85, p.lefts[i] * side)
+			# Alambrado sobre a barreira (no túnel não há)
 			var fl_i := d_i + thick * 0.5
 			var fl_j := d_j + thick * 0.5
 			var s_i := p.s_at(i)
 			var s_j := s_i + p.spacing
-			fence.quad(track.edge_point(i, side, fl_i, height), track.edge_point(j, side, fl_j, height),
-				track.edge_point(j, side, fl_j, height + FENCE_HEIGHT), track.edge_point(i, side, fl_i, height + FENCE_HEIGHT),
-				Color.WHITE, -p.lefts[i] * side,
-				Vector2(s_i, 0), Vector2(s_j, 0), Vector2(s_j, FENCE_HEIGHT), Vector2(s_i, FENCE_HEIGHT))
-			if i % 2 == 0:
-				var base := track.edge_point(i, side, fl_i, 0.0)
-				var post_xf := Transform3D(Basis.looking_at(p.tangents[i]), base + Vector3.UP * (height + FENCE_HEIGHT) * 0.5)
-				walls.posts().box(post_xf, Vector3(0.09, height + FENCE_HEIGHT, 0.09), POST)
+			if not track.in_tunnel(i):
+				fence.quad(track.edge_point(i, side, fl_i, height), track.edge_point(j, side, fl_j, height),
+					track.edge_point(j, side, fl_j, height + FENCE_HEIGHT), track.edge_point(i, side, fl_i, height + FENCE_HEIGHT),
+					Color.WHITE, -p.lefts[i] * side,
+					Vector2(s_i, 0), Vector2(s_j, 0), Vector2(s_j, FENCE_HEIGHT), Vector2(s_i, FENCE_HEIGHT))
+				if i % 2 == 0:
+					var base := track.edge_point(i, side, fl_i, 0.0)
+					var flat := Vector3(p.tangents[i].x, 0.0, p.tangents[i].z)
+					var post_xf := Transform3D(Basis.looking_at(flat), base + Vector3.UP * (height + FENCE_HEIGHT) * 0.5)
+					walls.posts().box(post_xf, Vector3(0.09, height + FENCE_HEIGHT, 0.09), POST)
 			# Colisão: bloco sólido atrás da face (paredes finas deixam o carro atravessar em alta velocidade)
 			collision.append(_wall_box(track.edge_point(i, side, front_i), track.edge_point(j, side, front_j),
 				p.lefts[i] * side, COLLISION_THICKNESS))

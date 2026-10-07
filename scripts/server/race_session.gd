@@ -10,7 +10,6 @@ extends Node
 
 signal finished(results: Array)
 
-const SCENE := "res://scenes/tracks/monza.tscn"
 const LOAD_TIMEOUT := 45.0
 ## Depois que o primeiro humano termina, os outros têm esse tempo (s) para cruzar a linha.
 const FINISH_TIMEOUT := 150.0
@@ -50,7 +49,7 @@ func start(p_server: GameServer, p_room: String, p_settings: Dictionary, p_playe
 	viewport.render_target_update_mode = SubViewport.UPDATE_DISABLED
 	viewport.size = Vector2i(2, 2)
 	add_child(viewport)
-	var scene := (load(SCENE) as PackedScene).instantiate()
+	var scene := (load(RaceSettings.track_scene(str(settings.get("track", "monza")))) as PackedScene).instantiate()
 	# Nada de câmera, HUD nem céu no servidor
 	for n in ["HUD", "RaceCamera", "Daylight"]:
 		var node := scene.get_node_or_null(n)
@@ -62,7 +61,8 @@ func start(p_server: GameServer, p_room: String, p_settings: Dictionary, p_playe
 	for p in players:
 		list.append({"id": p["id"], "name": p["name"], "profile": p["profile"]})
 	manager.net_setup = {"laps": settings.get("laps", 5), "difficulty": settings.get("difficulty", 1), "drs": settings.get("drs", 0),
-		"bots": settings.get("bots", true), "players": list}
+		"bots": settings.get("bots", true), "cars": settings.get("cars", NetProtocol.MAX_ROOM_PLAYERS),
+		"quali_laps": settings.get("quali_laps", 0), "quali_collisions": settings.get("quali_collisions", true), "players": list}
 	manager.net_grid_ready.connect(_on_grid_ready)
 	manager.net_event.connect(_broadcast_event)
 	manager.infraction.connect(_on_infraction)
@@ -88,7 +88,7 @@ func _on_grid_ready() -> void:
 	_phase = "waiting"
 	_wait = 0.0
 	var roster := manager.net_roster()
-	var race_settings := {"laps": manager.laps, "drs": settings.get("drs", 0), "time_of_day": settings.get("time_of_day", 0),
+	var race_settings := {"track": settings.get("track", "monza"), "laps": manager.laps, "drs": settings.get("drs", 0), "time_of_day": settings.get("time_of_day", 0),
 		"biome": settings.get("biome", 0), "difficulty": settings.get("difficulty", 1)}
 	for p in players:
 		for peer in _peers_of(p["id"]):
@@ -279,7 +279,8 @@ func _finish() -> void:
 			"dsq": e.disqualified, "fastest": manager.fastest_entry == e,
 			"record": {"pos": pos, "total": classification.size(), "grid": e.grid_slot + 1, "finished": e.finished and not e.retired,
 				"penalty": e.penalty_seconds, "best_lap": e.best_lap, "laps": e.laps_completed(),
-				"consistency": Progression.consistency_of(Array(e.lap_times)), "online": true},
+				"consistency": Progression.consistency_of(Array(e.lap_times)), "online": true,
+				"track": RaceSettings.valid_track(str(settings.get("track", "monza")))},
 		})
 	for peer in _peers():
 		_net.race.rpc_id(peer, st)

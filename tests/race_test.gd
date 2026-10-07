@@ -1,6 +1,6 @@
 extends SceneTree
 ## Corrida de teste (sem janela), com o carro do jogador também pilotado por um bot:
-##   godot --headless --path . -s res://tests/race_test.gd -- [voltas] [adversários] [dificuldade 0-3]
+##   godot --headless --path . -s res://tests/race_test.gd -- [voltas] [adversários] [dificuldade 0-3] [pista: monza|monaco]
 ## Confere que todos completam as voltas, fazem o pit obrigatório e quase não levam penalidades.
 
 var scene: Node3D
@@ -14,6 +14,7 @@ func _initialize() -> void:
 	RaceSettings.laps = int(args[0]) if args.size() > 0 else 3
 	RaceSettings.opponents = int(args[1]) if args.size() > 1 else 9
 	RaceSettings.difficulty = int(args[2]) if args.size() > 2 else 3
+	RaceSettings.track = RaceSettings.valid_track(args[3]) if args.size() > 3 else "monza"
 	RaceSettings.grid = RaceSettings.Grid.MIDDLE
 	RaceSettings.skip_menu = true
 	Engine.max_physics_steps_per_frame = 200
@@ -22,7 +23,7 @@ func _initialize() -> void:
 	if profile:
 		PlayerProfile.save_path = "user://test_profile.cfg"
 		profile.reset_profile()
-	scene = (load("res://scenes/tracks/monza.tscn") as PackedScene).instantiate()
+	scene = (load(RaceSettings.track_scene(RaceSettings.track)) as PackedScene).instantiate()
 	root.add_child(scene)
 	manager = scene.get_node("RaceManager")
 	_run.call_deferred()
@@ -90,8 +91,24 @@ var _reported := {}
 ## Diagnóstico: bot parado (< 1 km/h, sem terminar) por mais de 15 s imprime o estado completo uma vez.
 func _watch_stuck() -> void:
 	for e in manager.entries:
-		if e.finished or e.retired or e.in_pit_stop or e.bot == null or manager.state != RaceManager.State.RACING:
+		if e.finished or e.retired or e.bot == null or manager.state != RaceManager.State.RACING:
 			_still.erase(e)
+			continue
+		# Parado no box além da conta (o pit dura 2–4 s)
+		if e.in_pit_stop:
+			if not _still.has(e):
+				_still[e] = manager.race_time
+			elif manager.race_time - _still[e] > 25.0 and not _reported.has(e):
+				_reported[e] = true
+				var who := ""
+				for o in manager.entries:
+					var ds: float = e.bot._ahead(o.s, e.s)
+					if o != e and o.in_pit and ds > -40.0 and ds < 10.0:
+						who += " %s(ds %.1f lat %.1f v %.1f modo %s%s)" % [o.code, ds, o.lateral, o.car.linear_velocity.length(),
+							BotDriver.Mode.keys()[o.bot.mode] if o.bot else "-", " PARADO" if o.in_pit_stop else ""]
+				print("  PRESO NO BOX %s a %.0f s: modo %s timer %.1f liberado %s | s %.0f lat %.1f | box s %.0f | perto:%s" % [e.code,
+					manager.race_time, BotDriver.Mode.keys()[e.bot.mode], e.bot._stop_timer, e.bot._pit_release_clear(e.s), e.s, e.lateral,
+					manager.track.garage_s(e.garage), who])
 			continue
 		if e.car.speed_kmh > 1.0:
 			_still.erase(e)

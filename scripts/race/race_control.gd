@@ -232,7 +232,14 @@ func _check_rules(_delta: float) -> void:
 			# Inverteu: quem ficou à frente ultrapassou
 			var passer := a if now == 1 else b
 			var passed := b if now == 1 else a
-			manager.penalize_entry(passer, 5.0, "ULTRAPASSAGEM", "Passou %s sob bandeira amarela" % passed.code)
+			# Era a posição sendo devolvida: tudo certo
+			if manager.give_back_restored(passed, passer):
+				continue
+			# O jogador pode devolver a posição antes de ser punido; os bots são punidos na hora
+			if passer.is_player or passer.is_human:
+				manager.request_give_back(passer, passed, 5.0, "ULTRAPASSAGEM", "Passou %s sob bandeira amarela" % passed.code)
+			else:
+				manager.penalize_entry(passer, 5.0, "ULTRAPASSAGEM", "Passou %s sob bandeira amarela" % passed.code)
 	for key in _order.keys():
 		if not seen.has(key):
 			_order.erase(key)

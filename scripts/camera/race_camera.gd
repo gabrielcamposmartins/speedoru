@@ -59,6 +59,8 @@ var onboard_rear := {
 ## Tremida: na velocidade máxima, em zebras/brita e em batidas (m).
 @export var shake_speed := 0.018
 @export var shake_surface := 0.045
+## Tremor extra fora da pista (brita sacode mais que a grama).
+@export var shake_offtrack := 0.14
 @export var shake_impact := 0.22
 ## FOV a mais com o boost ligado.
 @export var boost_fov := 6.0
@@ -279,6 +281,7 @@ func _shake(delta: float, life: float) -> Vector3:
 	var kmh := target.speed_kmh
 	var amount := shake_speed * smoothstep(200.0, 340.0, kmh)
 	var rough := 0.0
+	var off := 0.0
 	for k in target.tire_surface.size():
 		if target.tire_state[k] == F1Car.TireState.AIR:
 			continue
@@ -286,14 +289,15 @@ func _shake(delta: float, life: float) -> Vector3:
 			TrackSurface.Type.KERB:
 				rough += 0.25
 			TrackSurface.Type.GRAVEL:
-				rough += 0.3
+				off += 0.25
 			TrackSurface.Type.GRASS:
-				rough += 0.12
+				off += 0.13
 	amount += shake_surface * minf(rough, 1.0) * clampf(kmh / 120.0, 0.0, 1.0)
+	amount += shake_offtrack * minf(off, 1.0) * clampf(kmh / 70.0, 0.15, 1.0)
 	amount += shake_impact * _trauma * _trauma
 	if amount <= 0.0005:
 		return Vector3.ZERO
-	var f := 18.0 + 30.0 * _trauma
+	var f := 18.0 + 30.0 * _trauma + 10.0 * minf(off, 1.0)
 	return Vector3(_noise.get_noise_2d(_shake_t * f, 0.0), _noise.get_noise_2d(_shake_t * f, 50.0),
 		_noise.get_noise_2d(_shake_t * f, 100.0)) * amount * life
 

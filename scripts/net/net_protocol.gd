@@ -29,6 +29,9 @@ const MAX_PARTY := 4
 # --- Salas -----------------------------------------------------------------------
 const MAX_ROOM_PLAYERS := 10
 const ROOM_LAPS := [3, 5, 10, 15]
+## Corredores no grid de uma sala custom (jogadores + bots). O máximo cabe nos boxes de todas as pistas.
+const ROOM_CARS := [2, 4, 6, 8, 10, 12, 14]
+const MAX_GRID := 14
 
 # --- Perfil ------------------------------------------------------------------------
 const NAME_MAX := 16
@@ -53,6 +56,12 @@ const BTN_REVERSE := 4
 
 ## Volta mais rápida plausível em Monza (s): resultados de corrida solo abaixo disso são recusados.
 const MIN_PLAUSIBLE_LAP := 78.0
+## O mesmo por pista (Mônaco é bem mais curta).
+const MIN_LAP_BY_TRACK := {"monza": MIN_PLAUSIBLE_LAP, "monaco": 55.0}
+
+
+static func min_lap(track: String) -> float:
+	return MIN_LAP_BY_TRACK.get(track, MIN_PLAUSIBLE_LAP)
 
 
 ## Normaliza o que o jogador digitou ("abc 234", "ABC-234", "abc234") para "ABC234"; "" se inválido.

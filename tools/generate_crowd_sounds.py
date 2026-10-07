@@ -1,9 +1,12 @@
 """Sons da plateia (sintetizados, sem gravações) em assets/audio/crowd/:
 
-  * crowd_murmur.wav   loop de 10 s: dezenas de vozes "conversando" (fonte vozeada com formantes,
-                       sílabas irregulares), chão de ruído e eco de estádio; emenda sem estalo.
-  * crowd_cheer_1/2    torcida: muitas vozes num "aaah" que sobe e cai, com alguns assobios.
+  * crowd_murmur.wav   loop de 10 s: centenas de vozes falando ao mesmo tempo. Cada sílaba é uma
+                       vogal (formantes F1/F2/F3 de verdade) excitada por ruído (sussurro) e pulsos
+                       glotais com entonação; longe vira o "mar de vozes" de arquibancada. Emenda
+                       sem estalo.
+  * crowd_cheer_1/2    torcida: "uuuh"/"êêê" de muitas vozes subindo de tom, gritos e assobios.
   * applause_1/2       palmas: centenas de palmas aleatórias que crescem e somem.
+  * air_horn_1/2       buzinas de ar (a "corneta" das arquibancadas de corrida), uma e duas buzinadas.
 
 Rodar:  python tools/generate_crowd_sounds.py
 """
@@ -92,24 +95,55 @@ def reverb(x, seconds=0.7, mix=0.35, rng=None):
     return x * (1 - mix) + wet * mix * np.sqrt(np.mean(x * x)) / max(np.sqrt(np.mean(wet * wet)), 1e-9)
 
 
-def crowd_murmur(seconds=10.0, voices=70):
+VOWELS = [  # F1, F2, F3 (Hz) de vogais faladas
+    (730, 1090, 2440), (270, 2290, 3010), (300, 870, 2240), (530, 1840, 2480), (570, 840, 2410),
+    (440, 1020, 2240), (660, 1720, 2410), (490, 1350, 1690),
+]
+
+
+def syllable(rng, f0, vowel, seconds, voiced_mix, glide=0.0):
+    """Uma sílaba: ruído + pulsos glotais com entonação, filtrados por três formantes."""
+    n = int(seconds * SR)
+    t = np.arange(n) / SR
+    f = f0 * (1.0 + glide * t / max(seconds, 1e-3) + 0.03 * np.sin(2 * np.pi * rng.uniform(4, 7) * t))
+    phase = np.cumsum(f) / SR
+    pulses = (np.diff(np.floor(phase), prepend=0.0) > 0).astype(float)
+    exc = pulses * voiced_mix * 6.0 + rng.standard_normal(n) * (1.0 - voiced_mix * 0.6)
+    f1, f2, f3 = [v * rng.uniform(0.9, 1.12) for v in vowel]
+    y = spectrum(exc, lambda fr: formants(fr, [(f1, 90, 1.0), (f2, 130, 0.7), (f3, 200, 0.35)]) * band(fr, 120, 5000))
+    env = np.minimum(t / 0.025, 1.0) * np.minimum((seconds - t) / 0.06, 1.0)
+    return y * np.clip(env, 0, 1)
+
+
+def babble(n, rng, voices, rate=(0.09, 0.26), gap=(0.02, 0.35), level=(0.3, 1.0)):
+    x = np.zeros(n)
+    for v in range(voices):
+        f0 = rng.uniform(95, 240)
+        voiced = rng.uniform(0.25, 0.75)
+        gain = rng.uniform(*level)
+        i = int(rng.uniform(0, 1.0) * SR)
+        while i < n:
+            if rng.random() < 0.1:
+                i += int(rng.uniform(0.3, 1.0) * SR)  # pausa entre frases
+                continue
+            dur = rng.uniform(*rate)
+            syl = syllable(rng, f0 * rng.uniform(0.9, 1.15), VOWELS[rng.integers(len(VOWELS))], dur, voiced)
+            m = min(len(syl), n - i)
+            x[i:i + m] += syl[:m] / max(np.sqrt(np.mean(syl * syl)), 1e-9) * gain
+            i += len(syl) + int(rng.uniform(*gap) * SR)
+    return x
+
+
+def crowd_murmur(seconds=10.0, voices=260):
     rng = np.random.default_rng(31)
     fade = 1.0
     n = int((seconds + fade) * SR)
-    x = np.zeros(n)
-    for v in range(voices):
-        f0 = rng.uniform(95, 260)
-        src = voiced(n, f0, rng)
-        x += src * syllables(n, rng) * rng.uniform(0.3, 1.0)
-    # Formantes médios de fala (vários vogais misturados) e só a faixa de voz
-    # Presença na faixa da voz (1–4 kHz): é o que "corta" o som grave dos motores
-    x = spectrum(x, lambda f: formants(f, [(500, 180, 1.0), (1100, 300, 0.8), (2300, 500, 0.55)]) * band(f, 130, 4200)
-                 * (1.0 + 1.6 * band(f, 1000, 4000, 1.0)))
+    x = babble(n, rng, voices)
     x /= np.sqrt(np.mean(x * x))
-    floor = spectrum(rng.standard_normal(n), lambda f: band(f, 100, 1800) / np.sqrt(f))
-    x += floor / np.sqrt(np.mean(floor * floor)) * 0.25
-    x = reverb(x, 0.8, 0.4, rng)
-    # Loop sem emenda: o último segundo entra por cima do começo
+    # Fundo distante: a massa de vozes vira um "chiado" na faixa da fala
+    floor = spectrum(rng.standard_normal(n), lambda f: band(f, 180, 2500, 1.5) / np.sqrt(f / 300.0))
+    x += floor / np.sqrt(np.mean(floor * floor)) * 0.45
+    x = reverb(x, 1.1, 0.45, rng)
     m = int(fade * SR)
     out = x[: n - m].copy()
     ramp = np.linspace(0, 1, m)
@@ -119,32 +153,62 @@ def crowd_murmur(seconds=10.0, voices=70):
 
 def crowd_cheer(variant):
     rng = np.random.default_rng(100 + variant)
-    seconds = 3.6
+    seconds = 3.8
     n = int(seconds * SR)
     t = np.arange(n) / SR
     x = np.zeros(n)
-    for v in range(110):
-        f0 = rng.uniform(150, 420)
-        src = voiced(n, f0, rng, glide=rng.uniform(0.05, 0.22), harmonics=10)
-        start = rng.uniform(0.0, 0.5)
-        attack = rng.uniform(0.15, 0.45)
-        end = rng.uniform(1.8, 3.0)
-        env = np.clip((t - start) / attack, 0, 1) * np.exp(-np.clip(t - end, 0, None) / 0.35)
-        x += src * env * rng.uniform(0.4, 1.0)
-    vowel = [(750, 200, 1.0), (1200, 280, 0.75), (2600, 500, 0.3)] if variant == 1 else [(450, 160, 1.0), (850, 220, 0.8), (2400, 500, 0.25)]
-    x = spectrum(x, lambda f: formants(f, vowel) * band(f, 140, 4000))
+    vowel_set = [VOWELS[2], VOWELS[4]] if variant == 1 else [VOWELS[0], VOWELS[3]]  # "uuu"/"ooo" ou "aaa"/"êêê"
+    for v in range(140):
+        start = rng.uniform(0.0, 0.6)
+        dur = rng.uniform(1.2, 2.8)
+        f0 = rng.uniform(170, 420)
+        syl = syllable(rng, f0, vowel_set[rng.integers(2)], dur, rng.uniform(0.45, 0.85), glide=rng.uniform(0.05, 0.3))
+        env = np.minimum(np.arange(len(syl)) / SR / rng.uniform(0.15, 0.4), 1.0)
+        i = int(start * SR)
+        m = min(len(syl), n - i)
+        x[i:i + m] += (syl * env)[:m] / max(np.sqrt(np.mean(syl * syl)), 1e-9) * rng.uniform(0.4, 1.0)
+    # Gritos curtos por cima ("êi!", "vai!")
+    for k in range(10):
+        syl = syllable(rng, rng.uniform(250, 480), VOWELS[rng.integers(len(VOWELS))], rng.uniform(0.18, 0.4), 0.8, glide=0.2)
+        i = int(rng.uniform(0.2, 2.2) * SR)
+        m = min(len(syl), n - i)
+        x[i:i + m] += syl[:m] / max(np.sqrt(np.mean(syl * syl)), 1e-9) * 1.6
     x /= np.sqrt(np.mean(x * x))
-    # Assobios
     for k in range(3 if variant == 1 else 2):
-        s = rng.uniform(0.3, 1.6)
+        s0 = rng.uniform(0.3, 1.6)
         d = rng.uniform(0.5, 1.0)
-        i0, i1 = int(s * SR), int(min(s + d, seconds) * SR)
+        i0, i1 = int(s0 * SR), int(min(s0 + d, seconds) * SR)
         tt = np.arange(i1 - i0) / SR
         fw = rng.uniform(2000, 3000) * (1 + 0.06 * np.sin(2 * np.pi * rng.uniform(4, 7) * tt) + 0.15 * tt / d)
-        x[i0:i1] += np.sin(2 * np.pi * np.cumsum(fw) / SR) * np.hanning(i1 - i0) * 0.35
-    floor = spectrum(rng.standard_normal(n), lambda f: band(f, 200, 3000))
-    x += floor / np.sqrt(np.mean(floor * floor)) * 0.3 * np.clip(t / 0.5, 0, 1) * np.exp(-np.clip(t - 2.4, 0, None) / 0.5)
-    return reverb(x, 0.9, 0.4, rng)
+        x[i0:i1] += np.sin(2 * np.pi * np.cumsum(fw) / SR) * np.hanning(i1 - i0) * 0.5
+    x *= np.clip(t / 0.3, 0, 1) * np.exp(-np.clip(t - 2.6, 0, None) / 0.5)
+    return reverb(x, 1.0, 0.4, rng)
+
+
+def air_horn(variant):
+    """Buzina de ar: dente de serra rico em harmônicos, levemente desafinada (duas cornetas),
+    ataque com "engasgo" e um pouco de vibrato; variante 2 buzina duas vezes."""
+    rng = np.random.default_rng(300 + variant)
+    blasts = [(0.0, 0.9)] if variant == 1 else [(0.0, 0.45), (0.6, 1.0)]
+    seconds = blasts[-1][0] + blasts[-1][1] + 0.6
+    n = int(seconds * SR)
+    x = np.zeros(n)
+    base = 415.0 if variant == 1 else 370.0
+    for start, dur in blasts:
+        m = int(dur * SR)
+        t = np.arange(m) / SR
+        y = np.zeros(m)
+        for detune in (1.0, 1.012, 0.994):
+            f = base * detune * (1.0 - 0.06 * np.exp(-t / 0.05)) * (1 + 0.004 * np.sin(2 * np.pi * 5.5 * t))
+            ph = np.cumsum(f) / SR
+            for h in range(1, 16):
+                y += np.sin(2 * np.pi * h * ph) / h ** 0.9
+        env = np.minimum(t / 0.03, 1.0) * np.minimum((dur - t) / 0.08, 1.0)
+        y *= np.clip(env, 0, 1)
+        y = spectrum(y, lambda f: band(f, 250, 6000) * (1.0 + 1.2 * np.exp(-((f - 1600.0) / 600.0) ** 2)))
+        i = int(start * SR)
+        x[i:i + m] += y
+    return reverb(x, 1.2, 0.35, rng)
 
 
 def applause(variant):
@@ -169,10 +233,11 @@ def applause(variant):
 
 
 def main():
-    save("crowd_murmur.wav", crowd_murmur(), rms=0.1)
+    save("crowd_murmur.wav", crowd_murmur(), rms=0.11)
     for v in (1, 2):
-        save(f"crowd_cheer_{v}.wav", crowd_cheer(v), rms=0.13)
+        save(f"crowd_cheer_{v}.wav", crowd_cheer(v), rms=0.14)
         save(f"applause_{v}.wav", applause(v), rms=0.11)
+        save(f"air_horn_{v}.wav", air_horn(v), rms=0.12)
     print("Sons da plateia em", os.path.abspath(OUT))
 
 

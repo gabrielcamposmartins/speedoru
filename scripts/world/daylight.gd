@@ -44,6 +44,8 @@ static var current_night := 0.0
 	set(value):
 		sun_energy = value
 		_apply()
+## Neblina um pouco mais leve que a dos presets (horizonte mais limpo).
+const FOG_SCALE := 0.72
 ## Cor do sol ao meio-dia e perto do horizonte (mistura pela elevação).
 @export var noon_color := Color(1.0, 0.97, 0.92)
 @export var low_sun_color := Color(1.0, 0.72, 0.48)
@@ -103,7 +105,7 @@ func _apply_mood() -> void:
 		env.ambient_light_energy = t.ambient_energy
 		env.tonemap_exposure = t.exposure
 		env.fog_light_color = t.fog_color
-		env.fog_density = t.fog_density
+		env.fog_density = t.fog_density * FOG_SCALE
 		env.glow_intensity = t.glow
 		var sky := env.sky.sky_material as ShaderMaterial if env.sky else null
 		if sky:
@@ -129,7 +131,7 @@ func _apply_mood() -> void:
 	var mist := get_node_or_null("GroundMist") as FogVolume
 	if mist and mist.material is FogMaterial:
 		(mist.material as FogMaterial).albedo = t.mist
-		(mist.material as FogMaterial).density = t.mist_density
+		(mist.material as FogMaterial).density = t.mist_density * FOG_SCALE
 	var names := ["grass_lush", "grass_warm", "grass_cool", "grass_deep"]
 	for k in 4:
 		_global_color(names[k], b.grass[k])

@@ -491,9 +491,11 @@ class IconTab extends Button:
 				draw_rect(Rect2(c + Vector2(-2, -1), Vector2(4, 11)), ink)
 
 
-## Um parâmetro de engenharia: nome e valor; −− − [slider] + ++ e ↺ (volta ao de fábrica).
-## Todos os controles mostram o mesmo tooltip em cartão (explicação, valor atual, fábrica, limites
-## e passos), com o efeito do botão quando é um botão.
+## Um parâmetro de engenharia, em duas linhas alinhadas com as outras:
+##   nome ......................... valor  ↺   (↺ só aparece quando mudou do de fábrica)
+##   (−) ━━━━━━━━━━●━━━━━|━━━━━━━━━ (+)        (a marca | é o valor de fábrica)
+## Clique em −/+ = passo fino; com Shift = passo grosso. Todos os controles mostram o mesmo
+## tooltip em cartão (explicação, valor atual, fábrica, limites e passos).
 class SetupRow extends VBoxContainer:
 	var param: Array
 	var studio: StudioPanel
@@ -503,11 +505,12 @@ class SetupRow extends VBoxContainer:
 	var _syncing := false
 
 	func _ready() -> void:
-		custom_minimum_size = Vector2(StudioPanel.TILE.x * 2 + 8, 56)
-		add_theme_constant_override("separation", 2)
+		custom_minimum_size = Vector2(StudioPanel.TILE.x * 2 + 8, 52)
+		add_theme_constant_override("separation", 4)
 		var car := studio.car
 		var d := float(CarSetup.defaults(car)[param[0]])
 		var top := HBoxContainer.new()
+		top.add_theme_constant_override("separation", 6)
 		add_child(top)
 		var name_l := TipLabel.new()
 		name_l.text = param[2]
@@ -520,36 +523,42 @@ class SetupRow extends VBoxContainer:
 		top.add_child(name_l)
 		_value = Label.new()
 		_value.add_theme_font_override("font", Retro.display(700))
-		_value.add_theme_font_size_override("font_size", 11)
+		_value.add_theme_font_size_override("font_size", 12)
+		_value.custom_minimum_size = Vector2(78, 0)
+		_value.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 		top.add_child(_value)
-		var bottom := HBoxContainer.new()
-		bottom.add_theme_constant_override("separation", 3)
-		add_child(bottom)
-		bottom.add_child(_step_button("−−", -float(param[8])))
-		bottom.add_child(_step_button("−", -float(param[7])))
-		_slider = TipSlider.new()
-		_slider.min_value = param[5]
-		_slider.max_value = param[6]
-		_slider.step = param[7]
-		_slider.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		_slider.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-		_slider.tooltip_text = param[2]
-		_slider.make_tip = make_tip.bind("arraste para ajustar")
-		_slider.value_changed.connect(_on_value)
-		bottom.add_child(_slider)
-		bottom.add_child(_step_button("+", float(param[7])))
-		bottom.add_child(_step_button("++", float(param[8])))
 		_reset = TipButton.new()
 		_reset.text = "↺"
+		_reset.flat = true
+		_reset.focus_mode = Control.FOCUS_NONE
 		_reset.tooltip_text = param[2]
 		_reset.make_tip = make_tip.bind("volta ao de fábrica (%s)" % CarSetup.format(param, d))
-		_reset.custom_minimum_size = Vector2(26, 24)
-		_reset.add_theme_font_size_override("font_size", 12)
+		_reset.custom_minimum_size = Vector2(20, 18)
+		_reset.add_theme_font_size_override("font_size", 13)
+		_reset.add_theme_color_override("font_color", Retro.c("accent_2"))
 		_reset.pressed.connect(func() -> void:
 			studio._profile.reset_setup(param[0])
 			studio._profile.apply_setup(car)
 			_sync())
-		bottom.add_child(_reset)
+		top.add_child(_reset)
+		var bottom := HBoxContainer.new()
+		bottom.add_theme_constant_override("separation", 8)
+		add_child(bottom)
+		bottom.add_child(_step_button(-1.0))
+		_slider = TipSlider.new()
+		_slider.min_value = param[5]
+		_slider.max_value = param[6]
+		_slider.step = param[7]
+		_slider.factory = d
+		_slider.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		_slider.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		_slider.custom_minimum_size = Vector2(0, 20)
+		_slider.tooltip_text = param[2]
+		_slider.make_tip = make_tip.bind("arraste para ajustar · a marca é o valor de fábrica")
+		_slider.value_changed.connect(_on_value)
+		StudioPanel.style_slider(_slider)
+		bottom.add_child(_slider)
+		bottom.add_child(_step_button(1.0))
 		studio._profile.setup_changed.connect(_sync)
 		_sync()
 
@@ -568,15 +577,20 @@ class SetupRow extends VBoxContainer:
 			rows.append(["Este botão", action, Retro.c("warn")])
 		return Retro.make_tooltip("%s · %s" % [param[1], param[2]], param[12], rows)
 
-	func _step_button(text: String, delta: float) -> TipButton:
+	## Botão redondo − / +: passo fino; com Shift, passo grosso.
+	func _step_button(sign: float) -> TipButton:
 		var b := TipButton.new()
-		b.text = text
-		b.custom_minimum_size = Vector2(28, 24)
-		b.add_theme_font_size_override("font_size", 12)
+		b.text = "+" if sign > 0.0 else "−"
+		b.focus_mode = Control.FOCUS_NONE
+		b.custom_minimum_size = Vector2(24, 24)
+		b.add_theme_font_size_override("font_size", 14)
+		StudioPanel.style_round_button(b)
 		b.tooltip_text = param[2]
-		var kind := "grosso" if absf(delta) >= float(param[8]) else "fino"
-		b.make_tip = make_tip.bind("ajuste %s, %s%s" % [kind, "+" if delta > 0.0 else "−", CarSetup.format(param, absf(delta))])
-		b.pressed.connect(func() -> void: _slider.value = clampf(_slider.value + delta, param[5], param[6]))
+		b.make_tip = make_tip.bind("%s%s (Shift: %s%s)" % ["+" if sign > 0.0 else "−", CarSetup.format(param, float(param[7])),
+			"+" if sign > 0.0 else "−", CarSetup.format(param, float(param[8]))])
+		b.pressed.connect(func() -> void:
+			var step: float = float(param[8]) if Input.is_key_pressed(KEY_SHIFT) else float(param[7])
+			_slider.value = clampf(_slider.value + sign * step, param[5], param[6]))
 		return b
 
 	func _on_value(v: float) -> void:
@@ -596,6 +610,55 @@ class SetupRow extends VBoxContainer:
 		_value.text = CarSetup.format(param, v)
 		_value.add_theme_color_override("font_color", Retro.c("accent_2") if changed else Retro.c("text"))
 		_reset.disabled = not changed
+		_reset.modulate.a = 1.0 if changed else 0.0
+
+
+## Trilho fino e escuro, parte preenchida na cor de destaque (sliders da engenharia).
+static func style_slider(sl: HSlider) -> void:
+	var track := StyleBoxFlat.new()
+	track.bg_color = Color(Retro.c("bg"), 0.9)
+	track.border_color = Color(Retro.c("muted"), 0.6)
+	track.set_border_width_all(1)
+	track.set_corner_radius_all(3)
+	track.content_margin_top = 3
+	track.content_margin_bottom = 3
+	sl.add_theme_stylebox_override("slider", track)
+	var fill := StyleBoxFlat.new()
+	fill.bg_color = Color(Retro.c("accent"), 0.85)
+	fill.set_corner_radius_all(3)
+	fill.content_margin_top = 3
+	fill.content_margin_bottom = 3
+	sl.add_theme_stylebox_override("grabber_area", fill)
+	var fill_hi := fill.duplicate() as StyleBoxFlat
+	fill_hi.bg_color = Retro.c("accent_2")
+	sl.add_theme_stylebox_override("grabber_area_highlight", fill_hi)
+
+
+## Botão redondo discreto (contorno fino; destaca no hover).
+static func style_round_button(b: Button) -> void:
+	for state in ["normal", "hover", "pressed", "disabled", "focus"]:
+		var sb := StyleBoxFlat.new()
+		sb.set_corner_radius_all(12)
+		sb.set_border_width_all(1)
+		match state:
+			"normal":
+				sb.bg_color = Color(Retro.c("bg"), 0.6)
+				sb.border_color = Color(Retro.c("muted"), 0.8)
+			"hover":
+				sb.bg_color = Color(Retro.c("accent"), 0.18)
+				sb.border_color = Retro.c("accent_2")
+			"pressed":
+				sb.bg_color = Color(Retro.c("accent"), 0.4)
+				sb.border_color = Retro.c("accent_2")
+			"disabled":
+				sb.bg_color = Color(Retro.c("bg"), 0.3)
+				sb.border_color = Color(Retro.c("muted"), 0.3)
+			"focus":
+				sb.bg_color = Color(0, 0, 0, 0)
+				sb.border_color = Color(0, 0, 0, 0)
+		b.add_theme_stylebox_override(state, sb)
+	b.add_theme_color_override("font_color", Retro.c("text"))
+	b.add_theme_color_override("font_hover_color", Retro.c("accent_2"))
 
 
 ## Controles com tooltip em cartão (o conteúdo vem de make_tip, montado na hora do hover).
@@ -608,9 +671,19 @@ class TipButton extends Button:
 
 class TipSlider extends HSlider:
 	var make_tip: Callable
+	## Valor de fábrica: marca fina sobre o trilho.
+	var factory := NAN
 
 	func _make_custom_tooltip(_for_text: String) -> Object:
 		return make_tip.call() if make_tip.is_valid() else null
+
+	func _draw() -> void:
+		if is_nan(factory) or max_value <= min_value:
+			return
+		var grab: float = float(get_theme_icon("grabber").get_width()) if has_theme_icon("grabber") else 12.0
+		var t: float = (factory - min_value) / (max_value - min_value)
+		var x: float = grab * 0.5 + t * (size.x - grab)
+		draw_rect(Rect2(x - 1.0, size.y * 0.5 - 7.0, 2.0, 14.0), Color(Retro.c("text"), 0.55))
 
 
 class TipLabel extends Label:

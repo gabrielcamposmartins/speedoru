@@ -74,6 +74,8 @@ var compounds_used: Array[int] = []
 var off_time := 0.0
 var off_distance := 0.0
 var off_start_progress := 0.0
+## Carros logo à frente quando saiu da pista (para saber quem passou por fora).
+var off_ahead: Array = []
 var wrong_way_time := 0.0
 
 

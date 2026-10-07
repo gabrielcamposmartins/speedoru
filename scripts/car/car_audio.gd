@@ -57,6 +57,10 @@ var _prev_velocity := Vector3.ZERO
 var _prev_position := Vector3.ZERO
 var _impact_cooldown := 0.0
 var _bus_index := -1
+## Marcha lenta de cada carro um pouco diferente (vários carros parados no mesmo giro somavam um
+## zumbido de tom puro de 200 Hz no grid).
+var _idle_detune := 0.0
+var _idle_phase := 0.0
 
 
 func _ready() -> void:
@@ -79,6 +83,8 @@ func _ready() -> void:
 	car.drs_changed.connect(func(_open: bool): play_shot("drs", Vector3(0, 0.9, -2.4), -8.0))
 	_prev_gear = car.gear
 	_prev_position = car.global_position
+	_idle_detune = randf_range(-0.05, 0.05)
+	_idle_phase = randf() * TAU
 	_bus_index = AudioServer.get_bus_index(bus)
 
 
@@ -204,13 +210,17 @@ func _update_engine(rpm: float, _delta: float) -> void:
 		limiter = 0.5 + 0.5 * smoothstep(-0.4, 0.4, sin(_time * TAU * 18.0))
 	var on_gain := engine_load * limiter
 	var off_gain := (1.0 - engine_load) * 0.9
+	# Marcha lenta: giro irregular por carro e mais baixa (os rivais parados mais ainda)
+	var idle := 1.0 - smoothstep(4200.0, 6000.0, rpm)
+	var wobble := 1.0 + idle * (_idle_detune + 0.015 * sin(_time * TAU * 0.7 + _idle_phase) + 0.008 * sin(_time * TAU * 2.3))
+	loudness *= 1.0 - idle * (0.45 if rival else 0.2)
 	for i in ENGINE_RPMS.size():
 		var w := 0.0
 		if i == lo:
 			w = cos(t * PI * 0.5)
 		elif i == lo + 1:
 			w = sin(t * PI * 0.5)
-		var pitch := rpm / ENGINE_RPMS[i]
+		var pitch := rpm / ENGINE_RPMS[i] * wobble
 		_set_loop(_on[i], w * on_gain * loudness, pitch, engine_db + _near_db)
 		_set_loop(_off[i], w * off_gain * loudness, pitch, engine_db + _near_db)
 

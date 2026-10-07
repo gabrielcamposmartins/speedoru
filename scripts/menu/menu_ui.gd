@@ -204,7 +204,7 @@ func _build_home() -> void:
 	box.add_theme_constant_override("separation", 14)
 	_body.add_child(box)
 	var entries := [
-		["JOGAR SOLO", "Corrida contra bots em Monza · 10 voltas, 1 pit obrigatório", func() -> void: show_screen("solo"), false],
+		["JOGAR SOLO", "Corrida contra bots em Monza ou Mônaco · pit obrigatório", func() -> void: show_screen("solo"), false],
 		["MULTIPLAYER", _multiplayer_subtitle(), func() -> void: show_screen("multiplayer"), false],
 		["GARAGEM", "Estúdio, galeria e loja", func() -> void: show_screen("garage"), false],
 		["CONFIGURAÇÕES", "Controles, tela, gráficos, desempenho e áudio", func() -> void: menu.open_settings(), false],
@@ -336,16 +336,23 @@ func _panel(kicker: String, width_ratio: float) -> VBoxContainer:
 func _build_solo() -> void:
 	var box := _panel("JOGAR SOLO", 0.5)
 	var title := Label.new()
-	title.text = "MONZA"
+	title.text = RaceSettings.track_name(RaceSettings.track).to_upper()
 	title.theme_type_variation = "RetroTitle"
 	box.add_child(title)
 	var rows := [
+		["Pista", RaceSettings.TRACKS.map(func(t: Dictionary) -> String: return t["name"]), RaceSettings.track_index(RaceSettings.track),
+			func(i: int) -> void:
+				RaceSettings.track = RaceSettings.TRACKS[i]["id"]
+				title.text = RaceSettings.track_name(RaceSettings.track).to_upper()],
 		["Modo", ["Corrida (pit obrigatório)", "Treino livre"], RaceSettings.mode, func(i: int) -> void: RaceSettings.mode = i as RaceSettings.Mode],
 		["Voltas", ["3", "5", "10", "15", "20"], [3, 5, 10, 15, 20].find(RaceSettings.laps), func(i: int) -> void: RaceSettings.laps = [3, 5, 10, 15, 20][i]],
 		["Adversários", ["3", "5", "9", "13"], maxi([3, 5, 9, 13].find(RaceSettings.opponents), 0), func(i: int) -> void: RaceSettings.opponents = [3, 5, 9, 13][i]],
 		["Dificuldade dos bots", ["Fácil", "Médio", "Difícil", "Mista"], RaceSettings.difficulty, func(i: int) -> void: RaceSettings.difficulty = i],
 		["Largada", ["Pole position", "Meio do grid", "Última fila"], RaceSettings.grid, func(i: int) -> void: RaceSettings.grid = i as RaceSettings.Grid],
 		["DRS", ["Livre", "Só a até 1 s do carro da frente"], RaceSettings.drs_rule, func(i: int) -> void: RaceSettings.drs_rule = i],
+		["Classificatória", ["Sem", "1 volta", "2 voltas", "3 voltas"], RaceSettings.quali_laps,
+			func(i: int) -> void: RaceSettings.quali_laps = i,
+			["Colisão", RaceSettings.quali_collisions, func(on: bool) -> void: RaceSettings.quali_collisions = on]],
 		["Horário", Array(DaylightPresets.TIME_NAMES), RaceSettings.time_of_day, func(i: int) -> void: RaceSettings.time_of_day = i],
 		["Ambiente", Array(DaylightPresets.BIOME_NAMES), RaceSettings.biome, func(i: int) -> void: RaceSettings.biome = i],
 	]
@@ -374,6 +381,14 @@ func _build_solo() -> void:
 		o.selected = maxi(int(r[2]), 0)
 		o.item_selected.connect(r[3])
 		row.add_child(o)
+		# Caixa de marcar opcional na mesma linha (ex.: colisão na classificatória)
+		if r.size() > 4:
+			var chk: Array = r[4]
+			var cb := CheckBox.new()
+			cb.text = chk[0]
+			cb.button_pressed = chk[1]
+			cb.toggled.connect(chk[2])
+			row.add_child(cb)
 		box.add_child(row)
 	var reward := Label.new()
 	var per_lap: int = ShopCatalog.REWARD_PER_LAP[clampi(RaceSettings.difficulty, 0, 3)]

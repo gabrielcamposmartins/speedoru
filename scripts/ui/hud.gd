@@ -114,7 +114,11 @@ arraste o mouse para girar · roda = zoom · O sai"
 		camera_label.text = cam_text
 
 	var lines := clampf((car.speed_kmh - 180.0) / 140.0, 0.0, 1.0)
-	(speed_lines.material as ShaderMaterial).set_shader_parameter("intensity", lines)
+	# No vácuo: linhas azuladas e mais presentes (pista discreta de que o arrasto sumiu)
+	var slip := clampf(car.slipstream, 0.0, 1.0)
+	var mat := speed_lines.material as ShaderMaterial
+	mat.set_shader_parameter("intensity", maxf(lines, slip * 0.75))
+	mat.set_shader_parameter("line_color", Color(1.0, 1.0, 1.0, 0.55).lerp(Color(0.55, 0.85, 1.0, 0.7), smoothstep(0.1, 0.6, slip)))
 
 
 func _unhandled_input(event: InputEvent) -> void:

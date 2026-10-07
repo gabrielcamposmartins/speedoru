@@ -139,7 +139,10 @@ func _physics_process(delta: float) -> void:
 		Mode.PIT_IN, Mode.PIT_OUT:
 			var pit := _pit_plan(s, v)
 			target_lateral = pit.x
-			speed_target = minf(speed_target, minf(pit.y, _pit_traffic(s, entry.lateral)))
+			speed_target = minf(speed_target, pit.y)
+			# Fila indiana só dentro da faixa dos boxes; antes da entrada desvia como na corrida
+			if entry.in_pit or mode == Mode.PIT_OUT:
+				speed_target = minf(speed_target, _pit_traffic(s, entry.lateral))
 			if mode == Mode.PIT_IN and absf(_ahead(track.garage_s(entry.garage), s)) < 1.2 and v < 1.2:
 				mode = Mode.PIT_STOP
 				_stop_timer = randf_range(RaceManager.PIT_STOP_MIN, RaceManager.PIT_STOP_MAX)
@@ -162,10 +165,10 @@ func _physics_process(delta: float) -> void:
 			return
 	# Volta à linha de corrida aos poucos depois dos boxes
 	if mode == Mode.RACE and _rejoin > 0.0:
-		_rejoin = maxf(_rejoin - delta * 0.35, 0.0)
+		_rejoin = maxf(_rejoin - delta * 0.6, 0.0)
 		target_lateral = lerpf(target_lateral, _pit_lateral, _rejoin)
-	# --- Tráfego: ultrapassar, seguir ou desviar
-	if mode == Mode.RACE:
+	# --- Tráfego: ultrapassar, seguir ou desviar (também indo para o box, antes da entrada)
+	if mode == Mode.RACE or (mode == Mode.PIT_IN and not entry.in_pit):
 		_offset_target = 0.0
 		var traffic := _traffic(s, v, entry.lateral)
 		_offset_target = traffic.x
@@ -370,7 +373,8 @@ func _pit_plan(s: float, v: float) -> Vector2:
 	var lay := track.layout
 	var p := track.path
 	var side := lay.pit_side
-	var i := p.index_at(s)
+	# Saindo, mira a faixa um pouco à frente (onde ela afunila para a pista o carro já vem junto)
+	var i := p.index_at(s + (clampf(v * 0.6, 3.0, 25.0) if mode == Mode.PIT_OUT else 0.0))
 	var hw := p.half_width(i, side)
 	var w := track.pit_width[i]
 	var d := minf(w * 0.55, LANE_FAST)
@@ -417,6 +421,10 @@ func _pit_release_clear(s: float) -> bool:
 	for other: RaceEntry in manager.entries:
 		if other == entry or other.car == null or other.retired or not other.in_pit or other.in_pit_stop:
 			continue
+		# Bot parado na faixa (fila ou enroscado) não segura a saída: entre bots não há colisão nos
+		# boxes, e esperar por ele travaria os dois
+		if not other.is_player and other.car.linear_velocity.length() < 1.0:
+			continue
 		var ds := _ahead(other.s, s)
 		if ds > -35.0 and ds < 6.0:
 			return false
@@ -425,6 +433,17 @@ func _pit_release_clear(s: float) -> bool:
 
 ## Preso (parado fora dos boxes) por alguns segundos: volta para a linha de corrida.
 func _check_stuck(delta: float, v: float) -> void:
+	# Enroscado na entrada da vaga (pit lane estreita): depois de alguns segundos, vai direto para ela
+	if mode == Mode.PIT_IN and v < 1.0 and absf(_ahead(track.garage_s(entry.garage), entry.s)) < 30.0:
+		_stuck_timer += delta
+		if _stuck_timer > 5.0:
+			_stuck_timer = 0.0
+			car.global_transform = track.get_pit_box_transform(entry.garage)
+			car.linear_velocity = Vector3.ZERO
+			car.angular_velocity = Vector3.ZERO
+			car.reset_physics_interpolation()
+			car.reset_frame = Engine.get_physics_frames()
+		return
 	if mode != Mode.RACE or v > 2.0:
 		_stuck_timer = 0.0
 		return

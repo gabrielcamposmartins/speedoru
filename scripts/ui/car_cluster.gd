@@ -77,7 +77,8 @@ func _draw() -> void:
 	var drs_off := car.drs_rule_active and not car.drs_allowed and not car.drs_open
 	var flags := [
 		["DRS", car.drs_open, Retro.c("good"), drs_off],
-		["AUTO" if car.automatic else "MANUAL", false, Retro.c("text_2")],
+		# No vácuo, o lugar do câmbio mostra "VÁCUO" aceso
+		["VÁCUO", true, Retro.c("accent_2")] if car.slipstream > 0.2 else ["AUTO" if car.automatic else "MANUAL", false, Retro.c("text_2")],
 		["TC", car.tc_active, Retro.c("warn"), not car.traction_control],
 		["ABS", car.abs_active, Retro.c("warn")],
 		["LIM", car.limiter_on, Color("ffc400")],

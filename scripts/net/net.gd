@@ -15,7 +15,6 @@ signal race_snapshot(data: PackedByteArray)
 signal race_state(data: Dictionary)
 
 const ACCOUNT_FILE := "user://account.cfg"
-const RACE_SCENE := "res://scenes/tracks/monza.tscn"
 
 var is_server := false
 var online := false
@@ -294,12 +293,14 @@ func _enter_race(data: Dictionary) -> void:
 	RaceSettings.time_of_day = int(st.get("time_of_day", 0))
 	RaceSettings.biome = int(st.get("biome", 0))
 	RaceSettings.skip_menu = false
+	RaceSettings.track = RaceSettings.valid_track(str(st.get("track", "monza")))
 	RaceManager.client_setup = data
+	var scene := RaceSettings.track_scene(RaceSettings.track)
 	var loading := get_node_or_null("/root/Loading") as LoadingScreen
 	if loading:
-		loading.change_scene(RACE_SCENE)
+		loading.change_scene(scene)
 	else:
-		get_tree().change_scene_to_file(RACE_SCENE)
+		get_tree().change_scene_to_file(scene)
 
 
 ## Comandos do carro (cliente → servidor), contínuos.

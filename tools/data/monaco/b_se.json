@@ -1,0 +1,997 @@
+{
+  "version": 0.6,
+  "generator": "Overpass API 0.7.62.11 87bfad18",
+  "osm3s": {
+    "timestamp_osm_base": "2026-10-07T11:47:47Z",
+    "copyright": "The data included in this document is from www.openstreetmap.org. The data is made available under ODbL."
+  },
+  "elements": [
+
+{
+  "type": "way",
+  "id": 23715051,
+  "bounds": {
+    "minlat": 43.7303126,
+    "minlon": 7.4249684,
+    "maxlat": 43.7310126,
+    "maxlon": 7.4260990
+  },
+  "geometry": [
+    { "lat": 43.7306357, "lon": 7.4253297 },
+    { "lat": 43.7307252, "lon": 7.4252324 },
+    { "lat": 43.7308073, "lon": 7.4253770 },
+    { "lat": 43.7308819, "lon": 7.4255096 },
+    { "lat": 43.7308066, "lon": 7.4255908 },
+    { "lat": 43.7309855, "lon": 7.4259089 },
+    { "lat": 43.7309982, "lon": 7.4259314 },
+    { "lat": 43.7310126, "lon": 7.4259567 },
+    { "lat": 43.7308818, "lon": 7.4260990 },
+    { "lat": 43.7303126, "lon": 7.4250966 },
+    { "lat": 43.7304305, "lon": 7.4249684 },
+    { "lat": 43.7306357, "lon": 7.4253297 }
+  ],
+  "tags": {
+    "addr:city": "Monaco",
+    "addr:country": "MC",
+    "addr:postcode": "98000",
+    "addr:street": "Avenue Saint-Martin",
+    "building": "public",
+    "building:levels": "2",
+    "charge:conditional": "0 EUR @ age < 4; 12 EUR @ age >= 12 AND age < 18; 19 EUR @ age >= 18",
+    "contact:email": "musee@oceano.org",
+    "contact:phone": "+377 93 15 36 00",
+    "contact:website": "https://musee.oceano.org",
+    "fee": "yes",
+    "museum": "maritime",
+    "name": "Musée Océanographique",
+    "name:de": "Ozeanographisches Museum Monaco",
+    "name:en": "Oceanographic Museum of Monaco",
+    "name:es": "Museo Oceanográfico de Mónaco",
+    "name:fr": "Musée Océanographique",
+    "name:it": "Museo Oceanografico di Monaco",
+    "name:ja": "モナコ海洋博物館",
+    "name:ko": "모나코 해양박물관",
+    "name:pt": "Museu Oceanográfico do Mónaco",
+    "name:ru": "Океанографический_музей_Монако",
+    "name:zh": "摩納哥海洋博物館",
+    "name:zh-Hans": "摩纳哥海洋博物馆",
+    "name:zh-Hant": "摩納哥海洋博物館",
+    "nohousenumber": "yes",
+    "opening_hours": "Oct-Mar 10:00-18:00; Apr-Jun,Sep 10:00-19:00; Jul-Aug 10:00-20:00; Dec 25 off",
+    "roof:levels": "0",
+    "short_name": "Oceano Monaco",
+    "tourism": "museum",
+    "wheelchair": "limited",
+    "wikidata": "Q851527",
+    "wikimedia_commons": "Category:Musée Océanographique de Monaco",
+    "wikipedia": "en:Musée Océanographique"
+  }
+},
+{
+  "type": "way",
+  "id": 49209618,
+  "bounds": {
+    "minlat": 43.7318139,
+    "minlon": 7.4253599,
+    "maxlat": 43.7321032,
+    "maxlon": 7.4259567
+  },
+  "geometry": [
+    { "lat": 43.7319380, "lon": 7.4253599 },
+    { "lat": 43.7318997, "lon": 7.4253829 },
+    { "lat": 43.7318139, "lon": 7.4254339 },
+    { "lat": 43.7319793, "lon": 7.4259567 },
+    { "lat": 43.7321032, "lon": 7.4258814 },
+    { "lat": 43.7319601, "lon": 7.4254304 },
+    { "lat": 43.7319380, "lon": 7.4253599 }
+  ],
+  "tags": {
+    "addr:country": "MC",
+    "building": "office",
+    "name": "Ministère d'État",
+    "office": "government"
+  }
+},
+{
+  "type": "way",
+  "id": 49209620,
+  "bounds": {
+    "minlat": 43.7318911,
+    "minlon": 7.4261825,
+    "maxlat": 43.7320342,
+    "maxlon": 7.4263647
+  },
+  "geometry": [
+    { "lat": 43.7320342, "lon": 7.4262955 },
+    { "lat": 43.7319305, "lon": 7.4261825 },
+    { "lat": 43.7318911, "lon": 7.4262518 },
+    { "lat": 43.7319948, "lon": 7.4263647 },
+    { "lat": 43.7320342, "lon": 7.4262955 }
+  ],
+  "tags": {
+    "amenity": "place_of_worship",
+    "building": "chapel",
+    "name": "Chapelle de la Paix Saint-Honoré",
+    "religion": "christian"
+  }
+},
+{
+  "type": "way",
+  "id": 49209622,
+  "bounds": {
+    "minlat": 43.7320584,
+    "minlon": 7.4264423,
+    "maxlat": 43.7324108,
+    "maxlon": 7.4268313
+  },
+  "geometry": [
+    { "lat": 43.7324108, "lon": 7.4267661 },
+    { "lat": 43.7323101, "lon": 7.4264423 },
+    { "lat": 43.7320584, "lon": 7.4265923 },
+    { "lat": 43.7321120, "lon": 7.4267646 },
+    { "lat": 43.7322543, "lon": 7.4266798 },
+    { "lat": 43.7323014, "lon": 7.4268313 },
+    { "lat": 43.7324108, "lon": 7.4267661 }
+  ],
+  "tags": {
+    "addr:city": "Monaco",
+    "addr:country": "MC",
+    "addr:housenumber": "1",
+    "addr:postcode": "98000",
+    "addr:street": "Avenue des Pins",
+    "building": "college",
+    "name": "42 photos Flag Bosio, College Arts Plastics De Monaco"
+  }
+},
+{
+  "type": "way",
+  "id": 104863463,
+  "bounds": {
+    "minlat": 43.7312019,
+    "minlon": 7.4255382,
+    "maxlat": 43.7316966,
+    "maxlon": 7.4261480
+  },
+  "geometry": [
+    { "lat": 43.7315290, "lon": 7.4255382 },
+    { "lat": 43.7316966, "lon": 7.4260764 },
+    { "lat": 43.7316411, "lon": 7.4261480 },
+    { "lat": 43.7314429, "lon": 7.4258432 },
+    { "lat": 43.7313387, "lon": 7.4259692 },
+    { "lat": 43.7312019, "lon": 7.4257538 },
+    { "lat": 43.7313609, "lon": 7.4256490 },
+    { "lat": 43.7315290, "lon": 7.4255382 }
+  ],
+  "tags": {
+    "addr:city": "Monaco-Ville",
+    "addr:country": "MC",
+    "addr:housenumber": "2",
+    "addr:postcode": "98000",
+    "addr:street": "Place de la Visitation",
+    "building": "public",
+    "int_name": "Monegasque Parliament",
+    "name": "Conseil National de la Principauté de Monaco",
+    "name:br": "Kuzul Broadel Priñselezh Monako",
+    "name:de": "Nationalrat des Fürstentums Monaco",
+    "name:fr": "Conseil National de la Principauté de Monaco",
+    "office": "government",
+    "source": "http://www.nicematin.com/diaporama/la-construction-du-conseil-national-a-monaco.791285.html"
+  }
+},
+{
+  "type": "way",
+  "id": 128840977,
+  "bounds": {
+    "minlat": 43.7363697,
+    "minlon": 7.4292359,
+    "maxlat": 43.7375970,
+    "maxlon": 7.4300045
+  },
+  "geometry": [
+    { "lat": 43.7365407, "lon": 7.4297447 },
+    { "lat": 43.7363697, "lon": 7.4298465 },
+    { "lat": 43.7363857, "lon": 7.4298987 },
+    { "lat": 43.7363763, "lon": 7.4299116 },
+    { "lat": 43.7363756, "lon": 7.4299252 },
+    { "lat": 43.7363790, "lon": 7.4299410 },
+    { "lat": 43.7363868, "lon": 7.4299506 },
+    { "lat": 43.7364020, "lon": 7.4299528 },
+    { "lat": 43.7364178, "lon": 7.4300045 },
+    { "lat": 43.7366200, "lon": 7.4298867 },
+    { "lat": 43.7367122, "lon": 7.4298330 },
+    { "lat": 43.7371464, "lon": 7.4295800 },
+    { "lat": 43.7372297, "lon": 7.4295315 },
+    { "lat": 43.7375970, "lon": 7.4293175 },
+    { "lat": 43.7375776, "lon": 7.4292496 },
+    { "lat": 43.7375737, "lon": 7.4292359 },
+    { "lat": 43.7365602, "lon": 7.4298013 },
+    { "lat": 43.7365407, "lon": 7.4297447 }
+  ],
+  "tags": {
+    "addr:country": "MC",
+    "building": "yes",
+    "name": "Quai Lucciana"
+  }
+},
+{
+  "type": "way",
+  "id": 128840980,
+  "bounds": {
+    "minlat": 43.7362936,
+    "minlon": 7.4317177,
+    "maxlat": 43.7365086,
+    "maxlon": 7.4320143
+  },
+  "geometry": [
+    { "lat": 43.7362936, "lon": 7.4318774 },
+    { "lat": 43.7364131, "lon": 7.4320143 },
+    { "lat": 43.7364275, "lon": 7.4319903 },
+    { "lat": 43.7364519, "lon": 7.4319812 },
+    { "lat": 43.7364713, "lon": 7.4319553 },
+    { "lat": 43.7364877, "lon": 7.4319191 },
+    { "lat": 43.7364923, "lon": 7.4318818 },
+    { "lat": 43.7365086, "lon": 7.4318546 },
+    { "lat": 43.7364809, "lon": 7.4318229 },
+    { "lat": 43.7364765, "lon": 7.4317940 },
+    { "lat": 43.7364631, "lon": 7.4317702 },
+    { "lat": 43.7364409, "lon": 7.4317502 },
+    { "lat": 43.7364137, "lon": 7.4317459 },
+    { "lat": 43.7363890, "lon": 7.4317177 },
+    { "lat": 43.7362992, "lon": 7.4318680 },
+    { "lat": 43.7362936, "lon": 7.4318774 }
+  ],
+  "tags": {
+    "addr:country": "MC",
+    "building": "yes"
+  }
+},
+{
+  "type": "way",
+  "id": 128840986,
+  "bounds": {
+    "minlat": 43.7333726,
+    "minlon": 7.4278287,
+    "maxlat": 43.7335586,
+    "maxlon": 7.4279396
+  },
+  "geometry": [
+    { "lat": 43.7335497, "lon": 7.4278287 },
+    { "lat": 43.7333726, "lon": 7.4278769 },
+    { "lat": 43.7333815, "lon": 7.4279396 },
+    { "lat": 43.7335586, "lon": 7.4278913 },
+    { "lat": 43.7335497, "lon": 7.4278287 }
+  ],
+  "tags": {
+    "addr:country": "MC",
+    "building": "yes"
+  }
+},
+{
+  "type": "way",
+  "id": 128840988,
+  "bounds": {
+    "minlat": 43.7336011,
+    "minlon": 7.4267907,
+    "maxlat": 43.7336574,
+    "maxlon": 7.4268668
+  },
+  "geometry": [
+    { "lat": 43.7336447, "lon": 7.4267907 },
+    { "lat": 43.7336574, "lon": 7.4268482 },
+    { "lat": 43.7336139, "lon": 7.4268668 },
+    { "lat": 43.7336011, "lon": 7.4268092 },
+    { "lat": 43.7336447, "lon": 7.4267907 }
+  ],
+  "tags": {
+    "addr:country": "MC",
+    "building": "yes"
+  }
+},
+{
+  "type": "way",
+  "id": 128840991,
+  "bounds": {
+    "minlat": 43.7336510,
+    "minlon": 7.4279230,
+    "maxlat": 43.7338936,
+    "maxlon": 7.4281728
+  },
+  "geometry": [
+    { "lat": 43.7338670, "lon": 7.4279230 },
+    { "lat": 43.7338129, "lon": 7.4279379 },
+    { "lat": 43.7338229, "lon": 7.4280123 },
+    { "lat": 43.7337123, "lon": 7.4280428 },
+    { "lat": 43.7337016, "lon": 7.4279665 },
+    { "lat": 43.7336510, "lon": 7.4279805 },
+    { "lat": 43.7336784, "lon": 7.4281728 },
+    { "lat": 43.7338936, "lon": 7.4281133 },
+    { "lat": 43.7338670, "lon": 7.4279230 }
+  ],
+  "tags": {
+    "addr:country": "MC",
+    "building": "yes"
+  }
+},
+{
+  "type": "way",
+  "id": 161885377,
+  "bounds": {
+    "minlat": 43.7322715,
+    "minlon": 7.4230183,
+    "maxlat": 43.7330774,
+    "maxlon": 7.4265434
+  },
+  "geometry": [
+    { "lat": 43.7328495, "lon": 7.4265434 },
+    { "lat": 43.7325818, "lon": 7.4252679 },
+    { "lat": 43.7325640, "lon": 7.4252750 },
+    { "lat": 43.7324523, "lon": 7.4247341 },
+    { "lat": 43.7324602, "lon": 7.4247309 },
+    { "lat": 43.7324056, "lon": 7.4244667 },
+    { "lat": 43.7323349, "lon": 7.4240787 },
+    { "lat": 43.7323406, "lon": 7.4239062 },
+    { "lat": 43.7323704, "lon": 7.4238944 },
+    { "lat": 43.7323429, "lon": 7.4237611 },
+    { "lat": 43.7323365, "lon": 7.4236307 },
+    { "lat": 43.7323578, "lon": 7.4236223 },
+    { "lat": 43.7323416, "lon": 7.4235440 },
+    { "lat": 43.7322979, "lon": 7.4232401 },
+    { "lat": 43.7323114, "lon": 7.4232347 },
+    { "lat": 43.7322715, "lon": 7.4230416 },
+    { "lat": 43.7323303, "lon": 7.4230183 },
+    { "lat": 43.7324626, "lon": 7.4236589 },
+    { "lat": 43.7324822, "lon": 7.4236511 },
+    { "lat": 43.7324979, "lon": 7.4236449 },
+    { "lat": 43.7326947, "lon": 7.4245967 },
+    { "lat": 43.7330717, "lon": 7.4264194 },
+    { "lat": 43.7330774, "lon": 7.4264470 },
+    { "lat": 43.7330600, "lon": 7.4264543 },
+    { "lat": 43.7328495, "lon": 7.4265434 }
+  ],
+  "tags": {
+    "addr:city": "Monaco",
+    "addr:country": "MC",
+    "addr:housenumber": "4",
+    "addr:postcode": "98000",
+    "addr:street": "Quai Antoine 1er",
+    "building": "yes",
+    "name": "Salle d'Exposition",
+    "name:en": "Exhibition Hall",
+    "name:ru": "Выставочный зал",
+    "tourism": "museum"
+  }
+},
+{
+  "type": "way",
+  "id": 182693521,
+  "bounds": {
+    "minlat": 43.7324741,
+    "minlon": 7.4269971,
+    "maxlat": 43.7325128,
+    "maxlon": 7.4270618
+  },
+  "geometry": [
+    { "lat": 43.7325042, "lon": 7.4269971 },
+    { "lat": 43.7325128, "lon": 7.4270530 },
+    { "lat": 43.7324827, "lon": 7.4270618 },
+    { "lat": 43.7324741, "lon": 7.4270059 },
+    { "lat": 43.7325042, "lon": 7.4269971 }
+  ],
+  "tags": {
+    "addr:country": "MC",
+    "building": "yes",
+    "name": "Porte Neuve"
+  }
+},
+{
+  "type": "way",
+  "id": 182693522,
+  "bounds": {
+    "minlat": 43.7325611,
+    "minlon": 7.4269697,
+    "maxlat": 43.7326137,
+    "maxlon": 7.4270340
+  },
+  "geometry": [
+    { "lat": 43.7326079, "lon": 7.4269697 },
+    { "lat": 43.7326137, "lon": 7.4270287 },
+    { "lat": 43.7325749, "lon": 7.4270340 },
+    { "lat": 43.7325611, "lon": 7.4269786 },
+    { "lat": 43.7326079, "lon": 7.4269697 }
+  ],
+  "tags": {
+    "addr:country": "MC",
+    "building": "yes",
+    "name": "Porte Neuve"
+  }
+},
+{
+  "type": "way",
+  "id": 320119396,
+  "bounds": {
+    "minlat": 43.7344324,
+    "minlon": 7.4296504,
+    "maxlat": 43.7351276,
+    "maxlon": 7.4304851
+  },
+  "geometry": [
+    { "lat": 43.7345066, "lon": 7.4296504 },
+    { "lat": 43.7351276, "lon": 7.4303391 },
+    { "lat": 43.7351067, "lon": 7.4303771 },
+    { "lat": 43.7350473, "lon": 7.4304851 },
+    { "lat": 43.7349902, "lon": 7.4304118 },
+    { "lat": 43.7350035, "lon": 7.4303862 },
+    { "lat": 43.7347847, "lon": 7.4301390 },
+    { "lat": 43.7347261, "lon": 7.4300727 },
+    { "lat": 43.7345037, "lon": 7.4298212 },
+    { "lat": 43.7344872, "lon": 7.4298474 },
+    { "lat": 43.7344324, "lon": 7.4297810 },
+    { "lat": 43.7344798, "lon": 7.4296915 },
+    { "lat": 43.7344929, "lon": 7.4296703 },
+    { "lat": 43.7345066, "lon": 7.4296504 }
+  ],
+  "tags": {
+    "addr:country": "MC",
+    "building": "industrial"
+  }
+},
+{
+  "type": "way",
+  "id": 478668725,
+  "bounds": {
+    "minlat": 43.7313863,
+    "minlon": 7.4258660,
+    "maxlat": 43.7315809,
+    "maxlon": 7.4261532
+  },
+  "geometry": [
+    { "lat": 43.7315809, "lon": 7.4260853 },
+    { "lat": 43.7315248, "lon": 7.4261532 },
+    { "lat": 43.7313863, "lon": 7.4259339 },
+    { "lat": 43.7314425, "lon": 7.4258660 },
+    { "lat": 43.7315809, "lon": 7.4260853 }
+  ],
+  "tags": {
+    "addr:country": "MC",
+    "building": "yes"
+  }
+},
+{
+  "type": "way",
+  "id": 510086797,
+  "bounds": {
+    "minlat": 43.7316792,
+    "minlon": 7.4270591,
+    "maxlat": 43.7319361,
+    "maxlon": 7.4273865
+  },
+  "geometry": [
+    { "lat": 43.7319361, "lon": 7.4271987 },
+    { "lat": 43.7318407, "lon": 7.4270591 },
+    { "lat": 43.7316792, "lon": 7.4270957 },
+    { "lat": 43.7316828, "lon": 7.4272126 },
+    { "lat": 43.7317750, "lon": 7.4273346 },
+    { "lat": 43.7317740, "lon": 7.4273598 },
+    { "lat": 43.7317865, "lon": 7.4273839 },
+    { "lat": 43.7318143, "lon": 7.4273865 },
+    { "lat": 43.7318330, "lon": 7.4273710 },
+    { "lat": 43.7318370, "lon": 7.4273372 },
+    { "lat": 43.7319361, "lon": 7.4271987 }
+  ],
+  "tags": {
+    "addr:city": "Monaco",
+    "addr:country": "MC",
+    "addr:housenumber": "4",
+    "addr:postcode": "98000",
+    "addr:street": "Avenue Saint-Martin",
+    "amenity": "prison",
+    "building": "yes",
+    "check_date": "2026-04-22",
+    "name": "Maison d'Arrêt de Monaco",
+    "name:cs": "Vazební věznice v Monaku",
+    "name:en": "Remand Prison of Monaco",
+    "name:fr": "Maison d'Arrêt de Monaco",
+    "phone": "+377 98 98 21 18",
+    "wikidata": "Q18397494",
+    "wikipedia": "en:Remand Prison of Monaco"
+  }
+},
+{
+  "type": "way",
+  "id": 573030549,
+  "bounds": {
+    "minlat": 43.7329446,
+    "minlon": 7.4277492,
+    "maxlat": 43.7331826,
+    "maxlon": 7.4281135
+  },
+  "geometry": [
+    { "lat": 43.7329446, "lon": 7.4280385 },
+    { "lat": 43.7329664, "lon": 7.4279800 },
+    { "lat": 43.7330378, "lon": 7.4277881 },
+    { "lat": 43.7330523, "lon": 7.4277492 },
+    { "lat": 43.7330920, "lon": 7.4277582 },
+    { "lat": 43.7331277, "lon": 7.4277832 },
+    { "lat": 43.7331562, "lon": 7.4278218 },
+    { "lat": 43.7331751, "lon": 7.4278702 },
+    { "lat": 43.7331826, "lon": 7.4279239 },
+    { "lat": 43.7331777, "lon": 7.4279812 },
+    { "lat": 43.7331601, "lon": 7.4280334 },
+    { "lat": 43.7331316, "lon": 7.4280755 },
+    { "lat": 43.7331141, "lon": 7.4280913 },
+    { "lat": 43.7331167, "lon": 7.4281034 },
+    { "lat": 43.7330973, "lon": 7.4281131 },
+    { "lat": 43.7330950, "lon": 7.4281031 },
+    { "lat": 43.7330540, "lon": 7.4281135 },
+    { "lat": 43.7330124, "lon": 7.4281055 },
+    { "lat": 43.7329746, "lon": 7.4280797 },
+    { "lat": 43.7329446, "lon": 7.4280385 }
+  ],
+  "tags": {
+    "addr:country": "MC",
+    "building": "yes",
+    "historic": "fort",
+    "name": "Fort Antoine 1er",
+    "theatre:type": "open_air"
+  }
+},
+{
+  "type": "way",
+  "id": 585654707,
+  "bounds": {
+    "minlat": 43.7358539,
+    "minlon": 7.4268651,
+    "maxlat": 43.7371128,
+    "maxlon": 7.4273827
+  },
+  "geometry": [
+    { "lat": 43.7371046, "lon": 7.4269113 },
+    { "lat": 43.7371128, "lon": 7.4269519 },
+    { "lat": 43.7371095, "lon": 7.4269925 },
+    { "lat": 43.7370851, "lon": 7.4270286 },
+    { "lat": 43.7360421, "lon": 7.4273083 },
+    { "lat": 43.7360193, "lon": 7.4273591 },
+    { "lat": 43.7359272, "lon": 7.4273827 },
+    { "lat": 43.7358840, "lon": 7.4273421 },
+    { "lat": 43.7358539, "lon": 7.4271234 },
+    { "lat": 43.7358824, "lon": 7.4270625 },
+    { "lat": 43.7359729, "lon": 7.4270365 },
+    { "lat": 43.7360152, "lon": 7.4270782 },
+    { "lat": 43.7360250, "lon": 7.4271425 },
+    { "lat": 43.7370513, "lon": 7.4268651 },
+    { "lat": 43.7370537, "lon": 7.4268792 },
+    { "lat": 43.7370773, "lon": 7.4268730 },
+    { "lat": 43.7370887, "lon": 7.4268781 },
+    { "lat": 43.7370993, "lon": 7.4268933 },
+    { "lat": 43.7371046, "lon": 7.4269113 }
+  ],
+  "tags": {
+    "addr:city": "Monaco",
+    "addr:country": "MC",
+    "addr:postcode": "98000",
+    "addr:street": "Quai de l’Hirondelle",
+    "building": "yes"
+  }
+},
+{
+  "type": "way",
+  "id": 585654716,
+  "bounds": {
+    "minlat": 43.7331869,
+    "minlon": 7.4274250,
+    "maxlat": 43.7332913,
+    "maxlon": 7.4276381
+  },
+  "geometry": [
+    { "lat": 43.7332552, "lon": 7.4274250 },
+    { "lat": 43.7331949, "lon": 7.4274489 },
+    { "lat": 43.7332088, "lon": 7.4275148 },
+    { "lat": 43.7331869, "lon": 7.4275272 },
+    { "lat": 43.7332102, "lon": 7.4276381 },
+    { "lat": 43.7332533, "lon": 7.4276228 },
+    { "lat": 43.7332913, "lon": 7.4276055 },
+    { "lat": 43.7332767, "lon": 7.4275327 },
+    { "lat": 43.7332552, "lon": 7.4274250 }
+  ],
+  "tags": {
+    "addr:country": "MC",
+    "building": "school"
+  }
+},
+{
+  "type": "way",
+  "id": 585654717,
+  "bounds": {
+    "minlat": 43.7332671,
+    "minlon": 7.4277416,
+    "maxlat": 43.7333361,
+    "maxlon": 7.4278439
+  },
+  "geometry": [
+    { "lat": 43.7332868, "lon": 7.4277573 },
+    { "lat": 43.7332671, "lon": 7.4277661 },
+    { "lat": 43.7332918, "lon": 7.4278439 },
+    { "lat": 43.7333181, "lon": 7.4278376 },
+    { "lat": 43.7333132, "lon": 7.4278120 },
+    { "lat": 43.7333361, "lon": 7.4278007 },
+    { "lat": 43.7333227, "lon": 7.4277416 },
+    { "lat": 43.7332868, "lon": 7.4277573 }
+  ],
+  "tags": {
+    "addr:country": "MC",
+    "building": "yes"
+  }
+},
+{
+  "type": "way",
+  "id": 585654718,
+  "bounds": {
+    "minlat": 43.7329788,
+    "minlon": 7.4280324,
+    "maxlat": 43.7362992,
+    "maxlon": 7.4318774
+  },
+  "geometry": [
+    { "lat": 43.7332840, "lon": 7.4280557 },
+    { "lat": 43.7332812, "lon": 7.4281011 },
+    { "lat": 43.7332782, "lon": 7.4281560 },
+    { "lat": 43.7332816, "lon": 7.4282584 },
+    { "lat": 43.7333166, "lon": 7.4284035 },
+    { "lat": 43.7333604, "lon": 7.4284917 },
+    { "lat": 43.7334077, "lon": 7.4285486 },
+    { "lat": 43.7338557, "lon": 7.4290583 },
+    { "lat": 43.7339487, "lon": 7.4291641 },
+    { "lat": 43.7339584, "lon": 7.4291483 },
+    { "lat": 43.7344182, "lon": 7.4296714 },
+    { "lat": 43.7344237, "lon": 7.4296772 },
+    { "lat": 43.7344929, "lon": 7.4296703 },
+    { "lat": 43.7344798, "lon": 7.4296915 },
+    { "lat": 43.7344324, "lon": 7.4297810 },
+    { "lat": 43.7344872, "lon": 7.4298474 },
+    { "lat": 43.7345037, "lon": 7.4298212 },
+    { "lat": 43.7347261, "lon": 7.4300727 },
+    { "lat": 43.7347847, "lon": 7.4301390 },
+    { "lat": 43.7350035, "lon": 7.4303862 },
+    { "lat": 43.7349902, "lon": 7.4304118 },
+    { "lat": 43.7350473, "lon": 7.4304851 },
+    { "lat": 43.7351067, "lon": 7.4303771 },
+    { "lat": 43.7351170, "lon": 7.4303926 },
+    { "lat": 43.7351210, "lon": 7.4304445 },
+    { "lat": 43.7356417, "lon": 7.4310250 },
+    { "lat": 43.7356533, "lon": 7.4310076 },
+    { "lat": 43.7360234, "lon": 7.4314234 },
+    { "lat": 43.7360302, "lon": 7.4314689 },
+    { "lat": 43.7359963, "lon": 7.4315306 },
+    { "lat": 43.7362992, "lon": 7.4318680 },
+    { "lat": 43.7362936, "lon": 7.4318774 },
+    { "lat": 43.7351591, "lon": 7.4306059 },
+    { "lat": 43.7351329, "lon": 7.4306542 },
+    { "lat": 43.7339470, "lon": 7.4293087 },
+    { "lat": 43.7339237, "lon": 7.4292823 },
+    { "lat": 43.7339219, "lon": 7.4292802 },
+    { "lat": 43.7337665, "lon": 7.4291040 },
+    { "lat": 43.7336973, "lon": 7.4290254 },
+    { "lat": 43.7333501, "lon": 7.4286316 },
+    { "lat": 43.7331171, "lon": 7.4283672 },
+    { "lat": 43.7331049, "lon": 7.4283534 },
+    { "lat": 43.7330040, "lon": 7.4282389 },
+    { "lat": 43.7329856, "lon": 7.4282013 },
+    { "lat": 43.7329788, "lon": 7.4281638 },
+    { "lat": 43.7330125, "lon": 7.4281672 },
+    { "lat": 43.7331406, "lon": 7.4281853 },
+    { "lat": 43.7331997, "lon": 7.4281799 },
+    { "lat": 43.7332114, "lon": 7.4280324 },
+    { "lat": 43.7332532, "lon": 7.4280458 },
+    { "lat": 43.7332840, "lon": 7.4280557 }
+  ],
+  "tags": {
+    "addr:country": "MC",
+    "building": "pier",
+    "building:levels": "2"
+  }
+},
+{
+  "type": "way",
+  "id": 585666925,
+  "bounds": {
+    "minlat": 43.7336344,
+    "minlon": 7.4278480,
+    "maxlat": 43.7337016,
+    "maxlon": 7.4279805
+  },
+  "geometry": [
+    { "lat": 43.7336510, "lon": 7.4279805 },
+    { "lat": 43.7336344, "lon": 7.4278641 },
+    { "lat": 43.7336867, "lon": 7.4278480 },
+    { "lat": 43.7337016, "lon": 7.4279665 },
+    { "lat": 43.7336510, "lon": 7.4279805 }
+  ],
+  "tags": {
+    "addr:country": "MC",
+    "building": "yes"
+  }
+},
+{
+  "type": "way",
+  "id": 585666927,
+  "bounds": {
+    "minlat": 43.7337962,
+    "minlon": 7.4278024,
+    "maxlat": 43.7338670,
+    "maxlon": 7.4279379
+  },
+  "geometry": [
+    { "lat": 43.7338129, "lon": 7.4279379 },
+    { "lat": 43.7337962, "lon": 7.4278185 },
+    { "lat": 43.7338495, "lon": 7.4278024 },
+    { "lat": 43.7338670, "lon": 7.4279230 },
+    { "lat": 43.7338129, "lon": 7.4279379 }
+  ],
+  "tags": {
+    "addr:country": "MC",
+    "building": "yes"
+  }
+},
+{
+  "type": "way",
+  "id": 585666929,
+  "bounds": {
+    "minlat": 43.7339150,
+    "minlon": 7.4278162,
+    "maxlat": 43.7340718,
+    "maxlon": 7.4280072
+  },
+  "geometry": [
+    { "lat": 43.7339150, "lon": 7.4278481 },
+    { "lat": 43.7339343, "lon": 7.4280072 },
+    { "lat": 43.7340718, "lon": 7.4279753 },
+    { "lat": 43.7340525, "lon": 7.4278162 },
+    { "lat": 43.7339150, "lon": 7.4278481 }
+  ],
+  "tags": {
+    "addr:country": "MC",
+    "building": "yes"
+  }
+},
+{
+  "type": "way",
+  "id": 585666930,
+  "bounds": {
+    "minlat": 43.7339234,
+    "minlon": 7.4277016,
+    "maxlat": 43.7340161,
+    "maxlon": 7.4278094
+  },
+  "geometry": [
+    { "lat": 43.7339234, "lon": 7.4277204 },
+    { "lat": 43.7340054, "lon": 7.4277016 },
+    { "lat": 43.7340161, "lon": 7.4277906 },
+    { "lat": 43.7339340, "lon": 7.4278094 },
+    { "lat": 43.7339234, "lon": 7.4277204 }
+  ],
+  "tags": {
+    "addr:country": "MC",
+    "building": "yes"
+  }
+},
+{
+  "type": "way",
+  "id": 585666932,
+  "bounds": {
+    "minlat": 43.7340185,
+    "minlon": 7.4283552,
+    "maxlat": 43.7340744,
+    "maxlon": 7.4284454
+  },
+  "geometry": [
+    { "lat": 43.7340185, "lon": 7.4283736 },
+    { "lat": 43.7340367, "lon": 7.4284454 },
+    { "lat": 43.7340744, "lon": 7.4284270 },
+    { "lat": 43.7340562, "lon": 7.4283552 },
+    { "lat": 43.7340185, "lon": 7.4283736 }
+  ],
+  "tags": {
+    "addr:country": "MC",
+    "building": "yes"
+  }
+},
+{
+  "type": "way",
+  "id": 834185384,
+  "bounds": {
+    "minlat": 43.7319500,
+    "minlon": 7.4260442,
+    "maxlat": 43.7320157,
+    "maxlon": 7.4261337
+  },
+  "geometry": [
+    { "lat": 43.7319958, "lon": 7.4260442 },
+    { "lat": 43.7320157, "lon": 7.4261047 },
+    { "lat": 43.7319699, "lon": 7.4261337 },
+    { "lat": 43.7319500, "lon": 7.4260732 },
+    { "lat": 43.7319958, "lon": 7.4260442 }
+  ],
+  "tags": {
+    "building": "yes"
+  }
+},
+{
+  "type": "way",
+  "id": 834307956,
+  "bounds": {
+    "minlat": 43.7311811,
+    "minlon": 7.4268741,
+    "maxlat": 43.7312527,
+    "maxlon": 7.4269732
+  },
+  "geometry": [
+    { "lat": 43.7312175, "lon": 7.4268741 },
+    { "lat": 43.7311811, "lon": 7.4269260 },
+    { "lat": 43.7312163, "lon": 7.4269732 },
+    { "lat": 43.7312527, "lon": 7.4269213 },
+    { "lat": 43.7312175, "lon": 7.4268741 }
+  ],
+  "tags": {
+    "building": "yes"
+  }
+},
+{
+  "type": "way",
+  "id": 834307957,
+  "bounds": {
+    "minlat": 43.7311293,
+    "minlon": 7.4269657,
+    "maxlat": 43.7312009,
+    "maxlon": 7.4270648
+  },
+  "geometry": [
+    { "lat": 43.7311657, "lon": 7.4269657 },
+    { "lat": 43.7311293, "lon": 7.4270176 },
+    { "lat": 43.7311645, "lon": 7.4270648 },
+    { "lat": 43.7312009, "lon": 7.4270129 },
+    { "lat": 43.7311657, "lon": 7.4269657 }
+  ],
+  "tags": {
+    "building": "yes"
+  }
+},
+{
+  "type": "way",
+  "id": 834307958,
+  "bounds": {
+    "minlat": 43.7311427,
+    "minlon": 7.4272399,
+    "maxlat": 43.7312143,
+    "maxlon": 7.4273390
+  },
+  "geometry": [
+    { "lat": 43.7311791, "lon": 7.4272399 },
+    { "lat": 43.7311427, "lon": 7.4272918 },
+    { "lat": 43.7311779, "lon": 7.4273390 },
+    { "lat": 43.7312143, "lon": 7.4272871 },
+    { "lat": 43.7311791, "lon": 7.4272399 }
+  ],
+  "tags": {
+    "building": "yes"
+  }
+},
+{
+  "type": "way",
+  "id": 834307969,
+  "bounds": {
+    "minlat": 43.7309421,
+    "minlon": 7.4260804,
+    "maxlat": 43.7310525,
+    "maxlon": 7.4262344
+  },
+  "geometry": [
+    { "lat": 43.7309421, "lon": 7.4261452 },
+    { "lat": 43.7309917, "lon": 7.4262344 },
+    { "lat": 43.7310525, "lon": 7.4261696 },
+    { "lat": 43.7310028, "lon": 7.4260804 },
+    { "lat": 43.7309421, "lon": 7.4261452 }
+  ],
+  "tags": {
+    "building": "yes"
+  }
+},
+{
+  "type": "way",
+  "id": 904881706,
+  "bounds": {
+    "minlat": 43.7317346,
+    "minlon": 7.4264854,
+    "maxlat": 43.7317880,
+    "maxlon": 7.4265674
+  },
+  "geometry": [
+    { "lat": 43.7317346, "lon": 7.4265077 },
+    { "lat": 43.7317652, "lon": 7.4265674 },
+    { "lat": 43.7317880, "lon": 7.4265451 },
+    { "lat": 43.7317573, "lon": 7.4264854 },
+    { "lat": 43.7317346, "lon": 7.4265077 }
+  ],
+  "tags": {
+    "building": "yes"
+  }
+},
+{
+  "type": "way",
+  "id": 1082340305,
+  "bounds": {
+    "minlat": 43.7309992,
+    "minlon": 7.4257839,
+    "maxlat": 43.7310413,
+    "maxlon": 7.4258482
+  },
+  "geometry": [
+    { "lat": 43.7310413, "lon": 7.4258312 },
+    { "lat": 43.7310155, "lon": 7.4257839 },
+    { "lat": 43.7309992, "lon": 7.4258008 },
+    { "lat": 43.7310250, "lon": 7.4258482 },
+    { "lat": 43.7310413, "lon": 7.4258312 }
+  ],
+  "tags": {
+    "building": "yes",
+    "shop": "kiosk"
+  }
+},
+{
+  "type": "way",
+  "id": 1447995581,
+  "bounds": {
+    "minlat": 43.7327888,
+    "minlon": 7.4261444,
+    "maxlat": 43.7330717,
+    "maxlon": 7.4265217
+  },
+  "geometry": [
+    { "lat": 43.7330137, "lon": 7.4261444 },
+    { "lat": 43.7327888, "lon": 7.4262297 },
+    { "lat": 43.7328502, "lon": 7.4265217 },
+    { "lat": 43.7330717, "lon": 7.4264194 },
+    { "lat": 43.7330137, "lon": 7.4261444 }
+  ],
+  "tags": {
+    "addr:city": "Monaco",
+    "addr:housenumber": "14",
+    "addr:postcode": "98000",
+    "addr:street": "Quai Antoine 1er",
+    "building": "industrial"
+  }
+},
+{
+  "type": "relation",
+  "id": 11384697,
+  "bounds": {
+    "minlat": 43.7306325,
+    "minlon": 7.4261821,
+    "maxlat": 43.7315167,
+    "maxlon": 7.4274934
+  },
+  "tags": {
+    "addr:country": "MC",
+    "building": "yes",
+    "layer": "1",
+    "leisure": "garden",
+    "type": "multipolygon"
+  }
+},
+{
+  "type": "relation",
+  "id": 11538023,
+  "bounds": {
+    "minlat": 43.7328276,
+    "minlon": 7.4264470,
+    "maxlat": 43.7332768,
+    "maxlon": 7.4274900
+  },
+  "tags": {
+    "building": "apartments",
+    "building:levels": "6",
+    "type": "multipolygon"
+  }
+}
+
+  ]
+}

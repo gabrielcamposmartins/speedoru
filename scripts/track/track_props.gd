@@ -91,6 +91,9 @@ static func _lights(track: RaceTrack, f: TrackFeature, mb: MeshBuilder, lamps: M
 		parent: Node3D) -> void:
 	var p := track.path
 	var step := maxi(int(f.spacing / p.spacing), 1)
+	if f.variant == 1:
+		_street_lamps(track, f, mb, lamps, parent, step)
+		return
 	for side in f.sides():
 		var prev := Vector3.INF
 		for i in track.span_indices(f.s_start, f.s_end, step):
@@ -115,6 +118,42 @@ static func _lights(track: RaceTrack, f: TrackFeature, mb: MeshBuilder, lamps: M
 				lamps.box(Transform3D(tilt, c + tilt.z * 0.13), Vector3(0.68, 0.48, 0.02), LAMP)
 			# Luz de verdade para a noite (desligada de dia; RaceTrack.apply_mood liga)
 			night_light(parent, head + to_track * 0.6, p.points[i] + to_track * 0.0 - p.lefts[i] * side * 2.0)
+
+
+## Postes de rua (LIGHTS com variant 1, circuitos de rua): coluna fina logo atrás da barreira,
+## braço curvo sobre a pista e uma luminária com luz quente à noite. Com "os dois lados", alternam.
+static func _street_lamps(track: RaceTrack, f: TrackFeature, mb: MeshBuilder, lamps: MeshBuilder, parent: Node3D, step: int) -> void:
+	var p := track.path
+	var sides := f.sides()
+	var n := 0
+	for i in track.span_indices(f.s_start, f.s_end, step):
+		var side: int = sides[n % sides.size()]
+		n += 1
+		if track.in_tunnel(i) or (track.layout.has_pit and side == track.layout.pit_side and track.pit_width[i] > 0.5):
+			continue
+		var k := RaceTrack._si(side)
+		var base := track.edge_point(i, side, track.barrier[k][i] + 0.75)
+		var to_track := -p.lefts[i] * side
+		var height := 9.0
+		var dark := Color(0.16, 0.17, 0.2)
+		mb.posts().cylinder(Transform3D(Basis(), base), 0.16, 0.1, height, dark, 7)
+		mb.posts().box(Transform3D(Basis(), base + Vector3.UP * 0.5), Vector3(0.4, 1.0, 0.4), dark)
+		# Braço em dois segmentos (sobe e avança sobre a pista)
+		var top := base + Vector3.UP * height
+		var mid := top + to_track * 1.3 + Vector3.UP * 0.5
+		var tip := mid + to_track * 1.6
+		for seg in [[top, mid], [mid, tip]]:
+			var a: Vector3 = seg[0]
+			var b: Vector3 = seg[1]
+			var dir := (b - a).normalized()
+			var x := dir.cross(Vector3.UP).normalized()
+			var basis := Basis(x, dir, x.cross(dir))
+			mb.posts().cylinder(Transform3D(basis, a), 0.07, 0.06, a.distance_to(b), dark, 5, false)
+		var lamp_basis := Basis(p.tangents[i].normalized(), Vector3.UP, to_track).orthonormalized()
+		mb.box(Transform3D(lamp_basis, tip + Vector3.DOWN * 0.12), Vector3(0.45, 0.22, 0.9), dark)
+		lamps.box(Transform3D(lamp_basis, tip + Vector3.DOWN * 0.25), Vector3(0.36, 0.04, 0.75), LAMP)
+		var light := night_light(parent, tip + Vector3.DOWN * 0.3, p.points[i] + to_track * 0.5 + Vector3.UP * 0.1, 7.0, 64.0)
+		light.light_color = Color(1.0, 0.82, 0.58)
 
 
 static func _billboards(track: RaceTrack, f: TrackFeature, mb: MeshBuilder, ads: MeshBuilder) -> void:

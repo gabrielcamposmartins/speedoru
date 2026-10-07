@@ -2,12 +2,14 @@ class_name TrackPath
 extends RefCounted
 ## Linha central de um circuito fechado, reamostrada com espaçamento constante.
 ##
-## Coordenadas: o CSV usa (x = leste, y = norte) em metros; no Godot vira (x, 0, -y), então o
+## Coordenadas: o CSV usa (x = leste, y = norte) em metros; no Godot vira (x, z, -y), então o
 ## mapa visto de cima com o norte para -Z fica igual ao original (mantém o sentido da pista).
+## Uma 5ª coluna opcional é a elevação (m); sem ela a pista é plana (y = 0).
 ## `s` é a distância ao longo da pista a partir da linha de largada (0 .. length).
 ## Lateral positiva = esquerda de quem pilota.
 
 var points := PackedVector3Array()
+## Direção da pista (acompanha a rampa).
 var tangents := PackedVector3Array()
 ## Normal horizontal para a esquerda.
 var lefts := PackedVector3Array()
@@ -22,8 +24,8 @@ var _grid := {}
 const GRID_CELL := 40.0
 
 
-## Lê um CSV "x_m,y_m,w_tr_right_m,w_tr_left_m" (formato do TUMFTM racetrack-database).
-## start_offset: distância (m) do 1º ponto do arquivo até a linha de largada.
+## Lê um CSV "x_m,y_m,w_tr_right_m,w_tr_left_m[,z_m]" (formato do TUMFTM racetrack-database,
+## com a elevação opcional). start_offset: distância (m) do 1º ponto do arquivo até a largada.
 static func from_csv(path: String, sample_spacing := 2.0, width_scale := 1.0, min_half_width := 0.0,
 		start_offset := 0.0) -> TrackPath:
 	var file := FileAccess.open(path, FileAccess.READ)
@@ -31,6 +33,7 @@ static func from_csv(path: String, sample_spacing := 2.0, width_scale := 1.0, mi
 		push_error("TrackPath: não foi possível abrir %s" % path)
 		return null
 	var raw: Array[Vector4] = []
+	var heights := PackedFloat32Array()
 	while not file.eof_reached():
 		var line := file.get_line().strip_edges()
 		if line.is_empty() or line.begins_with("#"):
@@ -38,17 +41,26 @@ static func from_csv(path: String, sample_spacing := 2.0, width_scale := 1.0, mi
 		var v := line.split_floats(",")
 		if v.size() >= 4:
 			raw.append(Vector4(v[0], -v[1], v[2], v[3]))
+			heights.append(v[4] if v.size() >= 5 else 0.0)
 	var path_obj := TrackPath.new()
-	path_obj._build(raw, sample_spacing, width_scale, min_half_width, start_offset)
+	path_obj._build(raw, heights, sample_spacing, width_scale, min_half_width, start_offset)
 	return path_obj
 
 
-func _build(raw: Array[Vector4], sample_spacing: float, width_scale: float, min_half: float,
-		start_offset: float) -> void:
+static func _catmull(p0: Variant, p1: Variant, p2: Variant, p3: Variant, t: float) -> Variant:
+	var t2 := t * t
+	var t3 := t2 * t
+	return 0.5 * ((2.0 * p1) + (-p0 + p2) * t + (2.0 * p0 - 5.0 * p1 + 4.0 * p2 - p3) * t2
+		+ (-p0 + 3.0 * p1 - 3.0 * p2 + p3) * t3)
+
+
+func _build(raw: Array[Vector4], heights: PackedFloat32Array, sample_spacing: float, width_scale: float,
+		min_half: float, start_offset: float) -> void:
 	spacing = sample_spacing
 	var n := raw.size()
 	# Catmull-Rom denso entre os pontos originais
 	var dense: Array[Vector4] = []
+	var dense_h := PackedFloat32Array()
 	for i in n:
 		var p0 := raw[(i - 1 + n) % n]
 		var p1 := raw[i]
@@ -56,10 +68,8 @@ func _build(raw: Array[Vector4], sample_spacing: float, width_scale: float, min_
 		var p3 := raw[(i + 2) % n]
 		for k in 8:
 			var t := k / 8.0
-			var t2 := t * t
-			var t3 := t2 * t
-			dense.append(0.5 * ((2.0 * p1) + (-p0 + p2) * t + (2.0 * p0 - 5.0 * p1 + 4.0 * p2 - p3) * t2
-				+ (-p0 + 3.0 * p1 - 3.0 * p2 + p3) * t3))
+			dense.append(_catmull(p0, p1, p2, p3, t))
+			dense_h.append(_catmull(heights[(i - 1 + n) % n], heights[i], heights[(i + 1) % n], heights[(i + 2) % n], t))
 	# Comprimento acumulado
 	var cum := PackedFloat32Array([0.0])
 	for i in range(1, dense.size() + 1):
@@ -84,7 +94,7 @@ func _build(raw: Array[Vector4], sample_spacing: float, width_scale: float, min_
 		var b := dense[(j + 1) % dense.size()]
 		var t := (s - cum[j]) / maxf(cum[j + 1] - cum[j], 1e-6)
 		var v := a.lerp(b, t)
-		points[i] = Vector3(v.x, 0.0, v.y)
+		points[i] = Vector3(v.x, lerpf(dense_h[j], dense_h[(j + 1) % dense.size()], t), v.y)
 		width_right[i] = maxf(v.z * width_scale, min_half)
 		width_left[i] = maxf(v.w * width_scale, min_half)
 	tangents.resize(count)
@@ -93,12 +103,12 @@ func _build(raw: Array[Vector4], sample_spacing: float, width_scale: float, min_
 	for i in count:
 		var t := (points[(i + 1) % count] - points[(i - 1 + count) % count]).normalized()
 		tangents[i] = t
-		lefts[i] = Vector3(t.z, 0.0, -t.x)
-	# Curvatura suavizada (diferença de rumo em ±3 amostras)
+		lefts[i] = Vector3(t.z, 0.0, -t.x).normalized()
+	# Curvatura suavizada (diferença de rumo, no plano, em ±3 amostras)
 	for i in count:
-		var ta := tangents[(i - 3 + count) % count]
-		var tb := tangents[(i + 3) % count]
-		var ang := atan2(ta.x * tb.z - ta.z * tb.x, ta.dot(tb))
+		var ta := Vector2(tangents[(i - 3 + count) % count].x, tangents[(i - 3 + count) % count].z).normalized()
+		var tb := Vector2(tangents[(i + 3) % count].x, tangents[(i + 3) % count].z).normalized()
+		var ang := atan2(ta.x * tb.y - ta.y * tb.x, ta.dot(tb))
 		curvature[i] = -ang / (6.0 * spacing)
 	_build_grid()
 
@@ -139,11 +149,18 @@ func tangent_at(s: float) -> Vector3:
 	return tangents[i % points.size()].slerp(tangents[(i + 1) % points.size()], f - i).normalized()
 
 
-## Referencial sobre a pista, igual ao do carro: +Z = sentido da pista, +X = esquerda, +Y = cima.
+## Referencial sobre a pista, igual ao do carro: +Z = sentido da pista (inclinado com a rampa),
+## +X = esquerda (sempre horizontal: a pista não tem inclinação lateral), +Y = cima.
 func frame_at(s: float, lateral := 0.0, height := 0.0) -> Transform3D:
 	var fwd := tangent_at(s)
-	var left := Vector3(fwd.z, 0.0, -fwd.x)
-	return Transform3D(Basis(left, Vector3.UP, fwd), position_at(s, lateral) + Vector3.UP * height)
+	var left := Vector3(fwd.z, 0.0, -fwd.x).normalized()
+	var up := fwd.cross(left)
+	return Transform3D(Basis(left, up, fwd), position_at(s, lateral) + up * height)
+
+
+## Altura (y) da pista em s.
+func height_at(s: float) -> float:
+	return position_at(s).y
 
 
 ## Meia-largura de um lado (side = +1 esquerda, -1 direita) no índice i.

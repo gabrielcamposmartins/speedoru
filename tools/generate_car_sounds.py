@@ -156,7 +156,19 @@ def engine_loop(rpm, on_load, seconds=2.0):
     noise = spectrum_filter(periodic_noise(n, 0.6), lambda f: bandpass(f, 500, 6000) * peak(f, 1800, 700, 4))
     noise /= np.abs(noise).max()
     x = x / np.sqrt(np.mean(x * x))
-    x += noise * pulse * (0.10 + 0.08 * load)
+    # Giro baixo: combustão irregular, cada disparo com força um pouco diferente (marcha lenta
+    # "pulsando" em vez de um zumbido de tom puro). A sequência fecha no loop.
+    rough = float(np.clip((7000.0 - rpm) / 3000.0, 0.0, 1.0))
+    if rough > 0.0:
+        events = n_cycles * CYLINDERS
+        gains = 1.0 + rough * 0.45 * rng.uniform(-1.0, 1.0, events)
+        idx = np.floor(t * firing).astype(int) % events
+        nxt = (idx + 1) % events
+        fr = (t * firing) % 1.0
+        sm = fr * fr * (3 - 2 * fr)
+        x *= gains[idx] * (1 - sm) + gains[nxt] * sm
+        x /= np.sqrt(np.mean(x * x))
+    x += noise * pulse * (0.10 + 0.08 * load + 0.22 * rough)
     # Sem carga: pequenos "borbulhos" esparsos no escapamento
     if not on_load:
         pops = np.zeros(n)

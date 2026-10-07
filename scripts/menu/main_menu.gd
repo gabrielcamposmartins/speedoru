@@ -8,7 +8,6 @@ extends Node3D
 ## pneus com mantas, monitores, porta aberta para o pit lane). No Estúdio o carro vem para o
 ## centro-esquerda (o painel fica à direita); na Galeria e na Loja ele vai para a direita.
 
-const RACE_SCENE := "res://scenes/tracks/monza.tscn"
 const CAR_SCENE := preload("res://scenes/car/f1_car.tscn")
 const SCENES := [["neon", "Garagem neon"], ["sun", "Ao sol"], ["box", "No box"]]
 
@@ -856,6 +855,9 @@ func _build_box() -> void:
 	_set.add_child(clock)
 
 
+var _pin_serial := 0
+
+
 func _spawn_car() -> void:
 	car = CAR_SCENE.instantiate() as F1Car
 	car.player_controlled = false
@@ -872,6 +874,30 @@ func _spawn_car() -> void:
 		_profile.apply_to_config(car.config)
 	_profile.apply_setup(car)
 	_profile.changed.connect(_on_profile_changed)
+	# Mudou a engenharia (altura, molas): solta o carro para assentar de novo e prende outra vez
+	_profile.setup_changed.connect(func() -> void:
+		if is_instance_valid(car) and car.freeze:
+			car.freeze = false
+			_pin_car())
+	_pin_car.call_deferred()
+
+
+## O carro assenta na plataforma (suspensão) e depois fica preso nela: nivelado e congelado, sem
+## escorregar nem ir tombando para a frente com o tempo.
+func _pin_car() -> void:
+	_pin_serial += 1
+	var serial := _pin_serial
+	for k in 50:
+		await get_tree().physics_frame
+	if not is_instance_valid(car) or serial != _pin_serial:
+		return
+	var xf := car.global_transform
+	var fwd := Vector3(xf.basis.z.x, 0.0, xf.basis.z.z).normalized()
+	car.linear_velocity = Vector3.ZERO
+	car.angular_velocity = Vector3.ZERO
+	car.freeze_mode = RigidBody3D.FREEZE_MODE_STATIC
+	car.freeze = true
+	car.global_transform = Transform3D(Basis.looking_at(-fwd, Vector3.UP), xf.origin)
 
 
 func _on_profile_changed() -> void:
@@ -885,10 +911,11 @@ func _on_profile_changed() -> void:
 func start_race() -> void:
 	RaceSettings.skip_menu = true
 	var loading := get_node_or_null("/root/Loading") as LoadingScreen
+	var scene := RaceSettings.track_scene(RaceSettings.track)
 	if loading:
-		loading.change_scene(RACE_SCENE)
+		loading.change_scene(scene)
 	else:
-		get_tree().change_scene_to_file(RACE_SCENE)
+		get_tree().change_scene_to_file(scene)
 
 
 func open_settings() -> void:

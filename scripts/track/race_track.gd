@@ -56,9 +56,12 @@ var start_lights: StartLights
 ## Servidor dedicado: só gera o que tem colisão (pista, barreiras, boxes, objetos, terreno),
 ## em etapas de um quadro cada (sem pausar as outras salas).
 static var server_mode := false
-const SERVER_SKIP := ["arquibancadas", "árvores", "folhas", "pinheiros", "cenário", "grama"]
+const SERVER_SKIP := ["arquibancadas", "árvores", "folhas", "pinheiros", "cenário", "grama", "prédios", "túnel", "porto",
+	"jardins", "entorno"]
 
 var terrain: TrackTerrain
+## Circuito de rua: dados da cidade (layout.city); nulo nos circuitos de campo.
+var city: TrackCity
 var leaves: TrackLeaves
 
 var _root: Node3D
@@ -106,6 +109,9 @@ func rebuild(staged := false) -> void:
 	_root.name = "Generated"
 	add_child(_root)
 	footprints.clear()
+	terrain = null
+	leaves = null
+	city = TrackCity.load_city(layout.city) if layout.city != "" else null
 	_compute_profile()
 	# [nome no log, texto na tela de carregamento, peso (≈ ms), etapa]
 	var steps := [
@@ -114,13 +120,25 @@ func rebuild(staged := false) -> void:
 		["boxes", "Boxes", 30, func(): PitComplex.build(self, _root)],
 		["arquibancadas", "Arquibancadas e público", 700, func(): Grandstands.build(self, _root)],
 		["objetos", "Placas, postes e bandeirolas", 90, func(): TrackProps.build(self, _root)],
-		["terreno", "Terreno e montanhas", 550, func(): terrain = TrackTerrain.build(self, _root)],
-		["árvores", "Árvores", 420, func(): TrackTrees.build(self, terrain, _root)],
-		["folhas", "Folhagem", 700, func(): leaves = TrackLeaves.build(self, terrain, _root)],
-		["pinheiros", "Pinheiros", 400, func(): _build_pines()],
-		["cenário", "Cenário e céu", 200, func(): _build_scenery()],
-		["grama", "Grama", 30, func(): _build_grass()],
 	]
+	if city:
+		steps.append_array([
+			["cidade", "Cidade, ruas e cais", 900, func(): TrackCity.build_ground(self, city, _root)],
+			["prédios", "Prédios", 700, func(): TrackCity.build_buildings(self, city, _root)],
+			["túnel", "Túnel", 60, func(): TrackTunnel.build(self, city.tunnel.x, city.tunnel.y, _root)],
+			["porto", "Mar, porto e barcos", 300, func(): TrackHarbour.build(self, city, _root)],
+			["jardins", "Palmeiras e jardins", 120, func(): TrackCity.build_trees(self, city, _root)],
+			["entorno", "Morros e horizonte", 250, func(): TrackCity.build_backdrop(self, city, _root)],
+		])
+	else:
+		steps.append_array([
+			["terreno", "Terreno e montanhas", 550, func(): terrain = TrackTerrain.build(self, _root)],
+			["árvores", "Árvores", 420, func(): TrackTrees.build(self, terrain, _root)],
+			["folhas", "Folhagem", 700, func(): leaves = TrackLeaves.build(self, terrain, _root)],
+			["pinheiros", "Pinheiros", 400, func(): _build_pines()],
+			["cenário", "Cenário e céu", 200, func(): _build_scenery()],
+			["grama", "Grama", 30, func(): _build_grass()],
+		])
 	var tree := get_tree()
 	var was_paused := false
 	if staged:
@@ -180,6 +198,11 @@ func pit_lateral(i: int, d: float) -> float:
 	return side * (path.half_width(i, side) + d)
 
 
+## Se o índice i da pista está dentro de um túnel.
+func in_tunnel(i: int) -> bool:
+	return city != null and city.in_tunnel(path.s_at(i))
+
+
 ## Ponto a `d` metros além da borda da pista, do lado `side` (+1 esquerda, -1 direita).
 func edge_point(i: int, side: int, d: float, y := 0.0) -> Vector3:
 	return path.points[i] + path.lefts[i] * (side * (path.half_width(i, side) + d)) + Vector3.UP * y
@@ -195,7 +218,7 @@ func structure_extent(i: int, side: int) -> float:
 	if layout.has_pit and side == layout.pit_side:
 		var ds := fposmod(s - layout.garage_center_s + path.length * 0.5, path.length) - path.length * 0.5
 		if absf(ds) < layout.pit_building_length * 0.5 + 40.0:
-			e = maxf(e, hw + PIT_WALL_STRIP + layout.pit_lane_width + PitComplex.DEPTH + 75.0 + 8.0)
+			e = maxf(e, hw + PIT_WALL_STRIP + layout.pit_lane_width + PitComplex.DEPTH + layout.paddock_depth + 8.0)
 		elif pit_width[i] > 0.0:
 			e = maxf(e, hw + pit_width[i] + 4.0)
 	return e + 4.0
@@ -234,6 +257,9 @@ func apply_mood(time_of_day: int, biome: int) -> void:
 	lamp.emission_energy_multiplier = lamp_energy * (1.0 + 5.0 * night)
 	if leaves:
 		leaves.apply_mood(time_of_day, biome)
+	if city and _root:
+		TrackCity.apply_biome(_root, biome)
+		TrackCity.set_night(night)
 
 
 func _apply_current_mood() -> void:

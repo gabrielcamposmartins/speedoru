@@ -165,6 +165,8 @@ var tc_active := false
 var abs_active := false
 var effective_downforce_area := 0.0
 var effective_drag_area := 0.0
+## Vácuo (0..1) no rastro de outro carro: tira o arrasto aerodinâmico (Slipstream, RaceManager).
+var slipstream := 0.0
 var effective_balance := 0.42
 ## Ângulo entre a direção do carro e a direção do movimento (rad, + = carro de lado p/ esquerda).
 var body_slip_angle := 0.0
@@ -745,7 +747,7 @@ func _apply_aero() -> void:
 	var vel := linear_velocity
 	var speed := vel.length()
 	if speed > 0.1:
-		var drag := 0.5 * AIR_DENSITY * drag_a * speed * speed + rolling_resistance * mass * 9.8
+		var drag := 0.5 * AIR_DENSITY * drag_a * speed * speed * (1.0 - clampf(slipstream, 0.0, 1.0)) + rolling_resistance * mass * 9.8
 		apply_central_force(-vel / speed * drag)
 
 
