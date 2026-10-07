@@ -83,6 +83,7 @@ Para mostrar em outro carregamento: `LoadingScreen.start("Texto")`,
 | Linha ideal (desligada → frenagens e curvas → completa) | L | — |
 | Limitador de velocidade (80 km/h: boxes e bandeira amarela) | P | D-pad ← |
 | Ir aos boxes depois de uma batida forte | K | Back |
+| Pedir passagem (pisca 4× a luz âmbar dos retrovisores) | G | D-pad → |
 | Menus: navegar / confirmar / voltar | setas · Enter · Esc | D-pad ou analógico · A · B |
 | Menus: abas da garagem e das configurações | — | LB / RB |
 | Pausa (na pista; a garagem abre pela pausa) | Esc | Start |
@@ -302,8 +303,10 @@ difícil ou mista) e posição de largada. Tudo em `scripts/race/`:
 - **Vácuo** (`scripts/race/slipstream.gd`): atrás de outro carro, a mais de ~80 km/h, há uma faixa
   no rastro dele onde o **arrasto aerodinâmico some** — total colado (3–14 m) e no centro, sumindo
   até 42 m e para os lados (a faixa abre um pouco com a distância). Vale para todos (bots e
-  online; o servidor calcula). Pista visual discreta: as linhas de velocidade ficam azuladas e
-  aparecem antes, e o painel mostra "VÁCUO" aceso no lugar do câmbio (`tests/slipstream_test.gd`:
+  online; o servidor calcula). Pista visual: filetes de vento saem do bico do carro da frente,
+  contornam a carroceria dele e correm até o seu carro (`scripts/race/slipstream_fx.gd`, mais
+  fortes e numerosos quanto maior o vácuo), as linhas de velocidade ficam azuladas e o painel
+  mostra "VÁCUO" aceso no lugar do câmbio (`tests/slipstream_test.gd`:
   em roda livre a 250 km/h o carro perde 28 km/h em 1 s sozinho e 11 km/h no vácuo).
 - **Classificatória** (`scripts/race/qualifying.gd`; escolhida no Jogar solo, no menu da corrida e
   na sala online): sem, 1, 2 ou 3 voltas cronometradas, com ou sem colisão entre os carros. Os
@@ -423,17 +426,25 @@ Visual synthwave + monitor CRT + HUD de ficção científica (`scripts/ui/retro.
     estava recomeça: ao sair do box e cruzar a linha ela começa de novo, sem contar como completada
     (você perde a distância que tinha andado nela). Indo dirigindo até o box, a volta segue normal.
     Bots batidos vão ao box sozinhos em ~3,5 s;
-  - os outros: "Não ultrapasse · não passe o safety car · safety car sai em 3,2 km".
+  - os outros: "Não ultrapasse · não passe o safety car · safety car sai em 18 s" (ou "aguardando
+    1 carro batido ir aos boxes").
 - **Regras sob amarela** (fica a cargo dos jogadores; quem não segue é punido): não ultrapassar
-  (+5 s por carro passado — a ordem de cada par é lembrada durante a amarela, então vale também a
+  — o jogador vê **"DEVOLVA A POSIÇÃO PARA XXX!"** piscando no centro da tela com 12 s para deixar o
+  carro passar; se não devolver, **+10 s** (bots: +10 s na hora). A ordem de cada par é lembrada
+  durante a amarela (por par, independente da classificação), então vale também a
   ultrapassagem lenta, lado a lado; pode passar quem está nos boxes ou envolvido na batida, e os envolvidos
   podem passar todos para chegar ao box) e não passar o **safety car** (+10 s). O limitador **não
   é obrigatório** sob amarela (só um jeito fácil de andar devagar atrás do safety car). O safety
   car entra à frente do líder com a giroflex âmbar, anda a até 180 km/h na linha ideal (mais devagar
   nas curvas, pelo perfil de velocidade) e aparece no minimapa (SC). Quem não bateu pode aproveitar para trocar pneus; isso não muda a bandeira.
-- **Fim:** o safety car fica **uma volta inteira** a partir de onde entrou na pista (uma batida
-  nova durante a amarela não a prolonga); completada a volta, bandeira verde e ele sai. Os
-  consertos seguem independentes da bandeira.
+- **Fim:** a amarela (com o safety car) dura **no mínimo 30 s** e só termina quando todos os
+  carros batidos estão nos boxes (indo pela faixa, parados no box ou levados até ele); aí vem a
+  bandeira verde e o safety car sai. Os consertos seguem independentes da bandeira.
+- **Resultado:** a tela final mostra o detalhe das penalidades de cada jogador (título, segundos,
+  motivo e volta).
+- **Pedir passagem:** G (D-pad →) pisca 4 vezes a luz âmbar nos retrovisores (LED, halo e uma luz
+  pequena), como a seta dos carros de rua; aparece para todos, inclusive online (vai no
+  instantâneo do carro).
 - Bots respeitam tudo: sob amarela seguem o carro da frente mesmo em outra linha (não ultrapassam,
   a não ser quem está nos boxes ou envolvido) e ficam atrás do safety car.
 - O **semáforo** tem som: um bipe a cada coluna acesa e um tom agudo quando as luzes apagam.
@@ -883,6 +894,8 @@ godot --headless --path . -s res://tests/drs_rule_test.gd   # DRS livre ou só a
 godot --headless --path . -s res://tests/slipstream_test.gd # vácuo: força no rastro e perda de velocidade com e sem
 godot --headless --path . -s res://tests/qualifying_test.gd # classificatória: volta anulada, grid pelos tempos, colisão
 godot --headless --path . -s res://tests/give_back_test.gd  # devolver a posição: resolvido deixando passar, +5 s se não
+godot --headless --path . -s res://tests/yellow_pass_test.gd # jogador passa um carro sob amarela: aviso e +10 s sem devolver
+godot --path . -s res://tests/capture_slipstream.gd -- <pasta>  # vento do vácuo e pisca dos retrovisores
 godot --headless --path . -s res://tests/track_bot_probe.gd -- monaco 2 2 [adversários]  # bot sozinho: onde bate/perde tempo
 godot --path . -s res://tests/audio_hum_probe.gd -- <pasta>  # grava o som silenciando um bus de cada vez (zumbidos)
 godot --headless --path . -s res://tests/offtrack_probe.gd  # fora da pista: velocidade perdida e aderência lateral por piso

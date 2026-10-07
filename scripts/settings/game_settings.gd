@@ -38,6 +38,7 @@ const ACTIONS := [
 	["repair_car", "Reparar o carro", "Carro"],
 	["pit_limiter", "Limitador de velocidade (boxes e bandeira amarela)", "Corrida"],
 	["go_to_pit", "Ir aos boxes depois de uma batida", "Corrida"],
+	["pass_signal", "Pedir passagem (pisca a luz dos retrovisores)", "Corrida"],
 	["pit_soft", "Pneu do pit: macio", "Corrida"],
 	["pit_medium", "Pneu do pit: médio", "Corrida"],
 	["pit_hard", "Pneu do pit: duro", "Corrida"],
@@ -61,10 +62,11 @@ const EXTRA_ACTIONS := [
 	["pit_soft", KEY_1], ["pit_medium", KEY_2], ["pit_hard", KEY_3],
 	["standings_next", KEY_PAGEDOWN], ["standings_prev", KEY_PAGEUP],
 	["pause", KEY_ESCAPE], ["open_settings", KEY_F10], ["toggle_help", KEY_H], ["toggle_racing_line", KEY_L],
-	["pit_limiter", KEY_P], ["go_to_pit", KEY_K],
+	["pit_limiter", KEY_P], ["go_to_pit", KEY_K], ["pass_signal", KEY_G],
 ]
 ## Botões do controle das ações acima (Start pausa; o resto fica pelos menus).
-const EXTRA_PAD := {"pause": JOY_BUTTON_START, "pit_limiter": JOY_BUTTON_DPAD_LEFT, "go_to_pit": JOY_BUTTON_BACK}
+const EXTRA_PAD := {"pause": JOY_BUTTON_START, "pit_limiter": JOY_BUTTON_DPAD_LEFT, "go_to_pit": JOY_BUTTON_BACK,
+	"pass_signal": JOY_BUTTON_DPAD_RIGHT}
 
 const RESOLUTIONS := [Vector2i(1280, 720), Vector2i(1366, 768), Vector2i(1600, 900), Vector2i(1920, 1080),
 	Vector2i(2560, 1440), Vector2i(3840, 2160)]

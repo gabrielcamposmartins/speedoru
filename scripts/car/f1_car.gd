@@ -167,6 +167,8 @@ var effective_downforce_area := 0.0
 var effective_drag_area := 0.0
 ## Vácuo (0..1) no rastro de outro carro: tira o arrasto aerodinâmico (Slipstream, RaceManager).
 var slipstream := 0.0
+## Carro cujo rastro dá o vácuo (para o efeito visual).
+var slipstream_source: F1Car
 var effective_balance := 0.42
 ## Ângulo entre a direção do carro e a direção do movimento (rad, + = carro de lado p/ esquerda).
 var body_slip_angle := 0.0
@@ -345,6 +347,107 @@ func is_front_wheel(index: int) -> bool:
 # ---------------------------------------------------------------------------
 # Física
 # ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# Pedir passagem: pisca a luz dos retrovisores (como a seta dos carros de rua)
+# ---------------------------------------------------------------------------
+const SIGNAL_BLINKS := 4
+const SIGNAL_PERIOD := 0.5
+const SIGNAL_COLOR := Color(1.0, 0.62, 0.08)
+## Tempo restante do pisca (servidor/offline); `signal_on` é o que aparece (no cliente vem da rede).
+var signal_time := 0.0
+var signal_on := false
+var _signal_leds: Array[MeshInstance3D] = []
+
+
+func pass_signal() -> void:
+	signal_time = SIGNAL_BLINKS * SIGNAL_PERIOD
+
+
+func _update_signal(delta: float) -> void:
+	if not puppet:
+		signal_time = maxf(signal_time - delta, 0.0)
+		signal_on = signal_time > 0.0 and fmod(signal_time, SIGNAL_PERIOD) > SIGNAL_PERIOD * 0.45
+	if signal_on and _signal_leds.is_empty():
+		_build_signal_leds()
+	for led in _signal_leds:
+		if is_instance_valid(led):
+			led.visible = signal_on
+
+
+## Faixa de LED âmbar na borda de fora de cada retrovisor (presa ao vidro: some se ele quebrar).
+func _build_signal_leds() -> void:
+	if assembly == null:
+		return
+	var mirrors := assembly.get_part_node("mirrors")
+	if mirrors == null:
+		return
+	var mat := StandardMaterial3D.new()
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.albedo_color = SIGNAL_COLOR
+	mat.emission_enabled = true
+	mat.emission = SIGNAL_COLOR
+	mat.emission_energy_multiplier = 6.0
+	for suffix in ["L", "R"]:
+		var glass := mirrors.find_child("MirrorGlass" + suffix + "*", true, false) as MeshInstance3D
+		if glass == null:
+			continue
+		var aabb := glass.get_aabb()
+		var center := glass.global_transform * aabb.get_center()
+		var outward := global_basis.x * (1.0 if suffix == "L" else -1.0)
+		var half_w := (glass.global_basis * Vector3(aabb.size.x, 0, 0)).length() * 0.5
+		var height := maxf((glass.global_basis * Vector3(0, aabb.size.y, 0)).length() * 0.75, 0.03)
+		var box := BoxMesh.new()
+		box.size = Vector3(0.05, height * 1.2, 0.22)
+		box.material = mat
+		var led := MeshInstance3D.new()
+		led.name = "SignalLED"
+		led.mesh = box
+		led.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		led.visible = false
+		glass.add_child(led)
+		led.global_transform = Transform3D(global_basis, center + outward * (half_w + 0.02))
+		# Halo (visível de longe, nos retrovisores dos outros) e uma luz âmbar pequena
+		var halo := MeshInstance3D.new()
+		halo.mesh = _signal_halo_mesh()
+		halo.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		led.add_child(halo)
+		var light := OmniLight3D.new()
+		light.light_color = SIGNAL_COLOR
+		light.light_energy = 2.5
+		light.omni_range = 2.2
+		light.shadow_enabled = false
+		led.add_child(light)
+		_signal_leds.append(led)
+
+
+static var _halo_mesh: QuadMesh
+
+
+static func _signal_halo_mesh() -> QuadMesh:
+	if _halo_mesh:
+		return _halo_mesh
+	var grad := Gradient.new()
+	grad.set_color(0, Color(1, 1, 1, 1))
+	grad.set_color(1, Color(1, 1, 1, 0))
+	var tex := GradientTexture2D.new()
+	tex.gradient = grad
+	tex.fill = GradientTexture2D.FILL_RADIAL
+	tex.fill_from = Vector2(0.5, 0.5)
+	tex.fill_to = Vector2(1.0, 0.5)
+	var mat := StandardMaterial3D.new()
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	mat.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
+	mat.albedo_texture = tex
+	mat.albedo_color = Color(SIGNAL_COLOR, 0.9)
+	mat.no_depth_test = false
+	_halo_mesh = QuadMesh.new()
+	_halo_mesh.size = Vector2(0.75, 0.75)
+	_halo_mesh.material = mat
+	return _halo_mesh
+
+
 func set_puppet(on: bool) -> void:
 	puppet = on
 	if on:
@@ -371,6 +474,7 @@ func set_puppet(on: bool) -> void:
 func _physics_process(delta: float) -> void:
 	if Engine.is_editor_hint():
 		return
+	_update_signal(delta)
 	if puppet:
 		forward_speed = linear_velocity.dot(global_basis.z)
 		speed_kmh = absf(forward_speed) * 3.6
@@ -454,6 +558,8 @@ func _read_player_input() -> void:
 		reset_car()
 	if Input.is_action_just_pressed("repair_car") and allow_quick_repair:
 		repair()
+	if Input.is_action_just_pressed("pass_signal"):
+		pass_signal()
 
 
 func _update_gearbox(delta: float) -> void:

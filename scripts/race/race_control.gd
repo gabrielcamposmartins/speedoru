@@ -10,10 +10,11 @@ extends Node
 ##   levado ao box (botão, tempo esgotado ou bot) recomeça a volta em andamento: ao sair do box e
 ##   cruzar a linha ela começa de novo, sem contar como completada (quem vai dirigindo até o box
 ##   segue a volta normalmente).
-## * O safety car (e a bandeira amarela) dura uma volta inteira a partir de onde entrou na pista;
-##   uma batida nova durante a amarela não a prolonga. Os consertos seguem independentes dela.
+## * O safety car (e a bandeira amarela) dura no mínimo 30 s e só sai quando todos os carros
+##   batidos já estão nos boxes (indo pela faixa, parados no box ou levados até ele).
 ## * Sob amarela, para quem não está envolvido (fica a cargo do jogador; quem não segue é punido):
-##   - não ultrapassar (a não ser quem está nos boxes ou envolvido) → +5 s por ultrapassagem;
+##   - não ultrapassar (a não ser quem está nos boxes ou envolvido) → o jogador tem 12 s para
+##     devolver a posição; senão +10 s (bots: +10 s na hora);
 ##   - não passar o safety car → +10 s.
 ##   O limitador não é obrigatório (é só um jeito fácil de andar devagar atrás do safety car).
 ##   Quem não bateu pode aproveitar para trocar pneus; isso não muda o estado da bandeira.
@@ -23,6 +24,10 @@ signal flag_changed(yellow: bool)
 const BOT_PIT_DELAY := 3.5
 const DEFAULT_LAP := 110.0
 const REPAIR_TIME := 6.0
+## Duração mínima da bandeira amarela / safety car (s).
+const MIN_YELLOW := 30.0
+## Ultrapassagem sob amarela sem devolver a posição.
+const YELLOW_PASS_PENALTY := 10.0
 
 var manager: RaceManager
 var yellow := false
@@ -34,6 +39,7 @@ var involved := {}
 var mirror := false
 
 var _yellow_time := 0.0
+var _mirror_min_left := 0.0
 var _sc_target := 0.0
 ## Progresso em que o safety car termina a volta (onde entrou + uma volta).
 var sc_end := 0.0
@@ -90,7 +96,7 @@ func _start_yellow() -> void:
 		sc_end = safety_car.progress + manager.track.path.length
 	for e in manager.entries:
 		if e.is_player and not involved.has(e):
-			manager.notify_entry(e, "BANDEIRA AMARELA", "Safety car por uma volta: não ultrapasse e não passe o safety car", false)
+			manager.notify_entry(e, "BANDEIRA AMARELA", "Safety car na pista: não ultrapasse e não passe o safety car", false)
 	flag_changed.emit(true)
 
 
@@ -186,11 +192,25 @@ func physics_update(delta: float) -> void:
 	var leader := _leader()
 	if safety_car and leader:
 		safety_car.advance(delta, leader.progress)
-	# O safety car fica uma volta inteira a partir de onde entrou
-	if (safety_car and safety_car.progress >= sc_end) or (safety_car == null and involved.is_empty()):
+	# No mínimo 30 s, e até os carros batidos estarem nos boxes
+	if _yellow_time >= MIN_YELLOW and _wrecks_cleared():
 		_end_yellow()
 		return
 	_check_rules(delta)
+
+
+## Todos os envolvidos já estão nos boxes (na faixa, parados no box ou levados até ele).
+func _wrecks_cleared() -> bool:
+	for e in involved:
+		var info: Dictionary = involved[e]
+		if not (info["in_box"] or e.in_pit or e.in_pit_stop):
+			return false
+	return true
+
+
+## Segundos que faltam do mínimo da amarela (no cliente, o que veio do servidor).
+func yellow_min_left() -> float:
+	return maxf(MIN_YELLOW - _yellow_time, 0.0) if not mirror else _mirror_min_left
 
 
 func _subject(e: RaceEntry) -> bool:
@@ -215,6 +235,11 @@ func _check_rules(_delta: float) -> void:
 		for j in range(i + 1, subjects.size()):
 			var a := subjects[i]
 			var b := subjects[j]
+			# A lista é reordenada pela classificação: a chave (e o sinal) usam o par em ordem fixa
+			if a.get_instance_id() > b.get_instance_id():
+				var t := a
+				a = b
+				b = t
 			var key := "%d_%d" % [a.get_instance_id(), b.get_instance_id()]
 			seen[key] = true
 			var gap := a.progress - b.progress
@@ -237,9 +262,9 @@ func _check_rules(_delta: float) -> void:
 				continue
 			# O jogador pode devolver a posição antes de ser punido; os bots são punidos na hora
 			if passer.is_player or passer.is_human:
-				manager.request_give_back(passer, passed, 5.0, "ULTRAPASSAGEM", "Passou %s sob bandeira amarela" % passed.code)
+				manager.request_give_back(passer, passed, YELLOW_PASS_PENALTY, "ULTRAPASSAGEM", "Passou %s sob bandeira amarela" % passed.code)
 			else:
-				manager.penalize_entry(passer, 5.0, "ULTRAPASSAGEM", "Passou %s sob bandeira amarela" % passed.code)
+				manager.penalize_entry(passer, YELLOW_PASS_PENALTY, "ULTRAPASSAGEM", "Passou %s sob bandeira amarela" % passed.code)
 	for key in _order.keys():
 		if not seen.has(key):
 			_order.erase(key)
@@ -264,12 +289,16 @@ func instruction_for(e: RaceEntry) -> Array:
 	return []
 
 
-## Quanto falta da volta do safety car (" · safety car sai em 2,3 km").
+## Quando o safety car sai (" · safety car sai em 12 s" ou esperando os carros batidos).
 func sc_left_text() -> String:
-	if safety_car == null:
-		return ""
-	var left := maxf(sc_end - safety_car.progress, 0.0)
-	return " · safety car sai em %s" % ("%.1f km" % (left / 1000.0)).replace(".", ",")
+	var left := yellow_min_left()
+	if left > 0.0:
+		return " · safety car sai em %d s" % ceili(left)
+	var waiting := 0
+	for e in involved:
+		if not (involved[e]["in_box"] or e.in_pit or e.in_pit_stop):
+			waiting += 1
+	return " · aguardando %d %s ir aos boxes" % [waiting, "carro batido" if waiting == 1 else "carros batidos"] if waiting > 0 else ""
 
 
 ## Nome da tecla (ou botão do controle, se o jogador está usando controle) de uma ação.
@@ -304,7 +333,7 @@ func apply_mirror(d: Dictionary, roster: Array[RaceEntry]) -> void:
 		_sc_target = float(sc[0])
 		safety_car.speed = float(sc[1])
 		if sc.size() >= 3:
-			sc_end = float(sc[2])
+			_mirror_min_left = float(sc[2])
 	elif safety_car:
 		safety_car.queue_free()
 		safety_car = null
@@ -316,6 +345,7 @@ func apply_mirror(d: Dictionary, roster: Array[RaceEntry]) -> void:
 func mirror_update(delta: float) -> void:
 	for e in involved:
 		involved[e]["time_left"] = maxf(float(involved[e]["time_left"]) - delta, 0.0)
+	_mirror_min_left = maxf(_mirror_min_left - delta, 0.0)
 	if safety_car:
 		_sc_target += safety_car.speed * delta
 		safety_car.progress = lerpf(safety_car.progress + safety_car.speed * delta, _sc_target, minf(delta * 3.0, 1.0))

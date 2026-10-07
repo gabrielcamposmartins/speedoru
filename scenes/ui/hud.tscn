@@ -60,10 +60,10 @@ unique_name_in_owner = true
 anchors_preset = 5
 anchor_left = 0.5
 anchor_right = 0.5
-offset_left = -300.0
-offset_top = 150.0
-offset_right = 300.0
-offset_bottom = 210.0
+offset_left = -440.0
+offset_top = 236.0
+offset_right = 440.0
+offset_bottom = 330.0
 grow_horizontal = 2
 horizontal_alignment = 1
 

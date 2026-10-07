@@ -86,7 +86,7 @@ func _style() -> void:
 	camera_label.add_theme_color_override("font_outline_color", Color(Retro.c("bg"), 0.85))
 	camera_label.add_theme_constant_override("outline_size", 6)
 	handling_label.add_theme_font_override("font", Retro.display(900))
-	handling_label.add_theme_font_size_override("font_size", 38)
+	handling_label.add_theme_font_size_override("font_size", 30)
 	handling_label.add_theme_color_override("font_outline_color", Color(Retro.c("bg"), 0.9))
 	handling_label.add_theme_constant_override("outline_size", 10)
 	handling_label.add_theme_constant_override("shadow_outline_size", 22)
@@ -97,8 +97,18 @@ func _style() -> void:
 func _process(_delta: float) -> void:
 	if car == null:
 		return
-	# Sem aviso de sub/sobreesterço na tela
-	handling_label.visible = false
+	# Aviso grande piscando no centro: devolver a posição ganha de forma irregular
+	var rm := get_parent().get_node_or_null("RaceManager") as RaceManager
+	var gb := rm.player_give_back() if rm else {}
+	handling_label.visible = not gb.is_empty()
+	if not gb.is_empty():
+		handling_label.text = "DEVOLVA A POSIÇÃO PARA %s!
+%d s · senão +%ds" % [gb["target"], ceili(float(gb["left"])), roundi(float(gb["seconds"]))]
+		var blink := fmod(Time.get_ticks_msec() / 1000.0, 0.7) < 0.42
+		var col := Retro.c("warn") if blink else Retro.c("bad")
+		handling_label.add_theme_color_override("font_color", col)
+		handling_label.add_theme_color_override("font_shadow_color", Color(col, 0.45))
+		handling_label.modulate.a = 1.0 if blink else 0.55
 	car_name_label.text = (car.config.car_name if car.config else "").to_upper()
 	if camera:
 		var cam_text := "Câmera: " + camera.get_mode_name()

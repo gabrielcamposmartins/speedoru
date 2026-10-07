@@ -47,6 +47,8 @@ var finished_and_parked := false
 var finish_time := 0.0
 var penalty_seconds := 0.0
 var penalties: Array[String] = []
+## Detalhe de cada penalidade: [título, segundos, explicação, volta].
+var penalty_log: Array = []
 var track_limit_warnings := 0
 var disqualified := false
 ## Abandonou (carro destruído).

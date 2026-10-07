@@ -21,9 +21,15 @@ const RATE := 2.5
 
 ## Força (0..1) do vácuo que o carro `me` recebe dos outros.
 static func strength_for(me: F1Car, cars: Array) -> float:
+	return source_for(me, cars)[0]
+
+
+## [força, carro que dá o vácuo (ou null)].
+static func source_for(me: F1Car, cars: Array) -> Array:
 	if me.linear_velocity.length() < MIN_SPEED:
-		return 0.0
+		return [0.0, null]
 	var best := 0.0
+	var src: F1Car = null
 	for o in cars:
 		var other := o as F1Car
 		if other == null or other == me or other.linear_velocity.length() < MIN_SPEED * 0.8:
@@ -40,8 +46,10 @@ static func strength_for(me: F1Car, cars: Array) -> float:
 		var width := CORE + SPREAD * behind
 		var side := 1.0 - smoothstep(width, width + EDGE, lateral)
 		var along := smoothstep(NEAR, NEAR + 1.5, behind) * (1.0 - smoothstep(FULL, FAR, behind))
-		best = maxf(best, side * along)
-	return best
+		if side * along > best:
+			best = side * along
+			src = other
+	return [best, src]
 
 
 ## Atualiza o vácuo de todos os carros (com suavização).
@@ -50,4 +58,9 @@ static func update_all(cars: Array, delta: float) -> void:
 		var car := o as F1Car
 		if car == null:
 			continue
-		car.slipstream = move_toward(car.slipstream, strength_for(car, cars), delta * RATE)
+		var r := source_for(car, cars)
+		car.slipstream = move_toward(car.slipstream, float(r[0]), delta * RATE)
+		if r[1] != null:
+			car.slipstream_source = r[1]
+		elif car.slipstream <= 0.0:
+			car.slipstream_source = null

@@ -300,6 +300,7 @@ func _show_results() -> void:
 			if c == 5 and e == manager.fastest_entry:
 				l.add_theme_color_override("font_color", Retro.FASTEST)
 			grid.add_child(l)
+	_penalty_breakdown(box, rows)
 	if manager.player_reward > 0:
 		var reward := Label.new()
 		reward.text = "+%s %s" % [PlayerProfile.format_credits(manager.player_reward), ShopCatalog.CURRENCY]
@@ -318,6 +319,34 @@ func _show_results() -> void:
 	_button(buttons, "Continuar dirigindo", func() -> void:
 		results.queue_free()
 		results = null)
+
+
+## Detalhe das penalidades dos jogadores (você no solo; todos os humanos online).
+func _penalty_breakdown(box: VBoxContainer, rows: Array[RaceEntry]) -> void:
+	var title := Label.new()
+	title.text = "PENALIDADES"
+	title.theme_type_variation = "RetroKicker"
+	box.add_child(title)
+	var any := false
+	for e in rows:
+		if not (e.is_player or e.is_human):
+			continue
+		any = true
+		var head := Label.new()
+		var who := "Você" if e.is_player else e.name
+		head.text = "%s — %s" % [who, ("+%d s no total" % roundi(e.penalty_seconds)) if e.penalty_seconds > 0.0 else "sem penalidades"]
+		head.add_theme_color_override("font_color", Retro.c("accent_2") if e.is_player else Retro.c("text"))
+		head.add_theme_font_size_override("font_size", 14)
+		box.add_child(head)
+		for item in e.penalty_log:
+			var l := Label.new()
+			l.text = "    · %s  +%d s — %s (volta %d)" % [item[0], roundi(float(item[1])), item[2], int(item[3])]
+			l.add_theme_color_override("font_color", Retro.c("bad"))
+			l.add_theme_font_size_override("font_size", 12)
+			l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			box.add_child(l)
+	if not any:
+		title.queue_free()
 
 
 func _toggle_pause() -> void:
@@ -717,16 +746,7 @@ class RaceInfo extends Control:
 			draw_rect(chip, Color(col, 0.12))
 			draw_rect(chip, Color(col, 0.6), false, 1.0)
 			draw_string(font, Vector2(chip.position.x, chip.position.y + 14), pit_text, HORIZONTAL_ALIGNMENT_CENTER, w, 10, col)
-		if m.give_backs.has(e):
-			# Posição ganha de forma irregular: devolver antes do prazo
-			var gb: Dictionary = m.give_backs[e]
-			var left := maxf(float(gb["until"]) - m.race_time, 0.0)
-			var blink := fmod(m.race_time, 0.8) < 0.55
-			Retro.draw_glow_text(self, disp, Vector2(0, 192), "DEVOLVA A POSIÇÃO PARA %s" % (gb["target"] as RaceEntry).code,
-				HORIZONTAL_ALIGNMENT_CENTER, size.x, 22, Retro.c("warn") if blink else Retro.c("text"), Retro.c("warn"))
-			Retro.draw_label(self, Retro.display(700), Vector2(0, 214), "%s · %d s para deixar passar ou +%ds" % [gb["title"], ceili(left),
-				roundi(float(gb["seconds"]))], HORIZONTAL_ALIGNMENT_CENTER, size.x, 12, Retro.c("warn"))
-		elif _drs_flash > 0.0:
+		if _drs_flash > 0.0:
 			var a := clampf(_drs_flash / 0.5, 0.0, 1.0)
 			Retro.draw_glow_text(self, disp, Vector2(0, 192), "DRS LIBERADO", HORIZONTAL_ALIGNMENT_CENTER, size.x, 22,
 				Color(Retro.c("good"), a), Retro.c("good"))

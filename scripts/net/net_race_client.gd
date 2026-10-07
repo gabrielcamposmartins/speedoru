@@ -13,7 +13,7 @@ extends Node
 ## * Repassa o estado da prova (5/s) e os acontecimentos ao RaceManager.
 
 const ACTIONS := ["shift_up", "shift_down", "toggle_gearbox", "pit_limiter", "toggle_tc", "brake_bias_forward",
-	"brake_bias_rearward", "reset_car"]
+	"brake_bias_rearward", "reset_car", "pass_signal"]
 const MAX_EXTRAPOLATE := 0.25
 
 var manager: RaceManager
@@ -153,6 +153,7 @@ func _apply(car: F1Car, a: Dictionary, b: Dictionary, w: float, extra: float) ->
 	car.damage_drag = dmg[2]
 	car.damage_power = dmg[3]
 	var broken: int = s["broken"]
+	car.signal_on = broken & 16 != 0
 	for k in mini(car.wheel_broken.size(), 4):
 		car.wheel_broken[k] = broken & (1 << k) != 0
 	car.tire_usage = s["usage"]

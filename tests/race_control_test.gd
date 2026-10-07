@@ -83,13 +83,10 @@ func _run() -> void:
 	await _seconds(7.0)
 	_check(is_equal_approx(pe.penalty_seconds, pen_before), "sem limitador sob amarela: sem penalidade")
 	await _seconds(RaceControl.REPAIR_TIME)
-	_check(not rc.is_involved(bot_e) and rc.yellow and rc.safety_car != null, "conserto terminado: a amarela continua até o safety car completar a volta")
-	var sc_lap := rc.sc_end - rc.safety_car.progress
-	_check(sc_lap > 0.0 and sc_lap < manager.track.path.length,
-		"safety car dura uma volta a partir de onde entrou (faltam %.0f m de %.0f)" % [sc_lap, manager.track.path.length])
-	rc.safety_car.progress = rc.sc_end - 1.0
-	await _seconds(0.5)
-	_check(not rc.yellow and rc.safety_car == null, "safety car completou a volta: bandeira verde")
+	_check(not rc.is_involved(bot_e) and rc.yellow and rc.safety_car != null and rc.yellow_min_left() > 0.0,
+		"carro batido no box, mas a amarela dura no mínimo 30 s (faltam %.0f s)" % rc.yellow_min_left())
+	await _seconds(rc.yellow_min_left() + 0.5)
+	_check(not rc.yellow and rc.safety_car == null, "30 s e nenhum carro batido na pista: bandeira verde")
 	var damage := bot_e.car.get_node("Damage") as CarDamage
 	_check(damage.get_overall() > 0.99, "carro do bot consertado")
 	var t := 0.0
@@ -109,13 +106,15 @@ func _run() -> void:
 	rc.safety_car.progress = pe.progress - 30.0
 	await _seconds(0.5)
 	_check(is_equal_approx(pe.penalty_seconds, pen_before), "envolvido pode passar o safety car")
+	rc._yellow_time = RaceControl.MIN_YELLOW + 5.0
+	await _seconds(0.5)
+	_check(rc.yellow, "passados 30 s, a amarela continua enquanto o carro batido não chega ao box")
 	rc.involved[pe]["time_left"] = 0.2
 	await _seconds(0.5)
 	_check(pe.in_pit_stop and pe.current_lap() == p_lap and pe.lap_restart, "tempo esgotado: levado ao box, recomeça a mesma volta")
+	_check(not rc.yellow, "carro batido levado ao box depois dos 30 s: bandeira verde")
 	await _seconds(RaceControl.REPAIR_TIME + 4.0)
-	_check(not rc.is_involved(pe) and rc.yellow, "jogador consertado; amarela segue com o safety car")
-	rc.safety_car.progress = rc.sc_end - 1.0
-	await _seconds(0.5)
+	_check(not rc.is_involved(pe), "jogador consertado")
 	# --- Safety car: quem não está envolvido e passa é punido
 	for e in manager.entries:
 		if e.bot and not e.in_pit and not e.in_pit_stop and not e.retired and not rc.is_involved(e):
@@ -148,7 +147,7 @@ func _run() -> void:
 		for k in 8:
 			a.progress = base - 12.0 + k * 3.0
 			rc._check_rules(0.01)
-		_check(a.penalty_seconds >= pen_a + 5.0, "ultrapassagem lenta sob amarela: +5 s (%.0f → %.0f s)" % [pen_a, a.penalty_seconds])
+		_check(a.penalty_seconds >= pen_a + 10.0, "ultrapassagem lenta sob amarela: +10 s (%.0f → %.0f s)" % [pen_a, a.penalty_seconds])
 	Engine.time_scale = 1.0
 	DirAccess.remove_absolute(ProjectSettings.globalize_path("user://test_rc_profile.cfg"))
 	print("Falhas: %d" % failures)

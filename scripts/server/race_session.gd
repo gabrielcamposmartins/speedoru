@@ -192,12 +192,12 @@ func _apply_inputs() -> void:
 		var buttons := int(inp[5])
 		car.drs_requested = buttons & NetProtocol.BTN_DRS != 0
 		car.boost_input = buttons & NetProtocol.BTN_BOOST != 0
-		var counts := inp.slice(6, 14)
+		var counts := inp.slice(6, 6 + NetRaceClient.ACTIONS.size())
 		var last: Variant = _last_counts.get(acc_id)
 		_last_counts[acc_id] = counts
 		if last == null:
 			continue
-		for k in 8:
+		for k in mini(counts.size(), (last as PackedFloat32Array).size()):
 			var times := clampi(int(counts[k] - last[k]), 0, 3)
 			for _i in times:
 				_action(car, k)
@@ -205,6 +205,8 @@ func _apply_inputs() -> void:
 
 func _action(car: F1Car, k: int) -> void:
 	match k:
+		8:
+			car.pass_signal()
 		0:
 			car.shift_up()
 		1:

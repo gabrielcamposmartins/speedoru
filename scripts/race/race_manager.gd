@@ -141,6 +141,11 @@ func _ready() -> void:
 	hud.name = "RaceHud"
 	hud.manager = self
 	scene.add_child.call_deferred(hud)
+	# Vento do vácuo (pista visual) no carro seguido pela câmera
+	var fx := SlipstreamFx.new()
+	fx.name = "SlipstreamFx"
+	fx.car = player
+	scene.add_child.call_deferred(fx)
 	if net == Net.CLIENT:
 		_start_net_client.call_deferred()
 		return
@@ -1015,6 +1020,7 @@ func _penalize(e: RaceEntry, seconds: float, title: String, detail: String) -> v
 		return
 	e.penalty_seconds += seconds
 	e.penalties.append(title)
+	e.penalty_log.append([title, seconds, detail, e.laps_completed() + 1])
 	_notify(e, "%s  +%ds" % [title, roundi(seconds)], detail, true)
 
 
@@ -1290,7 +1296,7 @@ func net_state() -> Dictionary:
 	var list := []
 	for e in roster:
 		list.append([e.position, e.crossings, e.progress, e.last_lap, e.best_lap, e.finished, e.finish_time,
-			e.penalty_seconds, Array(e.penalties), e.retired, e.disqualified, e.pit_count, e.in_pit, e.in_pit_stop,
+			e.penalty_seconds, e.penalty_log.map(func(x: Array) -> String: return "%s|%s|%s|%d" % [x[0], x[1], x[2], x[3]]), e.retired, e.disqualified, e.pit_count, e.in_pit, e.in_pit_stop,
 			interval_text(e), e.lap_start, e.track_limit_warnings, e.pit_timer, e.lap_invalid, e.lap_restart, e.car.drs_allowed])
 	var inv := {}
 	if control:
@@ -1300,7 +1306,7 @@ func net_state() -> Dictionary:
 		"state": state, "race_time": race_time, "laps": laps, "entries": list,
 		"fastest": fastest_entry.index if fastest_entry else -1, "fastest_lap": fastest_lap, "leader_finished": leader_finished,
 		"yellow": control.yellow if control else false, "involved": inv,
-		"sc": [control.safety_car.progress, control.safety_car.speed, control.sc_end] if control and control.safety_car else [],
+		"sc": [control.safety_car.progress, control.safety_car.speed, control.yellow_min_left()] if control and control.safety_car else [],
 	}
 
 
@@ -1420,7 +1426,13 @@ func apply_net_state(d: Dictionary) -> void:
 		e.finished = bool(v[5])
 		e.finish_time = float(v[6])
 		e.penalty_seconds = float(v[7])
-		e.penalties.assign(v[8])
+		e.penalties.clear()
+		e.penalty_log.clear()
+		for item in v[8]:
+			var parts := str(item).split("|")
+			e.penalties.append(parts[0])
+			e.penalty_log.append([parts[0], float(parts[1]) if parts.size() > 1 else 0.0, parts[2] if parts.size() > 2 else "",
+				int(parts[3]) if parts.size() > 3 else 0])
 		e.retired = bool(v[9])
 		e.disqualified = bool(v[10])
 		e.pit_count = int(v[11])
@@ -1493,6 +1505,13 @@ func apply_net_event(d: Dictionary) -> void:
 				_notify(player_entry, str(d.get("title", "")), str(d.get("detail", "")), bool(d.get("penalty", false)))
 		"reward":
 			player_reward = int(d.get("reward", 0))
+		"give_back":
+			if player_entry and int(d.get("idx", -1)) == player_entry.index:
+				_client_give_back = {"target": str(d.get("target", "")), "until": race_time + float(d.get("left", GIVE_BACK_TIME)),
+					"seconds": float(d.get("seconds", 10.0))}
+		"give_back_end":
+			if player_entry and int(d.get("idx", -1)) == player_entry.index:
+				_client_give_back = {}
 		"closed":
 			# O servidor encerrou a corrida: quem ainda corria vê o resultado
 			if state != State.FINISHED:
@@ -1509,6 +1528,23 @@ const GIVE_BACK_TIME := 12.0
 ## entry -> {target, until, seconds, title, detail}
 var give_backs := {}
 var _restored := {}
+## Cliente: o "devolva a posição" do jogador espelhado do servidor.
+var _client_give_back := {}
+
+
+## Posição que o jogador deve devolver agora: {target (código), left (s), seconds} ou vazio.
+func player_give_back() -> Dictionary:
+	if player_entry == null:
+		return {}
+	if net == Net.CLIENT:
+		if _client_give_back.is_empty():
+			return {}
+		return {"target": _client_give_back["target"], "left": maxf(float(_client_give_back["until"]) - race_time, 0.0),
+			"seconds": _client_give_back["seconds"]}
+	if not give_backs.has(player_entry):
+		return {}
+	var d: Dictionary = give_backs[player_entry]
+	return {"target": (d["target"] as RaceEntry).code, "left": maxf(float(d["until"]) - race_time, 0.0), "seconds": d["seconds"]}
 
 
 ## O jogador ganhou a posição de `target` de forma irregular: aviso para devolvê-la; se não devolver
@@ -1523,12 +1559,14 @@ func request_give_back(e: RaceEntry, target: RaceEntry, seconds: float, title: S
 		return
 	give_backs[e] = {"target": target, "until": race_time + GIVE_BACK_TIME, "seconds": seconds, "title": title, "detail": detail}
 	_notify(e, "DEVOLVA A POSIÇÃO", "%s · deixe %s passar em %d s ou leve +%ds" % [detail, target.code, int(GIVE_BACK_TIME), roundi(seconds)], true)
+	net_event.emit({"event": "give_back", "idx": e.index, "target": target.code, "left": GIVE_BACK_TIME, "seconds": seconds})
 
 
 ## `passer` voltou à frente de `e`: se era a posição que `e` devia, está resolvido (true).
 func give_back_restored(e: RaceEntry, passer: RaceEntry) -> bool:
 	if give_backs.has(e) and give_backs[e]["target"] == passer:
 		give_backs.erase(e)
+		net_event.emit({"event": "give_back_end", "idx": e.index})
 		_restored[e] = passer
 		_notify(e, "POSIÇÃO DEVOLVIDA", "Sem penalidade", false)
 		return true
@@ -1545,10 +1583,12 @@ func _update_give_backs() -> void:
 		var target: RaceEntry = d["target"]
 		if target.retired or target.in_pit or e.retired or e.finished:
 			give_backs.erase(e)
+			net_event.emit({"event": "give_back_end", "idx": e.index})
 		elif target.progress > e.progress + 2.0:
 			give_back_restored(e, target)
 		elif race_time > float(d["until"]):
 			give_backs.erase(e)
+			net_event.emit({"event": "give_back_end", "idx": e.index})
 			_penalize(e, d["seconds"], d["title"], d["detail"] + " (não devolveu a posição)")
 
 

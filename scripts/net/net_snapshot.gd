@@ -73,6 +73,9 @@ static func encode(time: float, entries: Array) -> PackedByteArray:
 		for k in mini(car.wheel_broken.size(), 4):
 			if car.wheel_broken[k]:
 				broken |= 1 << k
+		# Bit 4: pisca dos retrovisores ("pedir passagem")
+		if car.signal_on:
+			broken |= 16
 		b.put_u8(broken)
 		for k in 4:
 			b.put_u8(_u8(car.tire_usage[k] * 0.5))

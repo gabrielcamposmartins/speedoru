@@ -197,6 +197,7 @@ func _finish() -> void:
 		e.lap_restart = false
 		e.penalty_seconds = 0.0
 		e.penalties.clear()
+		e.penalty_log.clear()
 		e.track_limit_warnings = 0
 		e.checkpoint_times.clear()
 		e.pit_count = 0
