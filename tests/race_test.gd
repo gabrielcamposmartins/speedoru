@@ -57,6 +57,7 @@ func _run() -> void:
 	var limit := RaceSettings.laps * 140.0 + 120.0
 	while not manager._all_finished() and manager.race_time < limit:
 		await process_frame
+		_watch_stuck()
 		if manager.race_time - last_report > 30.0:
 			last_report = manager.race_time
 			var line := "t=%5.0f s:" % manager.race_time
@@ -80,3 +81,33 @@ func _run() -> void:
 	_check(penalties <= manager.entries.size(), "poucas penalidades entre os bots (%d)" % penalties)
 	print("Falhas: %d" % failures)
 	quit(1 if failures > 0 else 0)
+
+
+var _still := {}
+var _reported := {}
+
+
+## Diagnóstico: bot parado (< 1 km/h, sem terminar) por mais de 15 s imprime o estado completo uma vez.
+func _watch_stuck() -> void:
+	for e in manager.entries:
+		if e.finished or e.retired or e.in_pit_stop or e.bot == null or manager.state != RaceManager.State.RACING:
+			_still.erase(e)
+			continue
+		if e.car.speed_kmh > 1.0:
+			_still.erase(e)
+			continue
+		if not _still.has(e):
+			_still[e] = manager.race_time
+		elif manager.race_time - _still[e] > 15.0 and not _reported.has(e):
+			_reported[e] = true
+			var b := e.bot
+			var damage := e.car.get_node_or_null("Damage") as CarDamage
+			var ahead := ""
+			for o in manager.entries:
+				var ds := b._ahead(o.s, e.s)
+				if o != e and ds > -5.0 and ds < 40.0:
+					ahead += " %s(ds %.1f lat %.1f v %.0f%s%s)" % [o.code, ds, o.lateral, o.car.speed_kmh, " PARADO-BOX" if o.in_pit_stop else "", " BOX" if o.in_pit else ""]
+			print("  PRESO %s a %.0f s: modo %s in_pit %s hold %s rodas quebradas %s dano %.2f | gas %.2f freio %.2f dir %.2f | s %.0f lat %.1f | envolvido %s | perto:%s" % [
+				e.code, manager.race_time, BotDriver.Mode.keys()[b.mode], e.in_pit, e.car.hold, e.car.wheel_broken,
+				damage.get_overall() if damage else -1.0, e.car.throttle_input, e.car.brake_input, e.car.steer_input,
+				e.s, e.lateral, manager.control.is_involved(e) if manager.control else false, ahead])
