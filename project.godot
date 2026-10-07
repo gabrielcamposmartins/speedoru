@@ -12,7 +12,7 @@ config_version=5
 
 config/name="F1 Gatcha"
 config/description="Jogo de Fórmula 1 em estilo anime."
-config/version="0.2.0"
+config/version="0.3.0"
 run/main_scene="res://scenes/boot.tscn"
 config/features=PackedStringArray("4.7", "Forward Plus")
 boot_splash/bg_color=Color(0.02, 0.03, 0.08, 1)

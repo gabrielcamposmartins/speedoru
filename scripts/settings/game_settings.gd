@@ -62,11 +62,11 @@ const EXTRA_ACTIONS := [
 	["pit_soft", KEY_1], ["pit_medium", KEY_2], ["pit_hard", KEY_3],
 	["standings_next", KEY_PAGEDOWN], ["standings_prev", KEY_PAGEUP],
 	["pause", KEY_ESCAPE], ["open_settings", KEY_F10], ["toggle_help", KEY_H], ["toggle_racing_line", KEY_L],
-	["pit_limiter", KEY_P], ["go_to_pit", KEY_K], ["pass_signal", KEY_G],
+	["pit_limiter", KEY_P], ["go_to_pit", KEY_K], ["pass_signal", KEY_X],
 ]
 ## Botões do controle das ações acima (Start pausa; o resto fica pelos menus).
 const EXTRA_PAD := {"pause": JOY_BUTTON_START, "pit_limiter": JOY_BUTTON_DPAD_LEFT, "go_to_pit": JOY_BUTTON_BACK,
-	"pass_signal": JOY_BUTTON_DPAD_RIGHT}
+	"pass_signal": JOY_BUTTON_MISC1}
 
 const RESOLUTIONS := [Vector2i(1280, 720), Vector2i(1366, 768), Vector2i(1600, 900), Vector2i(1920, 1080),
 	Vector2i(2560, 1440), Vector2i(3840, 2160)]
@@ -344,7 +344,7 @@ static func event_label(ev: InputEvent) -> String:
 			JOY_BUTTON_LEFT_SHOULDER: "LB", JOY_BUTTON_RIGHT_SHOULDER: "RB", JOY_BUTTON_BACK: "Back",
 			JOY_BUTTON_START: "Start", JOY_BUTTON_LEFT_STICK: "L3", JOY_BUTTON_RIGHT_STICK: "R3",
 			JOY_BUTTON_DPAD_UP: "D-pad ↑", JOY_BUTTON_DPAD_DOWN: "D-pad ↓", JOY_BUTTON_DPAD_LEFT: "D-pad ←",
-			JOY_BUTTON_DPAD_RIGHT: "D-pad →"}
+			JOY_BUTTON_DPAD_RIGHT: "D-pad →", JOY_BUTTON_MISC1: "Share"}
 		return "Botão " + pad.get(ev.button_index, str(ev.button_index))
 	if ev is InputEventJoypadMotion:
 		var plus: bool = ev.axis_value > 0.0

@@ -63,7 +63,8 @@ func _run() -> void:
 	_check(is_equal_approx(settings.get_value("audio", "music"), 0.5), "volume da música salvo")
 	# Som ambiente (torcida) no bus Crowd
 	var crowd := AudioServer.get_bus_index("Crowd")
-	var crowd_base := AudioServer.get_bus_volume_db(crowd)
+	# Base do mixer (sem o volume ambiente atual, que pode não ser 100% no PC de quem roda o teste)
+	var crowd_base: float = settings._bus_base.get("Crowd", AudioServer.get_bus_volume_db(crowd))
 	settings.set_value("audio", "ambient", 0.5)
 	_check(absf(AudioServer.get_bus_volume_db(crowd) - (crowd_base + linear_to_db(0.5))) < 0.05,
 		"som ambiente a 50%% baixa o bus da plateia (%.1f dB)" % AudioServer.get_bus_volume_db(crowd))
@@ -127,6 +128,10 @@ func _run() -> void:
 		"migração: Start não abre mais a garagem")
 	_check(GameSettings.event_label(settings.get_binding("accelerate", false)) == "J", "migração mantém as teclas do teclado")
 	settings.reset_section("controls")
+	# A migração agenda um salvamento para o fim do quadro: espera ele acontecer antes de restaurar
+	# (senão ele grava os padrões por cima do arquivo do jogador)
+	await process_frame
+	await process_frame
 
 	# Restaura o arquivo do jogador
 	if backup != "":

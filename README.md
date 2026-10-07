@@ -83,7 +83,7 @@ Para mostrar em outro carregamento: `LoadingScreen.start("Texto")`,
 | Linha ideal (desligada → frenagens e curvas → completa) | L | — |
 | Limitador de velocidade (80 km/h: boxes e bandeira amarela) | P | D-pad ← |
 | Ir aos boxes depois de uma batida forte | K | Back |
-| Pedir passagem (pisca 4× a luz âmbar dos retrovisores) | G | D-pad → |
+| Pedir passagem (pisca 4× a luz âmbar dos retrovisores) | X | Share |
 | Menus: navegar / confirmar / voltar | setas · Enter · Esc | D-pad ou analógico · A · B |
 | Menus: abas da garagem e das configurações | — | LB / RB |
 | Pausa (na pista; a garagem abre pela pausa) | Esc | Start |
@@ -442,7 +442,7 @@ Visual synthwave + monitor CRT + HUD de ficção científica (`scripts/ui/retro.
   bandeira verde e o safety car sai. Os consertos seguem independentes da bandeira.
 - **Resultado:** a tela final mostra o detalhe das penalidades de cada jogador (título, segundos,
   motivo e volta).
-- **Pedir passagem:** G (D-pad →) pisca 4 vezes a luz âmbar nos retrovisores (LED, halo e uma luz
+- **Pedir passagem:** X (no controle, o botão Share) pisca 4 vezes a luz âmbar nos retrovisores (LED, halo e uma luz
   pequena), como a seta dos carros de rua; aparece para todos, inclusive online (vai no
   instantâneo do carro).
 - Bots respeitam tudo: sob amarela seguem o carro da frente mesmo em outra linha (não ultrapassam,
