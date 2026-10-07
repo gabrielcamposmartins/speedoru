@@ -61,6 +61,16 @@ func _run() -> void:
 	_check(GameSettings.event_label(settings.get_binding("brake", true)) == "RT", "eixo do controle salvo e recarregado (RT)")
 	_check(is_equal_approx(settings.get_value("display", "fov"), 80.0), "FOV salvo e recarregado")
 	_check(is_equal_approx(settings.get_value("audio", "music"), 0.5), "volume da música salvo")
+	# Som ambiente (torcida) no bus Crowd
+	var crowd := AudioServer.get_bus_index("Crowd")
+	var crowd_base := AudioServer.get_bus_volume_db(crowd)
+	settings.set_value("audio", "ambient", 0.5)
+	_check(absf(AudioServer.get_bus_volume_db(crowd) - (crowd_base + linear_to_db(0.5))) < 0.05,
+		"som ambiente a 50%% baixa o bus da plateia (%.1f dB)" % AudioServer.get_bus_volume_db(crowd))
+	settings.set_value("audio", "ambient", 0.0)
+	_check(AudioServer.is_bus_mute(crowd), "som ambiente em 0: plateia muda")
+	settings.set_value("audio", "ambient", 1.0)
+	_check(not AudioServer.is_bus_mute(crowd), "som ambiente de volta")
 
 	# Áudio aplicado no bus
 	settings.apply_all()

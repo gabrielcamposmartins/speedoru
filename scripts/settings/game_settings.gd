@@ -83,7 +83,7 @@ const DEFAULTS := {
 		"shadows": 2, "ssao": true, "ssil": false, "glow": true, "volumetric_fog": true, "lod": 2},
 	"performance": {"overlay": 0, "corner": 2, "online": 1},
 	"gameplay": {"racing_line": 2, "auto_update": true, "race_intro": true},
-	"audio": {"master": 1.0, "car": 1.0, "music": 1.0, "music_on": true, "track": 0, "mute_unfocused": true},
+	"audio": {"master": 1.0, "car": 1.0, "music": 1.0, "ambient": 1.0, "music_on": true, "track": 0, "mute_unfocused": true},
 }
 
 ## Predefinições gráficas: chaves de "graphics" aplicadas juntas (Baixo, Médio, Alto, Ultra).
@@ -110,7 +110,7 @@ func _ready() -> void:
 	_register_extra_actions()
 	for a in ACTIONS:
 		_default_events[a[0]] = InputMap.action_get_events(a[0]).duplicate()
-	for bus in ["Master", "Car", "Rivals", "Music"]:
+	for bus in ["Master", "Car", "Rivals", "Music", "Crowd"]:
 		var i := AudioServer.get_bus_index(bus)
 		_bus_base[bus] = AudioServer.get_bus_volume_db(i) if i >= 0 else 0.0
 	_overlay = PerfOverlay.new()
@@ -495,7 +495,7 @@ func _apply_audio() -> void:
 	var a: Dictionary = values["audio"]
 	# O volume "Carro" vale para o seu carro e para os rivais (canais separados: o compressor do
 	# seu motor não abafa os outros)
-	for bus_key in [["Master", "master"], ["Car", "car"], ["Rivals", "car"], ["Music", "music"]]:
+	for bus_key in [["Master", "master"], ["Car", "car"], ["Rivals", "car"], ["Music", "music"], ["Crowd", "ambient"]]:
 		var i := AudioServer.get_bus_index(bus_key[0])
 		if i < 0:
 			continue

@@ -278,7 +278,7 @@ func _traffic(s: float, v: float, my_lateral: float) -> Vector2:
 			_side_by_side = true
 			# Lado a lado com um humano: o fácil/médio não briga pela posição (alivia um pouco)
 			if yields and other.is_player:
-				max_speed = minf(max_speed, v * float(YIELD_LIFT[difficulty]) + 1.0)
+				max_speed = minf(max_speed, _yield_speed(s))
 			# Colado atrás e sobrepondo (carros têm 2 m de largura): tira o pé antes de tocar
 			if ds > 0.5 and absf(other.lateral - my_lateral) < 2.1:
 				max_speed = minf(max_speed, other.car.linear_velocity.length() - 2.0)
@@ -316,7 +316,7 @@ func _traffic(s: float, v: float, my_lateral: float) -> Vector2:
 		_offset_target = (my_lateral - line_lat) + away * clampf(3.2 - absf(dl), 0.0, 3.2)
 		_side_by_side = true
 		if attacker_ds > -15.0:
-			max_speed = minf(max_speed, v * float(YIELD_LIFT[difficulty]))
+			max_speed = minf(max_speed, _yield_speed(s))
 	var offset := 0.0
 	if _passing:
 		offset = (_passing.lateral + _pass_side * 3.0) - line_lat
@@ -327,6 +327,12 @@ func _traffic(s: float, v: float, my_lateral: float) -> Vector2:
 	elif _offset_target != 0.0 and absf(_offset_target) > 0.01:
 		offset = _offset_target
 	return Vector2(offset, maxf(max_speed, 3.0))
+
+
+## Velocidade ao dar passagem: uma fração do ritmo normal daquele trecho (e não da velocidade
+## atual, senão o bot iria desacelerando sem parar enquanto alguém o segue sem ultrapassar).
+func _yield_speed(s: float) -> float:
+	return RacingLine.sample(profile, track.path, s + 4.0) * float(YIELD_LIFT[difficulty])
 
 
 ## Lateral planejada (sem tráfego) num ponto: a linha de corrida; na largada, a linha deslocada

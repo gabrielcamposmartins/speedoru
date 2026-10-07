@@ -48,7 +48,8 @@ func _run() -> void:
 		if e.bot:
 			bot_e = e
 	var bot := bot_e.bot
-	var v := 60.0
+	# Ritmo normal do bot naquele trecho (a passagem é uma fração dele)
+	var v: float = RacingLine.sample(bot.profile, bot.track.path, 504.0)
 	# 1) Fácil, jogador 12 m atrás e 0,6 m à esquerda, mais rápido
 	bot.difficulty = BotDriver.Difficulty.EASY
 	bot._passing = null
@@ -57,7 +58,13 @@ func _run() -> void:
 	var line_lat := bot.line.lateral_at(500.0)
 	var move := (r.x + line_lat) - 0.0
 	_check(move < -1.0, "bot fácil abre para o lado oposto ao ataque (%.1f m)" % move)
-	_check(r.y < v * 0.95, "bot fácil tira o pé para deixar passar (%.1f → %.1f m/s)" % [v, r.y])
+	_check(r.y < v * 0.95 and r.y > v * 0.8, "bot fácil tira o pé para deixar passar, sem parar (%.1f → %.1f m/s)" % [v, r.y])
+	# Seguido de perto sem ultrapassar, não vai freando até parar: mesmo partindo devagar, a meta
+	# é uma fração do ritmo do trecho
+	bot._offset_target = 0.0
+	_place(bot_e, pe, -10.0, 0.6, 30.0)
+	var slow: Vector2 = bot._traffic(500.0, 30.0, 0.0)
+	_check(slow.y > v * 0.8, "seguido de perto, não desacelera sem parar (meta %.1f m/s andando a 30)" % slow.y)
 	# 2) Difícil: defende
 	bot.difficulty = BotDriver.Difficulty.HARD
 	bot._offset_target = 0.0

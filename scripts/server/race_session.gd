@@ -61,7 +61,7 @@ func start(p_server: GameServer, p_room: String, p_settings: Dictionary, p_playe
 	var list := []
 	for p in players:
 		list.append({"id": p["id"], "name": p["name"], "profile": p["profile"]})
-	manager.net_setup = {"laps": settings.get("laps", 5), "difficulty": settings.get("difficulty", 1),
+	manager.net_setup = {"laps": settings.get("laps", 5), "difficulty": settings.get("difficulty", 1), "drs": settings.get("drs", 0),
 		"bots": settings.get("bots", true), "players": list}
 	manager.net_grid_ready.connect(_on_grid_ready)
 	manager.net_event.connect(_broadcast_event)
@@ -88,7 +88,7 @@ func _on_grid_ready() -> void:
 	_phase = "waiting"
 	_wait = 0.0
 	var roster := manager.net_roster()
-	var race_settings := {"laps": manager.laps, "time_of_day": settings.get("time_of_day", 0),
+	var race_settings := {"laps": manager.laps, "drs": settings.get("drs", 0), "time_of_day": settings.get("time_of_day", 0),
 		"biome": settings.get("biome", 0), "difficulty": settings.get("difficulty", 1)}
 	for p in players:
 		for peer in _peers_of(p["id"]):

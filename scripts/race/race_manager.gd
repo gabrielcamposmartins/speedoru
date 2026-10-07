@@ -84,6 +84,9 @@ var player_reward := -1
 
 ## Rede: OFF (solo), SERVER (servidor dedicado) ou CLIENT (espelho do servidor).
 var net := Net.OFF
+## Regra do DRS: 0 = livre, 1 = só a até DRS_GAP s do carro da frente.
+var drs_rule := 0
+const DRS_GAP := 1.0
 ## Configuração da corrida em rede, definida antes de a cena entrar na árvore. Servidor:
 ## {laps, difficulty, bots, players: [{id, name, profile}]}; cliente: {me, roster, settings}.
 var net_setup := {}
@@ -110,6 +113,13 @@ func _ready() -> void:
 		net_setup = client_setup
 		client_setup = {}
 	online_race = net == Net.CLIENT
+	match net:
+		Net.OFF:
+			drs_rule = RaceSettings.drs_rule
+		Net.SERVER:
+			drs_rule = int(net_setup.get("drs", 0))
+		Net.CLIENT:
+			drs_rule = int((net_setup.get("settings", {}) as Dictionary).get("drs", 0))
 	# O carro do jogador corre com o que está equipado na garagem (na rede, com o que o servidor manda)
 	var profile := get_node_or_null("/root/Profile") as PlayerProfile
 	if profile and player.config and net == Net.OFF:
@@ -436,6 +446,7 @@ func _physics_process(delta: float) -> void:
 		_check_jump_start()
 	_update_ghosts()
 	_update_positions()
+	_update_drs_rule()
 	if control:
 		control.physics_update(delta)
 
@@ -573,6 +584,28 @@ func _update_positions() -> void:
 	for k in sorted.size():
 		(sorted[k] as RaceEntry).position = k + 1
 	entries.assign(sorted)
+
+
+## DRS por regra: a até DRS_GAP s do carro da frente (tempo nas marcas de progresso, as mesmas
+## dos intervalos); o líder e quem está nos boxes não têm. Livre / treino: sempre permitido.
+func _update_drs_rule() -> void:
+	var active := drs_rule == 1 and state != State.PRACTICE
+	for e in entries:
+		e.car.drs_rule_active = active
+		e.car.drs_allowed = not active or drs_gap_ok(e)
+
+
+func drs_gap_ok(e: RaceEntry) -> bool:
+	if e.position <= 1 or e.in_pit or e.retired or e.position - 2 >= entries.size():
+		return false
+	var ahead := entries[e.position - 2]
+	if ahead.retired:
+		return false
+	var index := mini(e.checkpoint_times.size(), ahead.checkpoint_times.size()) - 1
+	if index < 0:
+		return false
+	var gap := e.checkpoint_times[index] - ahead.checkpoint_times[index]
+	return gap >= 0.0 and gap <= DRS_GAP
 
 
 func _update_ghosts() -> void:
@@ -1203,7 +1236,7 @@ func net_state() -> Dictionary:
 	for e in roster:
 		list.append([e.position, e.crossings, e.progress, e.last_lap, e.best_lap, e.finished, e.finish_time,
 			e.penalty_seconds, Array(e.penalties), e.retired, e.disqualified, e.pit_count, e.in_pit, e.in_pit_stop,
-			interval_text(e), e.lap_start, e.track_limit_warnings, e.pit_timer, e.lap_invalid, e.lap_restart])
+			interval_text(e), e.lap_start, e.track_limit_warnings, e.pit_timer, e.lap_invalid, e.lap_restart, e.car.drs_allowed])
 	var inv := {}
 	if control:
 		for e: RaceEntry in control.involved:
@@ -1345,6 +1378,8 @@ func apply_net_state(d: Dictionary) -> void:
 		e.pit_timer = float(v[17])
 		e.lap_invalid = bool(v[18])
 		e.lap_restart = bool(v[19]) if v.size() > 19 else false
+		e.car.drs_rule_active = drs_rule == 1 and state != State.PRACTICE
+		e.car.drs_allowed = bool(v[20]) if v.size() > 20 else true
 		if e.is_player:
 			player_pit_timer = e.pit_timer
 	var fi := int(d.get("fastest", -1))

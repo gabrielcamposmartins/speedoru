@@ -73,8 +73,10 @@ func _draw() -> void:
 	Retro.draw_label(self, Retro.display(700), Vector2(0, 98), "%d%%" % roundi(car.battery * 100.0), HORIZONTAL_ALIGNMENT_RIGHT, W - 10, 10,
 		bcol if car.boost_active else Retro.c("text_2"))
 	# Indicadores só em texto (acesos quando ativos)
+	# DRS: aceso aberto; com a regra de 1 s, destacado quando disponível e apagado quando não
+	var drs_off := car.drs_rule_active and not car.drs_allowed and not car.drs_open
 	var flags := [
-		["DRS", car.drs_open, Retro.c("good")],
+		["DRS", car.drs_open, Retro.c("good"), drs_off],
 		["AUTO" if car.automatic else "MANUAL", false, Retro.c("text_2")],
 		["TC", car.tc_active, Retro.c("warn"), not car.traction_control],
 		["ABS", car.abs_active, Retro.c("warn")],
@@ -86,7 +88,9 @@ func _draw() -> void:
 		var lit: bool = fl[1]
 		var off: bool = fl.size() > 3 and fl[3]
 		var col: Color = fl[2] if lit else (Color(Retro.c("text_2"), 0.45) if off else Retro.c("text_2"))
-		var label: String = fl[0] + (" OFF" if off else "")
+		var label: String = fl[0] + (" OFF" if off and fl[0] != "DRS" else "")
+		if fl[0] == "DRS" and not lit and car.drs_rule_active and car.drs_allowed:
+			col = Retro.c("accent_2")
 		Retro.draw_label(self, f, Vector2(x, H - 10), label, HORIZONTAL_ALIGNMENT_LEFT, -1, 11, col)
 		if lit:
 			draw_rect(Rect2(x, H - 7, f.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, 11).x, 2), col)

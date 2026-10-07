@@ -709,7 +709,7 @@ func _new_room(kind: String, name: String, host_id: String) -> Dictionary:
 	return {
 		"id": _id("r"), "kind": kind, "name": name.substr(0, 24), "host": host_id, "password": "",
 		"members": [], "ready": {}, "state": "lobby", "session": null, "invited": {},
-		"settings": {"laps": 5, "difficulty": 1, "bots": true, "time_of_day": 0, "biome": 0, "max": NetProtocol.MAX_ROOM_PLAYERS},
+		"settings": {"laps": 5, "difficulty": 1, "bots": true, "drs": 0, "time_of_day": 0, "biome": 0, "max": NetProtocol.MAX_ROOM_PLAYERS},
 	}
 
 
@@ -750,6 +750,8 @@ func _apply_room_settings(room: Dictionary, data: Dictionary) -> void:
 		st["difficulty"] = clampi(int(data["difficulty"]), 0, 3)
 	if data.has("bots"):
 		st["bots"] = bool(data["bots"])
+	if data.has("drs"):
+		st["drs"] = clampi(int(data["drs"]), 0, 1)
 	if data.has("time_of_day"):
 		st["time_of_day"] = clampi(int(data["time_of_day"]), 0, 2)
 	if data.has("biome"):

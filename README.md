@@ -289,6 +289,10 @@ difícil ou mista) e posição de largada. Tudo em `scripts/race/`:
   dela fica grande por 5 s: roxo se é a mais rápida da corrida, verde se é o seu recorde, amarelo
   nos outros casos, com a diferença para o seu melhor), última e melhor volta, a linha **VOLTA MAIS
   RÁPIDA · piloto · tempo** (pisca em roxo quando alguém bate o recorde) e o status do pit.
+- **DRS** (escolhido ao criar a corrida — Jogar solo ou ajustes da sala): **livre** ou **só a até
+  1 s do carro da frente** (tempo nas marcas de progresso, as mesmas dos intervalos; o líder e quem
+  está nos boxes não têm). Com a regra, o "DRS" do painel fica destacado quando está disponível e
+  apagado quando não está. No online o servidor decide (`tests/drs_rule_test.gd`).
 - **Pausa na largada:** pausar com o semáforo acendendo congela a sequência; ao voltar ela continua
   (`tests/start_pause_test.gd`).
 - **Boxes:** os bots fazem fila indiana na pista dos boxes (seguem quem está entrando, parado ou
@@ -594,7 +598,7 @@ Tudo é aplicado na hora e salvo em `user://settings.cfg`
   uso total de CPU do sistema, por isso o monitor mostra o tempo que o jogo gasta no processador.
   Conectado ao servidor, mostra também a **latência** (ida e volta até o servidor, em ms, do ENet).
   "Em corridas online" (padrão: FPS e latência) liga o monitor sozinho nas corridas no servidor.
-- **Áudio:** volume geral, do carro e da música; música liga/desliga; faixa ou playlist; silenciar
+- **Áudio:** volume geral, do carro, da música e do som ambiente (torcida e palmas, bus `Crowd`); música liga/desliga; faixa ou playlist; silenciar
   com a janela em segundo plano.
 
 ## Circuitos (Monza)
@@ -789,6 +793,7 @@ godot --headless --path . -s res://tests/updater_test.gd    # atualizador: vers�
 godot --headless --path . -s res://tests/chase_camera_test.gd # câmera de perseguição: frenagem, aceleração, curva, batida
 godot --headless --path . -s res://tests/bot_yield_test.gd  # bots dão passagem ao jogador (fácil/médio), o difícil defende, amarela
 godot --headless --path . -s res://tests/start_pause_test.gd # pausa na largada congela o semáforo
+godot --headless --path . -s res://tests/drs_rule_test.gd   # DRS livre ou só a até 1 s do carro da frente
 godot --headless --path . -s res://tests/offtrack_probe.gd  # fora da pista: velocidade perdida e aderência lateral por piso
 godot --path . -s res://tests/capture_online.gd -- <pasta> <porta> --offline  # telas do multiplayer + corrida online
 ```

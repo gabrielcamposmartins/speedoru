@@ -366,6 +366,8 @@ func _build_room() -> void:
 		func(i: int) -> void: _ask("room_settings", {"bots": i == 0}))
 	_setting(grid, "Dificuldade", DIFFICULTIES, int(st.get("difficulty", 1)), editable,
 		func(i: int) -> void: _ask("room_settings", {"difficulty": i}))
+	_setting(grid, "DRS", ["Livre", "Até 1 s do carro da frente"], int(st.get("drs", 0)), editable,
+		func(i: int) -> void: _ask("room_settings", {"drs": i}))
 	_setting(grid, "Horário", Array(DaylightPresets.TIME_NAMES), int(st.get("time_of_day", 0)), editable,
 		func(i: int) -> void: _ask("room_settings", {"time_of_day": i}))
 	_setting(grid, "Ambiente", Array(DaylightPresets.BIOME_NAMES), int(st.get("biome", 0)), editable,

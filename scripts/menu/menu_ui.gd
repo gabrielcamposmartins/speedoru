@@ -345,6 +345,7 @@ func _build_solo() -> void:
 		["Adversários", ["3", "5", "9", "13"], maxi([3, 5, 9, 13].find(RaceSettings.opponents), 0), func(i: int) -> void: RaceSettings.opponents = [3, 5, 9, 13][i]],
 		["Dificuldade dos bots", ["Fácil", "Médio", "Difícil", "Mista"], RaceSettings.difficulty, func(i: int) -> void: RaceSettings.difficulty = i],
 		["Largada", ["Pole position", "Meio do grid", "Última fila"], RaceSettings.grid, func(i: int) -> void: RaceSettings.grid = i as RaceSettings.Grid],
+		["DRS", ["Livre", "Só a até 1 s do carro da frente"], RaceSettings.drs_rule, func(i: int) -> void: RaceSettings.drs_rule = i],
 		["Horário", Array(DaylightPresets.TIME_NAMES), RaceSettings.time_of_day, func(i: int) -> void: RaceSettings.time_of_day = i],
 		["Ambiente", Array(DaylightPresets.BIOME_NAMES), RaceSettings.biome, func(i: int) -> void: RaceSettings.biome = i],
 	]

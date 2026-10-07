@@ -422,6 +422,7 @@ func _build_audio() -> void:
 	_slider("audio", "master", "Volume geral", 0.0, 1.5, 0.05, _pct)
 	_slider("audio", "car", "Carro (motor, pneus, batidas)", 0.0, 1.5, 0.05, _pct)
 	_slider("audio", "music", "Música", 0.0, 1.5, 0.05, _pct)
+	_slider("audio", "ambient", "Som ambiente (torcida, palmas)", 0.0, 1.5, 0.05, _pct)
 	_toggle("audio", "mute_unfocused", "Silenciar com a janela em segundo plano")
 	_header("Música")
 	_toggle("audio", "music_on", "Música de fundo (M)")

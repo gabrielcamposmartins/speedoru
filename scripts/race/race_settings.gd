@@ -18,6 +18,8 @@ static var skip_menu := false
 ## Horário (DaylightPresets.TimeOfDay) e ambiente (DaylightPresets.Biome) da corrida.
 static var time_of_day := 0
 static var biome := 0
+## DRS: 0 = livre, 1 = só a até 1 s do carro da frente.
+static var drs_rule := 0
 
 ## Tela que o menu principal abre ao voltar de uma corrida ("" = inicial, "multiplayer" = sala).
 static var return_to := ""

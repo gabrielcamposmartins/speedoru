@@ -181,6 +181,10 @@ var tire_surface := PackedInt32Array([0, 0, 0, 0])
 var tire_wear := PackedFloat32Array([0, 0, 0, 0])
 ## Congela o carro (pit stop, antes da largada): sem tração, freio de mão total.
 var hold := false
+## Regra do DRS da corrida: com drs_rule_active, só abre se drs_allowed (a até 1 s do carro da
+## frente; calculado pelo RaceManager). Sem regra (treino, "livre"), sempre permitido.
+var drs_allowed := true
+var drs_rule_active := false
 ## Rede (cliente): o carro não tem física própria, só mostra o estado que o servidor manda
 ## (corpo estático movido pelo NetRaceClient; velocidade, marcha, giro etc. vêm do snapshot).
 ## As rodas também são posicionadas aqui (suspensão do servidor, esterço e giro pela velocidade):
@@ -716,7 +720,7 @@ func _update_handling() -> void:
 
 
 func _update_drs(delta: float) -> void:
-	var allowed := drs_requested and speed_kmh >= drs_min_speed_kmh and brake_input < 0.05
+	var allowed := drs_requested and drs_allowed and speed_kmh >= drs_min_speed_kmh and brake_input < 0.05
 	if allowed != drs_open:
 		drs_open = allowed
 		drs_changed.emit(drs_open)
