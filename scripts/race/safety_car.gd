@@ -4,12 +4,16 @@ extends Node3D
 ## ideal à frente do líder durante a bandeira amarela. É só visual (sem colisão): passar por ele é
 ## punido pelo RaceControl. Posição = `progress` (metros ao longo da pista, mesma conta do RaceEntry).
 
-const SPEED := 70.0 / 3.6
+## Velocidade nas retas; nas curvas segue o perfil de velocidade da linha ideal (CORNER_FACTOR).
+const SPEED := 180.0 / 3.6
 const SLOW := 9.0
+const CORNER_FACTOR := 0.8
 
 var progress := 0.0
 var speed := SPEED
 var line: RacingLine
+## Perfil de velocidade da linha ideal (m/s por trecho), para frear nas curvas. Vazio = só SPEED.
+var profile := PackedFloat32Array()
 var track: RaceTrack
 
 var _lights: Array[MeshInstance3D] = []
@@ -123,11 +127,16 @@ func _process(delta: float) -> void:
 	_glow.light_energy = 2.5 if phase == 0 else 1.0
 
 
-## Anda `delta` segundos; mantém-se uns 45 m à frente do líder (espera se ficar longe demais).
+## Anda `delta` segundos a até 180 km/h (mais devagar nas curvas); espera o líder se ele ficar
+## longe demais.
 func advance(delta: float, leader_progress: float) -> void:
 	var gap := progress - leader_progress
 	var target := SPEED if gap < 110.0 else SLOW
-	speed = move_toward(speed, target, 4.0 * delta)
+	if not profile.is_empty():
+		# Olha um pouco à frente para já chegar na curva devagar
+		var ahead := fposmod(progress + 15.0 + speed * 1.2, track.path.length)
+		target = minf(target, RacingLine.sample(profile, track.path, ahead) * CORNER_FACTOR)
+	speed = move_toward(speed, target, (9.0 if target < speed else 5.0) * delta)
 	progress += speed * delta
 	_place()
 

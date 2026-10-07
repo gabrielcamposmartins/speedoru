@@ -304,15 +304,32 @@ def shift_down():
 
 
 def backfire(variant):
-    n = int(SR * 0.35)
+    """Ronco do escapamento ao aliviar ("brap-brap"), não estalos: 3/4/6 pulsos graves (55–85 Hz,
+    ataque de alguns ms, ~55 ms de queda) com sopro de ar filtrado, em intervalos irregulares e
+    cada vez mais fracos; ressonância do cano em 180–420 Hz e nada acima de ~2,5 kHz (o que dava o
+    som de pipoca). Gerador próprio por variante: não muda o ruído dos outros sons."""
+    rng = np.random.default_rng(7000 + variant)
+    n = int(SR * 0.75)
     x = np.zeros(n)
-    pops = [0.0] if variant == 1 else ([0.0, 0.07] if variant == 2 else [0.0, 0.05, 0.13])
-    for k, start in enumerate(pops):
-        p = thump(0.2, RNG.uniform(90, 140), 0.03, 0.4) * 0.9 + burst(0.2, 300, 6000, 0.0005, 0.025, 0.4)
+    count = (3, 4, 6)[variant - 1]
+    start = 0.0
+    for k in range(count):
+        m = int(SR * 0.2)
+        t = np.arange(m) / SR
+        f0 = rng.uniform(55.0, 85.0)
+        f = f0 * (1.0 - 0.3 * (1.0 - np.exp(-t / 0.04)))
+        body = np.sin(2 * np.pi * np.cumsum(f) / SR) * envelope(m, 0.004, 0.055)
+        noise = rng.standard_normal(m)
+        noise = spectrum_filter(noise, lambda fr: bandpass(fr, 120, 1800) / np.maximum(fr, 20.0) ** 0.35)
+        noise = noise / max(np.abs(noise).max(), 1e-9) * envelope(m, 0.003, 0.035)
+        pulse = body * 0.95 + noise * 0.55
+        level = (1.0 - 0.12 * k) * rng.uniform(0.7, 1.0)
         i = int(start * SR)
-        m = min(p.size, n - i)
-        x[i:i + m] += p[:m] * (1.0 - 0.2 * k)
-    return x
+        size = min(m, n - i)
+        x[i:i + size] += pulse[:size] * level
+        start += rng.uniform(0.045, 0.11)
+    x = spectrum_filter(x, lambda fr: bandpass(fr, 40, 2500) * (1.0 + 0.8 * bandpass(fr, 180, 420, 1.0)))
+    return np.tanh(x * 1.4)
 
 
 def impact(variant):

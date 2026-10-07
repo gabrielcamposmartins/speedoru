@@ -62,11 +62,11 @@ func _run() -> void:
 	_check(rc.yellow and rc.is_involved(bot_e), "batida de bot: bandeira amarela")
 	_check(rc.safety_car != null, "safety car entra na pista")
 	await _seconds(1.0)
-	var all_limited := true
+	var fast := 0
 	for e in manager.entries:
-		if e.bot and not rc.is_involved(e) and not e.in_pit and e.bot.mode == BotDriver.Mode.RACE and not e.car.limiter_on:
-			all_limited = false
-	_check(all_limited, "bots ligam o limitador sob amarela")
+		if e.bot and not rc.is_involved(e) and not e.in_pit and e.bot.mode == BotDriver.Mode.RACE 				and e.car.speed_kmh > SafetyCar.SPEED * 3.6 * 1.25:
+			fast += 1
+	_check(fast == 0, "bots seguram a velocidade sob amarela (sem limitador obrigatório)")
 	var info := rc.instruction_for(pe)
 	_check(not info.is_empty() and "ultrapasse" in str(info[1]) and "safety car sai em" in str(info[1]), "jogador recebe a instrução da amarela: %s" % (info[1] if not info.is_empty() else ""))
 	await _seconds(RaceControl.BOT_PIT_DELAY + 1.0)
@@ -112,7 +112,11 @@ func _run() -> void:
 	rc.safety_car.progress = rc.sc_end - 1.0
 	await _seconds(0.5)
 	# --- Safety car: quem não está envolvido e passa é punido
-	rc.report_crash(bot_e if not bot_e.in_pit_stop else manager.entries[1])
+	for e in manager.entries:
+		if e.bot and not e.in_pit and not e.in_pit_stop and not e.retired and not rc.is_involved(e):
+			rc.report_crash(e)
+			break
+	_check(rc.yellow and rc.safety_car != null, "nova batida: nova amarela com safety car")
 	await _seconds(0.2)
 	var other: RaceEntry = null
 	for e in manager.entries:

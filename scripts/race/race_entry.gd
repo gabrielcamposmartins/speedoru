@@ -15,6 +15,9 @@ var net_interval := ""
 ## Composto escolhido para o próximo pit stop e tempo que falta do pit stop em andamento (humanos).
 var pit_compound := CarConfig.TyreCompound.HARD
 var pit_timer := 0.0
+## Pit stop: quando o carro parou na vaga (tempo de corrida) e quanto durou o último.
+var pit_stop_start := 0.0
+var last_pit_time := 0.0
 var name := ""
 var code := ""
 var color := Color.WHITE

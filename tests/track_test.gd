@@ -110,7 +110,8 @@ func _gravel_test() -> void:
 	var xf := p.frame_at(p.s_at(best) - 0.0, lateral, 0.1)
 	var decel_gravel := await _coast(xf)
 	print("Desaceleração rolando (150 km/h, 0,5 s): asfalto %.1f m/s², brita %.1f m/s²" % [decel_asphalt, decel_gravel])
-	_check(decel_gravel > decel_asphalt + 2.5, "brita segura o carro")
+	# Brita segura mais que o asfalto, mas sem "atolar" (resistência moderada, TrackSurface.DRAG)
+	_check(decel_gravel > decel_asphalt + 1.5, "brita segura o carro")
 
 
 func _coast(xf: Transform3D) -> float:

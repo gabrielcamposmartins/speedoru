@@ -84,6 +84,7 @@ func _start_yellow() -> void:
 		safety_car = SafetyCar.new()
 		safety_car.name = "SafetyCar"
 		manager.get_parent().add_child(safety_car)
+		safety_car.profile = manager._profile(BotDriver.Difficulty.EASY)
 		safety_car.setup(manager.track, manager.line, leader.progress + 60.0)
 		sc_end = safety_car.progress + manager.track.path.length
 	for e in manager.entries:

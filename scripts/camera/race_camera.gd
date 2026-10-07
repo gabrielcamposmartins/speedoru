@@ -9,6 +9,9 @@ extends Camera3D
 ##    para a direita); nas câmeras de bordo usa a lente traseira.
 ##  * O liga/desliga a órbita: arrastar com o mouse (ou analógico direito) gira, a roda do mouse
 ##    aproxima/afasta e, parada, ela gira sozinha. A órbita nunca entra no chão nem atravessa objetos.
+##  * Perseguição com vida: afasta ao acelerar/no boost e aproxima na frenagem, desliza para fora e
+##    inclina um pouco nas curvas olhando para dentro delas, acompanha a derrapagem, treme de leve
+##    em alta velocidade, nas zebras/brita e forte nas batidas; FOV abre no boost.
 ## Segue a transformação interpolada do carro (physics interpolation ligada no projeto).
 
 signal mode_changed(mode_name: String)
@@ -44,6 +47,21 @@ var onboard_rear := {
 @export var base_fov := 68.0
 ## Aumento de FOV na velocidade máxima (sensação de velocidade).
 @export var speed_fov_boost := 16.0
+## Distância a mais por G longitudinal (acelerando afasta, freando aproxima), em m/G.
+@export var chase_accel_pull := 0.28
+## Deslize lateral para fora da curva (m/G) e inclinação (rad/G).
+@export var chase_lateral_swing := 0.3
+@export var chase_roll_per_g := 0.022
+## Quanto o olhar entra na curva pela velocidade de giro do carro.
+@export var chase_look_into_turn := 0.9
+## Quanto a câmera acompanha a direção do movimento numa derrapagem (0..1).
+@export var chase_slide_follow := 0.45
+## Tremida: na velocidade máxima, em zebras/brita e em batidas (m).
+@export var shake_speed := 0.018
+@export var shake_surface := 0.045
+@export var shake_impact := 0.22
+## FOV a mais com o boost ligado.
+@export var boost_fov := 6.0
 
 @export_group("Piloto (1ª pessoa)")
 ## Posição dos olhos no espaço do carro.
@@ -81,7 +99,14 @@ var _direction := Vector3.BACK
 var _height := 1.9
 var _back_t := 0.0
 var _head_g := Vector3.ZERO
+## G local sem suavizar (para detectar batidas) e o "trauma" da tremida (0..1, decai).
+var _raw_g := Vector3.ZERO
+var _trauma := 0.0
+var _shake_t := 0.0
+var _chase_pull := 0.0
+var _noise := FastNoiseLite.new()
 var _prev_velocity := Vector3.ZERO
+var _prev_pos := Vector3.ZERO
 var _mirror_index := 0
 var _mode_before_orbit: Mode = Mode.CHASE
 var _orbit_yaw := 0.0
@@ -144,7 +169,6 @@ func _process(delta: float) -> void:
 	if target == null:
 		return
 	var xf := target.get_global_transform_interpolated()
-	_update_head_g(xf, delta)
 	looking_back = mode != Mode.ORBIT and Input.is_action_pressed("look_back")
 	_back_t = move_toward(_back_t, 1.0 if looking_back else 0.0, look_back_speed * delta)
 	var back := smoothstep(0.0, 1.0, _back_t)
@@ -157,6 +181,8 @@ func _process(delta: float) -> void:
 			target_fov = base_fov
 		Mode.CHASE, Mode.CHASE_FAR:
 			_update_chase(xf, delta, back)
+			if target.boost_active:
+				target_fov += boost_fov * (1.0 - back)
 		Mode.DRIVER:
 			var head := xf * _driver_head()
 			if target.steer_input < -0.2:
@@ -180,26 +206,87 @@ func _update_chase(xf: Transform3D, delta: float, back: float) -> void:
 	var far := mode == Mode.CHASE_FAR
 	var distance := far_distance if far else chase_distance
 	var height := far_height if far else chase_height
+	# Na câmera longe os efeitos são mais discretos; olhando para trás, nenhum
+	var life := (0.65 if far else 1.0) * (1.0 - back)
 	var forward := xf.basis.z
 	forward.y = 0.0
 	if forward.length_squared() < 0.001:
 		forward = _direction
 	forward = forward.normalized()
+	# Derrapagem: a câmera puxa para a direção em que o carro está indo de verdade
+	var vel := target.linear_velocity
+	vel.y = 0.0
+	if vel.length() > 8.0:
+		var slide := clampf(absf(target.body_slip_angle) / 0.5, 0.0, 1.0) * chase_slide_follow
+		forward = forward.slerp(vel.normalized(), slide).normalized()
 	_direction = _direction.slerp(forward, 1.0 - exp(-direction_smoothing * delta)).normalized()
 	_height = lerpf(_height, height, 1.0 - exp(-4.0 * delta))
+	# Inércia: afasta acelerando, aproxima freando (G longitudinal suavizado)
+	var pull := clampf(_head_g.z * chase_accel_pull, -1.1, 0.9) * life
+	_chase_pull = lerpf(_chase_pull, pull, 1.0 - exp(-3.0 * delta))
+	var left := Vector3.UP.cross(_direction).normalized()
+	var lat_g := clampf(_head_g.x, -4.0, 4.0)
 	# Olhar para trás: a câmera dá a volta por cima/lado do carro (sem atravessá-lo).
 	var dir := _direction.rotated(Vector3.UP, PI * back)
 	var focus := xf.origin + Vector3.UP * 0.55
-	var pos := focus - dir * lerpf(distance, distance * 0.85, back) + Vector3.UP * (_height + sin(PI * back) * 0.8)
-	global_transform = Transform3D(Basis(), pos).looking_at(focus + dir * 4.0, Vector3.UP)
+	var pos := focus - dir * (lerpf(distance, distance * 0.85, back) + _chase_pull) 		+ Vector3.UP * (_height + sin(PI * back) * 0.8 - clampf(_head_g.y, -2.0, 2.0) * 0.05 * life) 		- left * lat_g * chase_lateral_swing * life
+	# Olha para dentro da curva (velocidade de giro do carro)
+	var yaw_rate := clampf(target.angular_velocity.y, -1.5, 1.5)
+	var look := focus + dir * 4.0 + left * yaw_rate * chase_look_into_turn * life
+	pos += _shake(delta, life)
+	var up := Vector3.UP.rotated(dir, -lat_g * chase_roll_per_g * life)
+	global_transform = Transform3D(Basis(), pos).looking_at(look, up)
+
+
+## Tremida da câmera: alta velocidade, piso (zebra, brita, grama) e batidas (trauma que decai).
+func _shake(delta: float, life: float) -> Vector3:
+	_shake_t += delta
+	_trauma = maxf(_trauma - delta * 1.4, 0.0)
+	var kmh := target.speed_kmh
+	var amount := shake_speed * smoothstep(200.0, 340.0, kmh)
+	var rough := 0.0
+	for k in target.tire_surface.size():
+		if target.tire_state[k] == F1Car.TireState.AIR:
+			continue
+		match target.tire_surface[k]:
+			TrackSurface.Type.KERB:
+				rough += 0.25
+			TrackSurface.Type.GRAVEL:
+				rough += 0.3
+			TrackSurface.Type.GRASS:
+				rough += 0.12
+	amount += shake_surface * minf(rough, 1.0) * clampf(kmh / 120.0, 0.0, 1.0)
+	amount += shake_impact * _trauma * _trauma
+	if amount <= 0.0005:
+		return Vector3.ZERO
+	var f := 18.0 + 30.0 * _trauma
+	return Vector3(_noise.get_noise_2d(_shake_t * f, 0.0), _noise.get_noise_2d(_shake_t * f, 50.0),
+		_noise.get_noise_2d(_shake_t * f, 100.0)) * amount * life
 
 
 # --- Piloto ----------------------------------------------------------------------
+## G do carro medido no passo de física (intervalo fixo): por quadro, com FPS diferente da física,
+## a velocidade muda aos saltos e a leitura sairia cheia de picos.
+func _physics_process(delta: float) -> void:
+	if target:
+		_update_head_g(target.global_transform, delta)
+
+
 func _update_head_g(xf: Transform3D, delta: float) -> void:
 	var velocity := target.linear_velocity
 	var accel := (velocity - _prev_velocity) / maxf(delta, 0.0001)
 	_prev_velocity = velocity
+	# Teletransporte (recolocar o carro, ida ao box): salto de posição maior que a velocidade explica
+	var jump := xf.origin.distance_to(_prev_pos)
+	_prev_pos = xf.origin
+	if jump > (velocity.length() + 10.0) * delta * 3.0:
+		_raw_g = Vector3.ZERO
+		return
 	var local := xf.basis.inverse() * accel / 9.8
+	# Batida: pico de desaceleração muito acima do que pneus e freios fazem (> 7 G)
+	if local.length() > 7.0 and _raw_g.length() < 7.0:
+		_trauma = minf(_trauma + (local.length() - 7.0) / 12.0, 1.0)
+	_raw_g = local
 	_head_g = _head_g.lerp(local.clamp(Vector3(-5, -5, -6), Vector3(5, 5, 6)), 1.0 - exp(-5.0 * delta))
 
 

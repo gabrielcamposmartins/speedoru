@@ -10,6 +10,11 @@ extends Node
 ## * Pit stop: na volta escolhida entra nos boxes, respeita 80 km/h, para no box da equipe, troca
 ##   os pneus e volta à pista.
 ## * Recupera sozinho se ficar parado/preso (volta para a pista).
+## * Jogadores humanos: todos os bots deixam mais espaço (seguem com folga maior e enxergam uma faixa
+##   mais larga em volta deles), sem frear nem desviar instantâneo — a batida continua possível.
+##   Bots fácil e médio respeitam ataques: com um humano chegando por trás (até YIELD_RANGE m) ou
+##   lado a lado, abrem para o outro lado e tiram um pouco o pé; o difícil defende a posição.
+##   Sob bandeira amarela ninguém dá passagem (ultrapassar é proibido).
 
 enum Difficulty { EASY, MEDIUM, HARD }
 enum Mode { RACE, PIT_IN, PIT_STOP, PIT_OUT }
@@ -27,6 +32,10 @@ const PIT_SPEED := 21.5
 const FOLLOW_DECEL := 9.0
 
 const LANE_FAST := RaceTrack.PIT_WALL_STRIP + 3.4
+## Distância (m) atrás em que um humano atacando faz o bot fácil/médio dar passagem.
+const YIELD_RANGE := 25.0
+## Quanto o bot tira o pé para deixar passar (fração da velocidade): fácil, médio.
+const YIELD_LIFT := [0.9, 0.95]
 
 var car: F1Car
 var track: RaceTrack
@@ -71,7 +80,8 @@ func setup(p_car: F1Car, p_track: RaceTrack, p_line: RacingLine, p_profile: Pack
 ## Levado ao box depois de uma batida (RaceControl): parado na vaga, conserto de [param seconds].
 func force_pit_stop(seconds: float) -> void:
 	mode = Mode.PIT_STOP
-	_stop_timer = seconds
+	_stop_timer = seconds + randf_range(RaceManager.PIT_STOP_MIN, RaceManager.PIT_STOP_MAX)
+	entry.pit_stop_start = manager.race_time
 	_passing = null
 	_offset = 0.0
 	_stuck_timer = 0.0
@@ -108,14 +118,16 @@ func _physics_process(delta: float) -> void:
 		start_lateral = entry.lateral
 	var yellow := manager.control != null and manager.control.yellow
 	var crashed := manager.control != null and manager.control.is_involved(entry)
-	car.limiter_on = (mode != Mode.RACE or (yellow and not crashed)) and mode != Mode.PIT_STOP
+	# Limitador só nos boxes (sob amarela o bot acompanha o safety car pela velocidade)
+	car.limiter_on = mode != Mode.RACE and mode != Mode.PIT_STOP
 	var target_lateral := _planned_lateral(s, entry.progress)
 	var speed_target := RacingLine.sample(profile, track.path, s + 4.0 + v * 0.15)
 	# Primeira volta até depois da 1ª chicane: freia antes (o pelotão se espalha sem batidas)
 	if entry.progress < 1100.0 and speed_target < 70.0:
 		speed_target *= 0.86
 	if yellow and not crashed and mode == Mode.RACE:
-		speed_target = minf(speed_target, PIT_SPEED * 0.97)
+		# Sob amarela: no máximo um pouco acima do safety car (o pelotão se junta atrás dele)
+		speed_target = minf(speed_target, SafetyCar.SPEED * 1.15)
 		var sc := manager.control.safety_car
 		if sc:
 			var ds_sc := sc.progress - entry.progress
@@ -130,7 +142,7 @@ func _physics_process(delta: float) -> void:
 			speed_target = minf(speed_target, minf(pit.y, _pit_traffic(s, entry.lateral)))
 			if mode == Mode.PIT_IN and absf(_ahead(track.garage_s(entry.garage), s)) < 1.2 and v < 1.2:
 				mode = Mode.PIT_STOP
-				_stop_timer = float(PRESETS[difficulty][5]) * randf_range(0.92, 1.15)
+				_stop_timer = randf_range(RaceManager.PIT_STOP_MIN, RaceManager.PIT_STOP_MAX)
 				manager.begin_pit_stop(entry)
 			if mode == Mode.PIT_OUT and _ahead(lay.pit_exit_s, s) < -5.0 and _ahead(lay.pit_exit_s, s) > -400.0:
 				mode = Mode.RACE
@@ -227,17 +239,27 @@ func _traffic(s: float, v: float, my_lateral: float) -> Vector2:
 			_passing = null
 	var follow: RaceEntry = null
 	var follow_ds := INF
+	var yellow := manager.control != null and manager.control.yellow
+	var yields := difficulty != Difficulty.HARD and not yellow and mode == Mode.RACE
+	var attacker: RaceEntry = null
+	var attacker_ds := -INF
 	for other: RaceEntry in manager.entries:
 		if other == entry or other.car == null or other.in_pit or other.retired:
 			continue
 		var ds := _ahead(other.s, s)
+		# Humano atacando por trás (mais rápido, ou já colado): o bot fácil/médio dá passagem
+		if yields and other.is_player and ds < -1.0 and ds > -YIELD_RANGE and ds > attacker_ds 				and (other.car.linear_velocity.length() > v - 0.5 or ds > -8.0):
+			attacker = other
+			attacker_ds = ds
 		if ds < -8.0 or ds > 90.0:
 			continue
 		# Onde eu vou estar quando chegar lá (inclui a faixa do grid no começo); de perto vale
 		# também onde eu estou agora (o plano pode não bater com a posição real no meio do pelotão)
 		var my_there := _planned_lateral(other.s, entry.progress + ds) + _offset
 		var dlat := other.lateral - my_there
-		var in_my_way := absf(dlat) < 2.5 or (ds < 35.0 and absf(other.lateral - my_lateral) < 2.3)
+		# Em volta de um humano a faixa "ocupada" é um pouco mais larga (mais respeito, menos batida)
+		var width := 2.9 if other.is_player else 2.5
+		var in_my_way := absf(dlat) < width or (ds < 35.0 and absf(other.lateral - my_lateral) < width - 0.2)
 		if ds > 4.5 and in_my_way and other != _passing:
 			if ds < follow_ds:
 				follow = other
@@ -246,6 +268,9 @@ func _traffic(s: float, v: float, my_lateral: float) -> Vector2:
 			# Lado a lado: abre espaço (largura do carro + folga)
 			_offset_target = (my_lateral - line_lat) - signf(other.lateral - my_lateral) * (3.2 - absf(other.lateral - my_lateral))
 			_side_by_side = true
+			# Lado a lado com um humano: o fácil/médio não briga pela posição (alivia um pouco)
+			if yields and other.is_player:
+				max_speed = minf(max_speed, v * float(YIELD_LIFT[difficulty]) + 1.0)
 			# Colado atrás e sobrepondo (carros têm 2 m de largura): tira o pé antes de tocar
 			if ds > 0.5 and absf(other.lateral - my_lateral) < 2.1:
 				max_speed = minf(max_speed, other.car.linear_velocity.length() - 2.0)
@@ -269,11 +294,21 @@ func _traffic(s: float, v: float, my_lateral: float) -> Vector2:
 		else:
 			# Distância de segurança proporcional à velocidade; de longe, a velocidade que ainda dá
 			# para frear (FOLLOW_DECEL) até a distância de segurança atrás dele
-			var gap := 8.0 + v * 0.22
+			var gap := 8.0 + v * 0.22 + (4.0 if follow.is_player else 0.0)
 			if follow != _passing:
 				var room := follow_ds - gap
 				var limit := other_v + room * 0.6 if room < 0.0 else sqrt(other_v * other_v + 2.0 * FOLLOW_DECEL * room)
 				max_speed = minf(max_speed, limit)
+	# Dando passagem: abre para o lado oposto ao do atacante e tira um pouco o pé
+	if attacker and _passing == null and not _side_by_side:
+		var dl := attacker.lateral - my_lateral
+		var away := -signf(dl)
+		if absf(dl) < 0.4:
+			away = 1.0 if track.path.width_left[i] - my_lateral > my_lateral + track.path.width_right[i] else -1.0
+		_offset_target = (my_lateral - line_lat) + away * clampf(3.2 - absf(dl), 0.0, 3.2)
+		_side_by_side = true
+		if attacker_ds > -15.0:
+			max_speed = minf(max_speed, v * float(YIELD_LIFT[difficulty]))
 	var offset := 0.0
 	if _passing:
 		offset = (_passing.lateral + _pass_side * 3.0) - line_lat

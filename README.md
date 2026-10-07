@@ -206,11 +206,15 @@ troca por materiais toon (`scripts/car/car_livery.gd`).
   Resultado: **subesterço** ao esterçar demais ou frear em curva com a frente travada, e
   **sobreesterço** ao acelerar forte na saída de curva (principalmente sem controle de tração).
   Assistências (controle de tração e de freio) ficam na garagem; elas reservam aderência lateral.
-  O HUD mostra o uso de aderência de cada pneu e avisa SUBESTERÇO/SOBREESTERÇO; os pneus soltam
+  O HUD mostra o uso de aderência de cada pneu; os pneus soltam
   fumaça quando deslizam. Parâmetros no grupo "Pneus" do inspetor (`front_grip`, `rear_grip`,
   `peak_slip_angle_deg`, `tire_shape`, `load_sensitivity`...).
 - **Câmeras** (`scripts/camera/race_camera.gd`): perseguição, perseguição longe, T-Cam, piloto
   (1ª pessoa) e capô (só rodas da frente, bico e retrovisores); órbita separada.
+  - *Perseguição*: com vida — afasta ao acelerar/no boost e aproxima na frenagem, desliza para
+    fora e inclina um pouco nas curvas olhando para dentro delas, acompanha a derrapagem, treme de
+    leve em alta velocidade, nas zebras e na brita e forte nas batidas; o FOV abre no boost. As
+    forças G são medidas no passo de física (sem picos quando o FPS difere da física).
   - *Piloto*: olhos do piloto com a cabeça escondida (camada de render `CarAssembly.HEAD_LAYER`),
     inércia da cabeça com as forças G e olhar acompanhando o esterço; vê braços, volante girando
     com display e os retrovisores.
@@ -254,12 +258,18 @@ difícil ou mista) e posição de largada. Tudo em `scripts/race/`:
   param no box da equipe, trocam para duro/médio) e se recuperam sozinhos se ficarem presos.
   Usam os mesmos carros e a mesma física do jogador (sem retrovisores, mais leves). Um bot
   que perde uma roda abandona (DNF). Na corrida o reparo instantâneo (F) fica desligado.
+  Com jogadores humanos: todos deixam mais espaço (folga maior atrás de você e uma faixa mais
+  larga em volta), sem frear nem desviar instantâneo — a batida continua possível. Bots fácil e
+  médio **respeitam ataques**: com você chegando por trás (até 25 m, mais rápido) ou lado a lado,
+  abrem para o outro lado e tiram um pouco o pé (10% / 5%); o difícil defende a posição. Sob
+  bandeira amarela ninguém dá passagem (`tests/bot_yield_test.gd`).
 - **Pneus:** desgaste por roda conforme a potência dissipada no contato (escorregar, travar,
   patinar, curva no limite) e o composto (macio gasta ~55% mais rápido, duro ~32% mais devagar);
   pneu gasto perde até 32% de aderência. O HUD mostra quanto resta de cada pneu.
 - **Boxes:** a entrada fica logo depois da Parabolica; uma coluna de luz marca o seu box; pare na
-  vaga para o pit stop (≈2,5 s, + 5 s se precisar trocar peças danificadas); 1/2/3 escolhem o
-  composto; mecânicos da equipe aparecem em volta do carro.
+  vaga para o pit stop (sorteado entre 2 e 4 s a cada parada, + 5 s se precisar trocar peças
+  danificadas; ao sair aparece "PIT STOP 2,8 s"); 1/2/3 escolhem o composto; mecânicos da equipe
+  aparecem em volta do carro. Os bots também param de 2 a 4 s.
 - **Penalidades** (iguais para todos; as do jogador aparecem num banner grande na lateral):
   limites de pista (todas as rodas fora do asfalto/zebra: 3 avisos, depois +5 s por infração),
   cortar a pista e ganhar vantagem (+5 s), colisão causada — quem bate por trás e mais rápido —
@@ -268,7 +278,12 @@ difícil ou mista) e posição de largada. Tudo em `scripts/race/`:
 - **HUD da corrida:** classificação no canto superior esquerdo em páginas de 5 (PgUp/PgDn; se você
   não está na página, a 5ª linha mostra você), com intervalo para o da frente, composto, BOX,
   penalidades e um relógio roxo em quem tem a volta mais rápida; minimapa no canto superior
-  direito; voltas/tempos e status do pit no centro.
+  direito; no centro, a posição, o **tempo da volta em destaque** (ao fechar uma volta, o tempo
+  dela fica grande por 5 s: roxo se é a mais rápida da corrida, verde se é o seu recorde, amarelo
+  nos outros casos, com a diferença para o seu melhor), última e melhor volta, a linha **VOLTA MAIS
+  RÁPIDA · piloto · tempo** (pisca em roxo quando alguém bate o recorde) e o status do pit.
+- **Pausa na largada:** pausar com o semáforo acendendo congela a sequência; ao voltar ela continua
+  (`tests/start_pause_test.gd`).
 - **Boxes:** os bots fazem fila indiana na pista dos boxes (seguem quem está entrando, parado ou
   saindo do box, sem ultrapassar) e só saem do box quando ninguém vem pela faixa rápida.
 - `tests/race_test.gd` roda uma corrida inteira sem janela (o jogador também pilotado por bot) e
@@ -382,12 +397,12 @@ Visual synthwave + monitor CRT + HUD de ficção científica (`scripts/ui/retro.
   (+5 s por carro passado; pode passar quem está nos boxes ou envolvido na batida, e os envolvidos
   podem passar todos para chegar ao box) e não passar o **safety car** (+10 s). O limitador **não
   é obrigatório** sob amarela (só um jeito fácil de andar devagar atrás do safety car). O safety
-  car entra à frente do líder com a giroflex âmbar, anda a 70 km/h na linha ideal e aparece no
-  minimapa (SC). Quem não bateu pode aproveitar para trocar pneus; isso não muda a bandeira.
+  car entra à frente do líder com a giroflex âmbar, anda a até 180 km/h na linha ideal (mais devagar
+  nas curvas, pelo perfil de velocidade) e aparece no minimapa (SC). Quem não bateu pode aproveitar para trocar pneus; isso não muda a bandeira.
 - **Fim:** o safety car fica **uma volta inteira** a partir de onde entrou na pista (uma batida
   nova durante a amarela não a prolonga); completada a volta, bandeira verde e ele sai. Os
   consertos seguem independentes da bandeira.
-- Bots respeitam tudo: não ultrapassam e ficam atrás do safety car (usam o limitador para isso).
+- Bots respeitam tudo: não ultrapassam e ficam atrás do safety car (acompanham a velocidade dele).
 - O **semáforo** tem som: um bipe a cada coluna acesa e um tom agudo quando as luzes apagam.
 
 ## Linha ideal
@@ -511,11 +526,17 @@ Todos os sons são sintetizados por `tools/generate_car_sounds.py` (Python + num
 - **Camadas:** turbo, assobio das engrenagens (forte ao aliviar), vento, pneu cantando (no limite
   de aderência), pneu arrastando (travado/patinando), brita, grama e zebra (as batidas seguem a
   velocidade).
-- **Sons curtos:** trocas de marcha (subida com estalo, redução com "blip"), estouros do escapamento
-  ao tirar o pé em giro alto, DRS e batidas (detectadas por desaceleração brusca).
-- **Mixagem:** `default_bus_layout.tres` — bus `Car` com compressor e um passa-baixa ligado só na
-  câmera do piloto (som abafado pelo capacete); limitador no `Master`. Os sons são 3D com efeito
-  Doppler. Volumes na garagem (Tab → Som) e no inspetor do nó `Audio`.
+- **Sons curtos:** trocas de marcha (subida com estalo, redução com "blip"), **ronco do escapamento**
+  ao tirar o pé em giro alto (um "brap-brap" grave por alívio: 3 a 6 pulsos de 55–85 Hz com sopro
+  filtrado, ressonância do cano e sem os agudos que davam som de pipoca), DRS e batidas
+  (detectadas por desaceleração brusca).
+- **Mixagem:** `default_bus_layout.tres` — bus `Car` (o seu carro) com compressor e um passa-baixa
+  ligado só na câmera do piloto (som abafado pelo capacete); limitador no `Master`. Os sons são 3D
+  com efeito Doppler. Volumes na garagem (Tab → Som) e no inspetor do nó `Audio`.
+- **Carros em volta** (bots e outros jogadores, `CarAudio.make_rival`): bus próprio `Rivals` (o
+  compressor do seu motor não os abafa; o volume "Carro" vale para os dois), som que chega de mais
+  longe, estéreo mais marcado (dá para saber de que lado vem) e até +7 dB quando o carro está perto
+  da câmera — ao lado ou colado atrás.
 
 ## Música
 
@@ -633,8 +654,11 @@ cena: fica no filho `Generated`.
   animação (sentado, acenando, pulando, com bandeira) são todas feitas no shader
   `shaders/track/crowd.gdshader`, sem custo de CPU. Some além de `crowd_visibility`.
 - **Pisos:** cada superfície é um `StaticBody3D` com metadado `surface` (`TrackSurface`). O modelo
-  de pneu lê o corpo sob cada roda: zebra (−10% de aderência, vibra), grama (−45%) e brita (−50%,
-  freia forte e levanta poeira). Corpos sem metadado contam como asfalto.
+  de pneu lê o corpo sob cada roda: zebra (−10% de aderência, vibra), grama e brita. Fora da pista
+  o carro **escorrega bastante de lado** (grama ~40% e brita ~33% da aderência lateral do asfalto,
+  `TrackSurface.GRIP × SIDE_GRIP`) mas **não atola**: a resistência extra é moderada (a 200 km/h, em
+  2 s acelerando, a grama ainda ganha ~44 km/h e a brita ~14 km/h; `tests/offtrack_probe.gd`). A
+  brita levanta poeira e vibra. Corpos sem metadado contam como asfalto.
 - **Anúncios:** `assets/track/ads/ad_atlas.png`, gerado por `tools/bake_ad_atlas.gd` a partir de
   `TrackAds.BRANDS` (edite os nomes/cores e rode `godot --path . -s res://tools/bake_ad_atlas.gd`).
 - Código: `scripts/track/` (`race_track.gd` orquestra; `track_road.gd`, `track_barriers.gd`,
@@ -747,6 +771,10 @@ godot --headless --path . -s res://tests/highspeed_probe.gd # pneus em alta velo
 godot --headless --path . -s res://tests/net_test.gd        # multiplayer de ponta a ponta (precisa do libSQL local)
 godot --headless --path . -s res://tests/puppet_wheel_test.gd # rodas dos carros da rede: altura do servidor, esterço e giro, sem tremer
 godot --headless --path . -s res://tests/updater_test.gd    # atualizador: versões e download/SHA-256 da última release (internet)
+godot --headless --path . -s res://tests/chase_camera_test.gd # câmera de perseguição: frenagem, aceleração, curva, batida
+godot --headless --path . -s res://tests/bot_yield_test.gd  # bots dão passagem ao jogador (fácil/médio), o difícil defende, amarela
+godot --headless --path . -s res://tests/start_pause_test.gd # pausa na largada congela o semáforo
+godot --headless --path . -s res://tests/offtrack_probe.gd  # fora da pista: velocidade perdida e aderência lateral por piso
 godot --path . -s res://tests/capture_online.gd -- <pasta> <porta> --offline  # telas do multiplayer + corrida online
 ```
 

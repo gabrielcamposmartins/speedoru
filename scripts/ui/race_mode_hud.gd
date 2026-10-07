@@ -36,12 +36,12 @@ func _ready() -> void:
 	info.hud = self
 	info.set_anchors_preset(Control.PRESET_CENTER_TOP)
 	info.position = Vector2(-230, 16)
-	info.size = Vector2(460, 170)
+	info.size = Vector2(460, 250)
 	add_child(info)
 	flag_panel = FlagPanel.new()
 	flag_panel.hud = self
 	flag_panel.set_anchors_preset(Control.PRESET_CENTER_TOP)
-	flag_panel.position = Vector2(-320, 212)
+	flag_panel.position = Vector2(-320, 262)
 	flag_panel.size = Vector2(640, 64)
 	add_child(flag_panel)
 	banner = Banner.new()
@@ -577,13 +577,56 @@ class Banner extends Control:
 # Voltas e tempos (centro superior), largada e boxes
 # ---------------------------------------------------------------------------
 class RaceInfo extends Control:
+	## Painel do centro: posição, tempo da volta (grande), última/melhor volta e a volta mais rápida
+	## da corrida. Ao fechar uma volta, o tempo dela fica em destaque por FLASH s: roxo se é a mais
+	## rápida da corrida, verde se é o seu recorde, amarelo nos outros casos, com a diferença para o
+	## seu melhor. Quando alguém bate a volta mais rápida, a linha dela pisca em roxo.
+	const FLASH := 5.0
+
 	var hud: RaceModeHud
+	var _laps_seen := -1
+	var _prev_best := 0.0
+	var _lap_flash := 0.0
+	var _flash_lap := 0.0
+	var _flash_delta := 0.0
+	var _flash_color := Color.WHITE
+	var _fastest_seen := 0.0
+	var _fastest_flash := 0.0
 
 	func _ready() -> void:
 		mouse_filter = Control.MOUSE_FILTER_IGNORE
 
-	func _process(_d: float) -> void:
+	func _process(d: float) -> void:
+		var m := hud.manager
+		var e := m.player_entry
+		if e:
+			if _laps_seen < 0:
+				_laps_seen = e.lap_times.size()
+				_prev_best = e.best_lap
+			elif e.lap_times.size() > _laps_seen:
+				_laps_seen = e.lap_times.size()
+				_on_lap(e, e.lap_times[_laps_seen - 1])
+		if m.fastest_lap > 0.0 and absf(m.fastest_lap - _fastest_seen) > 0.0005:
+			_fastest_seen = m.fastest_lap
+			_fastest_flash = FLASH
+		_lap_flash = maxf(_lap_flash - d, 0.0)
+		_fastest_flash = maxf(_fastest_flash - d, 0.0)
 		queue_redraw()
+
+	func _on_lap(e: RaceEntry, lap: float) -> void:
+		var m := hud.manager
+		if lap <= 0.0:
+			return
+		_flash_lap = lap
+		_flash_delta = lap - _prev_best if _prev_best > 0.0 else 0.0
+		if m.fastest_entry == e and absf(m.fastest_lap - lap) < 0.001:
+			_flash_color = Retro.FASTEST
+		elif absf(e.best_lap - lap) < 0.001:
+			_flash_color = Retro.c("good")
+		else:
+			_flash_color = Retro.c("warn")
+		_prev_best = e.best_lap
+		_lap_flash = FLASH
 
 	func _draw() -> void:
 		var m := hud.manager
@@ -596,39 +639,65 @@ class RaceInfo extends Control:
 		var practice := m.state == RaceManager.State.PRACTICE
 		var current := m.race_time - e.lap_start if e.crossings >= 1 else 0.0
 		var top := "TREINO LIVRE" if practice else "P%d/%d" % [e.position, m.entries.size()]
-		var back := Rect2(cx - 165, 0, 330, 84 if practice else 114)
+		var back := Rect2(cx - 175, 0, 350, 128 if practice else 156)
 		draw_rect(back, Color(Retro.c("bg"), 0.36))
 		Retro.draw_corners(self, back.grow(1.0), Color(Retro.c("accent"), 0.6), 10.0, 2.0)
-		Retro.draw_glow_text(self, disp, Vector2(0, 34), top, HORIZONTAL_ALIGNMENT_CENTER, size.x, 28, Retro.c("text"))
-		Retro.draw_label(self, Retro.display(700), Vector2(0, 58), RaceManager.format_time(current), HORIZONTAL_ALIGNMENT_CENTER,
-			size.x, 17, Retro.c("accent_2"))
-		var best_color := Retro.FASTEST if e == m.fastest_entry else Retro.c("text_2")
-		Retro.draw_label(self, body, Vector2(cx - 210, 80), "ÚLTIMA " + RaceManager.format_time(e.last_lap), HORIZONTAL_ALIGNMENT_RIGHT,
-			200, 14, Retro.c("muted"))
-		Retro.draw_label(self, body, Vector2(cx + 10, 80), "MELHOR " + RaceManager.format_time(e.best_lap), HORIZONTAL_ALIGNMENT_LEFT,
-			200, 14, best_color)
+		Retro.draw_glow_text(self, disp, Vector2(0, 32), top, HORIZONTAL_ALIGNMENT_CENTER, size.x, 26, Retro.c("text"))
+		# Tempo da volta: grande; logo depois de fechar uma volta, o tempo dela com a cor do resultado
+		if _lap_flash > 0.0:
+			var a := clampf(_lap_flash / 0.6, 0.0, 1.0)
+			var col := Color(_flash_color, a)
+			Retro.draw_glow_text(self, Retro.display(900), Vector2(0, 66), RaceManager.format_time(_flash_lap),
+				HORIZONTAL_ALIGNMENT_CENTER, size.x, 30, col, _flash_color)
+			var tag := "VOLTA MAIS RÁPIDA" if _flash_color == Retro.FASTEST else ("RECORDE PESSOAL" if _flash_color == Retro.c("good") else "VOLTA")
+			if absf(_flash_delta) > 0.0005:
+				tag += "   %s%.3f" % ["+" if _flash_delta > 0.0 else "−", absf(_flash_delta)]
+			Retro.draw_label(self, Retro.display(700), Vector2(0, 84), tag, HORIZONTAL_ALIGNMENT_CENTER, size.x, 11, col)
+		else:
+			Retro.draw_glow_text(self, Retro.display(800), Vector2(0, 66), RaceManager.format_time(current),
+				HORIZONTAL_ALIGNMENT_CENTER, size.x, 28, Retro.c("accent_2"))
+		# Última e melhor volta (a melhor em roxo, com o relógio, se é a mais rápida da corrida)
+		var mine_fastest := e == m.fastest_entry and m.fastest_lap > 0.0
+		var best_color := Retro.FASTEST if mine_fastest else Retro.c("text")
+		Retro.draw_label(self, body, Vector2(cx - 215, 106), "ÚLTIMA " + RaceManager.format_time(e.last_lap), HORIZONTAL_ALIGNMENT_RIGHT,
+			200, 16, Retro.c("text_2"))
+		Retro.draw_label(self, Retro.body(700), Vector2(cx + 15, 106), "MELHOR " + RaceManager.format_time(e.best_lap), HORIZONTAL_ALIGNMENT_LEFT,
+			200, 16, best_color)
+		if mine_fastest:
+			RaceModeHud.draw_stopwatch(self, Vector2(cx + 4, 100))
+		# Volta mais rápida da corrida (pisca quando alguém bate o recorde)
+		if m.fastest_entry and m.fastest_lap > 0.0:
+			var who := "VOCÊ" if m.fastest_entry == e else m.fastest_entry.code
+			var line := "VOLTA MAIS RÁPIDA  ·  %s  %s" % [who, RaceManager.format_time(m.fastest_lap)]
+			var glow := _fastest_flash > 0.0 and fmod(_fastest_flash, 0.5) > 0.2
+			if glow:
+				Retro.draw_glow_text(self, Retro.display(800), Vector2(0, 126), line, HORIZONTAL_ALIGNMENT_CENTER, size.x, 13,
+					Retro.FASTEST, Retro.FASTEST)
+			else:
+				Retro.draw_label(self, Retro.display(700), Vector2(0, 126), line, HORIZONTAL_ALIGNMENT_CENTER, size.x, 12,
+					Color(Retro.FASTEST, 0.95))
 		if not practice:
 			var done := e.pit_count >= RaceSettings.mandatory_pits
 			var pit_text := "PIT OBRIGATÓRIO: FEITO" if done else "PIT OBRIGATÓRIO: PENDENTE"
 			var font := Retro.display(700)
 			var w := font.get_string_size(pit_text, HORIZONTAL_ALIGNMENT_LEFT, -1, 10).x + 20
-			var chip := Rect2(cx - w * 0.5, 88, w, 20)
+			var chip := Rect2(cx - w * 0.5, 132, w, 20)
 			var col := Retro.c("good") if done else Retro.c("warn")
 			draw_rect(chip, Color(col, 0.12))
 			draw_rect(chip, Color(col, 0.6), false, 1.0)
 			draw_string(font, Vector2(chip.position.x, chip.position.y + 14), pit_text, HORIZONTAL_ALIGNMENT_CENTER, w, 10, col)
 		if m.state == RaceManager.State.GRID:
-			Retro.draw_glow_text(self, disp, Vector2(0, 150), "AGUARDE AS LUZES APAGAREM", HORIZONTAL_ALIGNMENT_CENTER, size.x,
+			Retro.draw_glow_text(self, disp, Vector2(0, 192), "AGUARDE AS LUZES APAGAREM", HORIZONTAL_ALIGNMENT_CENTER, size.x,
 				22, Retro.c("bad"), Retro.c("bad"))
 		elif e.in_pit:
 			_pit_panel(e)
 		elif m.state == RaceManager.State.FINISHED and e.finished:
-			Retro.draw_glow_text(self, disp, Vector2(0, 148), "BANDEIRA QUADRICULADA!", HORIZONTAL_ALIGNMENT_CENTER, size.x,
+			Retro.draw_glow_text(self, disp, Vector2(0, 192), "BANDEIRA QUADRICULADA!", HORIZONTAL_ALIGNMENT_CENTER, size.x,
 				24, Retro.c("text"))
 
 	func _pit_panel(e: RaceEntry) -> void:
 		var m := hud.manager
-		var r := Rect2(0, 124, size.x, 74)
+		var r := Rect2(0, 166, size.x, 74)
 		draw_rect(r, Color(Retro.c("bg"), 0.5))
 		Retro.draw_corners(self, r.grow(1.0), Retro.c("warn"), 10.0, 2.0)
 		var title := "PIT STOP..." if e.in_pit_stop else "BOXES · LIMITE 80 KM/H"

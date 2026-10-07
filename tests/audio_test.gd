@@ -2,7 +2,8 @@ extends SceneTree
 ## Teste do mixer de som do carro (sem janela):
 ##   godot --headless --path . -s res://tests/audio_test.gd
 ## Confere as camadas do motor (2 giros vizinhos, equal power, pitch = rpm/giro do loop), trocas
-## de marcha, estouros ao aliviar, pneu cantando, brita, zebra e batida.
+## de marcha, estouros ao aliviar, pneu cantando, brita, zebra e batida; e o som dos rivais
+## (canal próprio, mais alcance, estéreo marcado, reforço quando perto da câmera).
 
 var scene: Node3D
 var track: RaceTrack
@@ -38,6 +39,7 @@ func _run() -> void:
 	await _slide()
 	await _surfaces()
 	await _crash()
+	await _rivals()
 	print("Falhas: %d" % failures)
 	quit(1 if failures > 0 else 0)
 
@@ -180,3 +182,29 @@ func _launch(xf: Transform3D, speed: float) -> void:
 func _physics(n: int) -> void:
 	for k in n:
 		await physics_frame
+
+
+## Carro de outro piloto: canal "Rivals", alcance e estéreo maiores, mais alto quando perto.
+func _rivals() -> void:
+	var rival_car := (load("res://scenes/car/f1_car.tscn") as PackedScene).instantiate() as F1Car
+	rival_car.player_controlled = false
+	scene.add_child(rival_car)
+	var ra := rival_car.get_node("Audio") as CarAudio
+	ra.make_rival()
+	var players := ra.find_children("*", "AudioStreamPlayer3D", false, false)
+	var ok := not players.is_empty()
+	for p: AudioStreamPlayer3D in players:
+		ok = ok and p.bus == &"Rivals" and p.unit_size > audio.unit_size and p.panning_strength > 1.0
+	_check(ok, "rival no canal próprio (sem o compressor do seu motor), alcance e estéreo maiores")
+	var cam := Camera3D.new()
+	scene.add_child(cam)
+	cam.current = true
+	cam.global_position = rival_car.global_position + Vector3(4, 1, -3)
+	await _physics(40)
+	var near := ra._near_db
+	cam.global_position = rival_car.global_position + Vector3(0, 1, -120)
+	await _physics(60)
+	var far := ra._near_db
+	_check(near > 5.0 and far < 0.5, "rival perto da câmera fica mais alto (+%.1f dB perto, +%.1f dB a 120 m)" % [near, far])
+	cam.queue_free()
+	rival_car.queue_free()

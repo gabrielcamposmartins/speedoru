@@ -7,8 +7,12 @@ extends Node3D
 ##    Corte de giro no limitador.
 ##  * Turbo, assobio das engrenagens (forte ao tirar o pé), vento, pneu cantando (deriva), pneu
 ##    arrastando (travado/patinando), brita, grama e zebra (batidas no ritmo da velocidade).
-##  * Sons curtos: trocas de marcha, estouros do escapamento ao aliviar em giro alto, DRS e batidas.
+##  * Sons curtos: trocas de marcha, ronco do escapamento ao aliviar em giro alto, DRS e batidas.
 ## Tudo vai para o bus "Car" (compressor). Na câmera do piloto liga um passa-baixa (capacete).
+##
+## Carros dos outros (make_rival): bus "Rivals" separado (o compressor do seu motor não os abafa),
+## som chegando de mais longe, estéreo mais marcado (dá para saber de que lado vem) e um reforço
+## de volume quando o carro está perto da câmera — ao lado ou colado atrás.
 
 const DIR := "res://assets/audio/car/"
 const ENGINE_RPMS: Array[float] = [4000.0, 5500.0, 7000.0, 8500.0, 10000.0, 11500.0, 13000.0]
@@ -23,6 +27,16 @@ const HELMET_EFFECT := 1
 @export var backfires := true
 ## Velocidade (m/s) em que as batidas da zebra soam no pitch original (20 batidas/s, listras de 2 m).
 @export var kerb_reference_speed := 40.0
+
+const RIVAL_UNIT_SIZE := 24.0
+const RIVAL_PANNING := 1.8
+## Reforço (dB) de um rival colado na câmera; some até NEAR_FAR m.
+const NEAR_BOOST_DB := 7.0
+const NEAR_CLOSE := 8.0
+const NEAR_FAR := 45.0
+
+var rival := false
+var _near_db := 0.0
 
 var car: F1Car
 var engine_load := 0.0
@@ -68,6 +82,32 @@ func _ready() -> void:
 	_bus_index = AudioServer.get_bus_index(bus)
 
 
+## Som de um carro adversário (bots, outros jogadores): ver o comentário do topo.
+func make_rival(p_engine_db := -1.0, p_effects_db := -4.0) -> void:
+	rival = true
+	engine_db = p_engine_db
+	effects_db = p_effects_db
+	if AudioServer.get_bus_index(&"Rivals") >= 0:
+		bus = &"Rivals"
+	_bus_index = AudioServer.get_bus_index(bus)
+	for p in find_children("*", "AudioStreamPlayer3D", false, false):
+		var player := p as AudioStreamPlayer3D
+		player.bus = bus
+		player.unit_size = RIVAL_UNIT_SIZE
+		player.panning_strength = RIVAL_PANNING
+
+
+func _update_near(delta: float) -> void:
+	if not rival:
+		return
+	var cam := get_viewport().get_camera_3d()
+	var target := 0.0
+	if cam:
+		var d := cam.global_position.distance_to(car.global_position)
+		target = NEAR_BOOST_DB * (1.0 - smoothstep(NEAR_CLOSE, NEAR_FAR, d))
+	_near_db = move_toward(_near_db, target, delta * 20.0)
+
+
 func _make_player(file: String, pos: Vector3, loop: bool) -> AudioStreamPlayer3D:
 	var p := AudioStreamPlayer3D.new()
 	if file != "":
@@ -98,7 +138,7 @@ func play_shot(shot: String, pos: Vector3, db := 0.0, pitch := 1.0) -> void:
 		_pool.push_back(_pool.pop_front())
 	player.stream = _shots[shot]
 	player.position = pos
-	player.volume_db = db + effects_db
+	player.volume_db = db + effects_db + _near_db
 	player.pitch_scale = pitch
 	player.play()
 
@@ -117,7 +157,7 @@ func _set_loop(p: AudioStreamPlayer3D, level: float, pitch := 1.0, offset_db := 
 
 func get_loop_level(loop_name: String) -> float:
 	var p: AudioStreamPlayer3D = _loops[loop_name]
-	return 0.0 if p.stream_paused else db_to_linear(p.volume_db - effects_db)
+	return 0.0 if p.stream_paused else db_to_linear(p.volume_db - (effects_db + _near_db))
 
 
 ## Pesos (0..1) das camadas do motor ligadas — para depuração/testes.
@@ -127,7 +167,7 @@ func get_engine_layers() -> Dictionary:
 		for pair in [[_on[i], "on"], [_off[i], "off"]]:
 			var p: AudioStreamPlayer3D = pair[0]
 			if not p.stream_paused:
-				out["%s_%d" % [pair[1], int(ENGINE_RPMS[i])]] = [db_to_linear(p.volume_db - engine_db), p.pitch_scale]
+				out["%s_%d" % [pair[1], int(ENGINE_RPMS[i])]] = [db_to_linear(p.volume_db - (engine_db + _near_db)), p.pitch_scale]
 	return out
 
 
@@ -135,6 +175,7 @@ func _process(delta: float) -> void:
 	if car == null:
 		return
 	_time += delta
+	_update_near(delta)
 	var rpm := car.rpm
 	var reversing := car.gear == F1Car.GEAR_REVERSE
 	var pedal := car.reverse_input if reversing else car.throttle_input
@@ -170,20 +211,20 @@ func _update_engine(rpm: float, _delta: float) -> void:
 		elif i == lo + 1:
 			w = sin(t * PI * 0.5)
 		var pitch := rpm / ENGINE_RPMS[i]
-		_set_loop(_on[i], w * on_gain * loudness, pitch, engine_db)
-		_set_loop(_off[i], w * off_gain * loudness, pitch, engine_db)
+		_set_loop(_on[i], w * on_gain * loudness, pitch, engine_db + _near_db)
+		_set_loop(_off[i], w * off_gain * loudness, pitch, engine_db + _near_db)
 
 
 func _update_effects(rpm: float) -> void:
 	var speed := car.linear_velocity.length()
 	var kmh := speed * 3.6
 	# Turbo/MGU-H: assobio que sobe com o giro, com carga
-	_set_loop(_loops["turbo"], engine_load * smoothstep(5000.0, 12000.0, rpm) * 0.32, 0.55 + 0.6 * rpm / 12000.0, effects_db)
+	_set_loop(_loops["turbo"], engine_load * smoothstep(5000.0, 12000.0, rpm) * 0.32, 0.55 + 0.6 * rpm / 12000.0, effects_db + _near_db)
 	# Engrenagens retas: aparecem ao aliviar o acelerador em velocidade
 	var whine := ((1.0 - engine_load) * 0.3 + 0.05) * smoothstep(15.0, 120.0, kmh)
-	_set_loop(_loops["gear_whine"], whine, 0.35 + kmh / 260.0, effects_db)
+	_set_loop(_loops["gear_whine"], whine, 0.35 + kmh / 260.0, effects_db + _near_db)
 	# Vento
-	_set_loop(_loops["wind"], pow(clampf(speed / 90.0, 0.0, 1.0), 2.0) * 0.45, 0.75 + kmh / 450.0, effects_db)
+	_set_loop(_loops["wind"], pow(clampf(speed / 90.0, 0.0, 1.0), 2.0) * 0.45, 0.75 + kmh / 450.0, effects_db + _near_db)
 
 	# Pneus e pisos
 	var squeal := 0.0
@@ -204,30 +245,32 @@ func _update_effects(rpm: float) -> void:
 		else:
 			squeal = maxf(squeal, clampf((car.tire_usage[i] - 0.9) / 0.35, 0.0, 1.0))
 	var moving := clampf(speed / 8.0, 0.0, 1.0)
-	_set_loop(_loops["tire_squeal"], squeal * moving * 0.55, 0.9 + 0.25 * squeal + kmh / 1500.0, effects_db)
-	_set_loop(_loops["tire_scrub"], clampf(scrub / 2.0, 0.0, 1.0) * moving * 0.6, 0.7 + kmh / 220.0, effects_db)
+	_set_loop(_loops["tire_squeal"], squeal * moving * 0.55, 0.9 + 0.25 * squeal + kmh / 1500.0, effects_db + _near_db)
+	_set_loop(_loops["tire_scrub"], clampf(scrub / 2.0, 0.0, 1.0) * moving * 0.6, 0.7 + kmh / 220.0, effects_db + _near_db)
 	var loose := clampf(speed / 15.0, 0.0, 1.0)
-	_set_loop(_loops["gravel"], float(on[TrackSurface.Type.GRAVEL]) / wheels * loose * 0.8, 0.8 + kmh / 400.0, effects_db)
-	_set_loop(_loops["grass"], float(on[TrackSurface.Type.GRASS]) / wheels * loose * 0.6, 0.8 + kmh / 400.0, effects_db)
-	_set_loop(_loops["scrape"], scrape_level * 0.9, 0.8 + kmh / 400.0, effects_db)
+	_set_loop(_loops["gravel"], float(on[TrackSurface.Type.GRAVEL]) / wheels * loose * 0.8, 0.8 + kmh / 400.0, effects_db + _near_db)
+	_set_loop(_loops["grass"], float(on[TrackSurface.Type.GRASS]) / wheels * loose * 0.6, 0.8 + kmh / 400.0, effects_db + _near_db)
+	_set_loop(_loops["scrape"], scrape_level * 0.9, 0.8 + kmh / 400.0, effects_db + _near_db)
 	_boost_level = move_toward(_boost_level, 1.0 if car.boost_active else 0.0, get_process_delta_time() * 5.0)
-	_set_loop(_loops["boost"], _boost_level * 0.55, 0.9 + kmh / 900.0, effects_db)
+	_set_loop(_loops["boost"], _boost_level * 0.55, 0.9 + kmh / 900.0, effects_db + _near_db)
 	_set_loop(_loops["kerb"], float(on[TrackSurface.Type.KERB]) / wheels * clampf(speed / 5.0, 0.0, 1.0) * 0.8,
-		speed / kerb_reference_speed, effects_db)
+		speed / kerb_reference_speed, effects_db + _near_db)
 
 
 ## Estouros no escapamento ao tirar o pé em giro alto.
+## Ronco do escapamento ao aliviar em giro alto: um único "brap-brap" por alívio (o arquivo já tem
+## os pulsos irregulares), não uma sequência de estalos.
 func _update_backfire(rpm: float, pedal: float, delta: float) -> void:
-	if backfires and _prev_throttle > 0.7 and pedal < 0.2 and rpm > 8500.0:
-		_pops_left = randi_range(1, 3)
-		_pop_timer = randf_range(0.04, 0.15)
+	if backfires and _prev_throttle > 0.7 and pedal < 0.2 and rpm > 8500.0 and randf() < 0.75:
+		_pops_left = 1
+		_pop_timer = randf_range(0.03, 0.08)
 	_prev_throttle = pedal
 	if _pops_left > 0:
 		_pop_timer -= delta
 		if _pop_timer <= 0.0:
-			play_shot("backfire_%d" % randi_range(1, 3), Vector3(0, 0.4, -2.6), randf_range(-8.0, -3.0), randf_range(0.9, 1.15))
-			_pops_left -= 1
-			_pop_timer = randf_range(0.08, 0.3)
+			var variant := 3 if rpm > 11000.0 else randi_range(1, 2)
+			play_shot("backfire_%d" % variant, Vector3(0, 0.4, -2.6), randf_range(-6.0, -3.0), randf_range(0.95, 1.05))
+			_pops_left = 0
 
 
 func _on_gear_changed(new_gear: int) -> void:
@@ -236,9 +279,8 @@ func _on_gear_changed(new_gear: int) -> void:
 	if new_gear == F1Car.GEAR_NEUTRAL:
 		return
 	play_shot("shift_up" if up else "shift_down", Vector3(0, 0.4, -1.4), -6.0 if up else -9.0, randf_range(0.95, 1.05))
-	if up and backfires and car.rpm > 9000.0 and randf() < 0.25:
-		_pops_left = 1
-		_pop_timer = 0.03
+	if up and backfires and car.rpm > 9000.0 and randf() < 0.15:
+		play_shot("backfire_1", Vector3(0, 0.4, -2.6), -9.0, randf_range(0.95, 1.05))
 
 
 func _physics_process(delta: float) -> void:

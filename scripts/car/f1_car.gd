@@ -634,7 +634,7 @@ func _update_tires(delta: float) -> void:
 		_max_force[i] = max_force
 
 		# Força lateral pura (Magic Formula, E = 0)
-		var fy := -max_force * sin(tire_shape * atan(stiffness_b * _alpha[i]))
+		var fy := -max_force * sin(tire_shape * atan(stiffness_b * _alpha[i])) * float(TrackSurface.SIDE_GRIP[surface])
 		_lat_usage[i] = absf(fy) / maxf(max_force, 1.0)
 
 		# Força longitudinal pedida (motor + freio)

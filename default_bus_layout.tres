@@ -14,6 +14,16 @@ release_ms = 150.0
 cutoff_hz = 5500.0
 resonance = 0.6
 
+[sub_resource type="AudioEffectCompressor" id="RivalsCompressor"]
+threshold = -10.0
+ratio = 2.0
+attack_us = 5000.0
+release_ms = 200.0
+
+[sub_resource type="AudioEffectLowPassFilter" id="RivalsHelmet"]
+cutoff_hz = 5500.0
+resonance = 0.6
+
 [resource]
 bus/0/effect/0/effect = SubResource("Limiter")
 bus/0/effect/0/enabled = true
@@ -33,3 +43,13 @@ bus/2/mute = false
 bus/2/bypass_fx = false
 bus/2/volume_db = -6.0
 bus/2/send = &"Master"
+bus/3/name = &"Rivals"
+bus/3/solo = false
+bus/3/mute = false
+bus/3/bypass_fx = false
+bus/3/volume_db = 5.0
+bus/3/send = &"Master"
+bus/3/effect/0/effect = SubResource("RivalsCompressor")
+bus/3/effect/0/enabled = true
+bus/3/effect/1/effect = SubResource("RivalsHelmet")
+bus/3/effect/1/enabled = false

@@ -72,8 +72,9 @@ func run_sequence(hold_time := -1.0) -> void:
 	for c in range(1, 6):
 		set_lit(c)
 		_beep.play()
-		await get_tree().create_timer(1.0).timeout
-	await get_tree().create_timer(hold_time if hold_time >= 0.0 else randf_range(0.2, 3.0)).timeout
+		# Timers que param na pausa (o padrão do create_timer corre mesmo com o jogo pausado)
+		await get_tree().create_timer(1.0, false).timeout
+	await get_tree().create_timer(hold_time if hold_time >= 0.0 else randf_range(0.2, 3.0), false).timeout
 	set_lit(0)
 	_go.play()
 	_running = false

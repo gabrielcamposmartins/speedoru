@@ -110,7 +110,7 @@ func _ready() -> void:
 	_register_extra_actions()
 	for a in ACTIONS:
 		_default_events[a[0]] = InputMap.action_get_events(a[0]).duplicate()
-	for bus in ["Master", "Car", "Music"]:
+	for bus in ["Master", "Car", "Rivals", "Music"]:
 		var i := AudioServer.get_bus_index(bus)
 		_bus_base[bus] = AudioServer.get_bus_volume_db(i) if i >= 0 else 0.0
 	_overlay = PerfOverlay.new()
@@ -493,7 +493,9 @@ func _on_node_added(node: Node) -> void:
 
 func _apply_audio() -> void:
 	var a: Dictionary = values["audio"]
-	for bus_key in [["Master", "master"], ["Car", "car"], ["Music", "music"]]:
+	# O volume "Carro" vale para o seu carro e para os rivais (canais separados: o compressor do
+	# seu motor não abafa os outros)
+	for bus_key in [["Master", "master"], ["Car", "car"], ["Rivals", "car"], ["Music", "music"]]:
 		var i := AudioServer.get_bus_index(bus_key[0])
 		if i < 0:
 			continue

@@ -20,8 +20,6 @@ var status: CarCluster.Status
 @onready var handling_label: Label = %HandlingLabel
 @onready var help: PanelContainer = $Help
 
-var _handling_shown := F1Car.Handling.NEUTRAL
-var _handling_timer := 0.0
 
 const MARGIN := 24.0
 
@@ -96,10 +94,11 @@ func _style() -> void:
 	handling_label.add_theme_constant_override("shadow_offset_y", 0)
 
 
-func _process(delta: float) -> void:
+func _process(_delta: float) -> void:
 	if car == null:
 		return
-	_update_handling(delta)
+	# Sem aviso de sub/sobreesterço na tela
+	handling_label.visible = false
 	car_name_label.text = (car.config.car_name if car.config else "").to_upper()
 	if camera:
 		var cam_text := "Câmera: " + camera.get_mode_name()
@@ -135,24 +134,3 @@ func _on_camera_mode_changed(mode_name: String) -> void:
 	camera_label.text = "Câmera: " + mode_name
 
 
-## Aviso grande de sub/sobreesterço (com pequena retenção para não piscar).
-func _update_handling(delta: float) -> void:
-	if car.handling != F1Car.Handling.NEUTRAL:
-		_handling_shown = car.handling
-		_handling_timer = 0.5
-	else:
-		_handling_timer -= delta
-	if _handling_timer <= 0.0:
-		_handling_shown = F1Car.Handling.NEUTRAL
-	match _handling_shown:
-		F1Car.Handling.UNDERSTEER:
-			handling_label.text = "SUBESTERÇO!"
-			handling_label.add_theme_color_override("font_color", Retro.c("warn"))
-			handling_label.add_theme_color_override("font_shadow_color", Color(Retro.c("warn"), 0.4))
-		F1Car.Handling.OVERSTEER:
-			handling_label.text = "SOBREESTERÇO!"
-			handling_label.add_theme_color_override("font_color", Retro.c("accent"))
-			handling_label.add_theme_color_override("font_shadow_color", Color(Retro.c("accent"), 0.45))
-		_:
-			handling_label.text = ""
-	handling_label.modulate.a = clampf(_handling_timer / 0.2, 0.0, 1.0)

@@ -32,6 +32,9 @@ enum Net { OFF, SERVER, CLIENT }
 enum State { MENU, PRACTICE, GRID, RACING, FINISHED }
 
 const CHECKPOINT := 25.0
+## Duração sorteada de cada pit stop (s), sem contar conserto.
+const PIT_STOP_MIN := 2.0
+const PIT_STOP_MAX := 4.0
 const PIT_LIMIT := 80.0 / 3.6
 const DRIVERS := [
 	["Hikari Sato", "SAT"], ["Ren Kuroda", "KUR"], ["Mio Takahashi", "TAK"], ["Luna Rossi", "ROS"],
@@ -306,7 +309,7 @@ func _start_race() -> void:
 		get_tree().paused = false
 		LoadingScreen.done()
 	state_changed.emit(state)
-	await get_tree().create_timer(2.5).timeout
+	await get_tree().create_timer(2.5, false).timeout
 	for entry in entries:
 		_grid_positions[entry] = entry.car.global_position
 	if track.start_lights:
@@ -360,8 +363,7 @@ func _spawn_bot(index: int, driver: Array, level: int) -> F1Car:
 	get_parent().add_child(car)
 	var audio := car.get_node_or_null("Audio") as CarAudio
 	if audio:
-		audio.engine_db = -5.0
-		audio.effects_db = -9.0
+		audio.make_rival()
 	return car
 
 
@@ -393,7 +395,7 @@ func _on_lights_out() -> void:
 
 
 func _release_bot(entry: RaceEntry, delay: float) -> void:
-	await get_tree().create_timer(delay).timeout
+	await get_tree().create_timer(delay, false).timeout
 	entry.car.hold = false
 	entry.bot.released = true
 
@@ -728,7 +730,9 @@ func begin_player_pit(e: RaceEntry, repair_time: float) -> void:
 	e.car.limiter_on = false
 	var damage := e.car.get_node_or_null("Damage") as CarDamage
 	var repair := repair_time > 0.0 or (damage != null and damage.get_overall() < 0.97)
-	e.pit_timer = randf_range(2.4, 2.9) + (maxf(repair_time, 5.0) if repair else 0.0)
+	# Parada sorteada entre 2 e 4 s (o conserto soma o tempo dele)
+	e.pit_timer = randf_range(PIT_STOP_MIN, PIT_STOP_MAX) + (maxf(repair_time, 5.0) if repair else 0.0)
+	e.pit_stop_start = race_time
 	player_pit_timer = e.pit_timer
 	_show_crew(e, true)
 	_notify(e, "PIT STOP", "Pneus %s%s" % [CarConfig.COMPOUND_NAMES[e.pit_compound], " + reparo" if repair else ""], false)
@@ -744,6 +748,7 @@ func _end_player_pit(e: RaceEntry) -> void:
 	e.in_pit_stop = false
 	e.pit_count += 1
 	e.compounds_used.append(e.pit_compound)
+	_pit_time_notice(e)
 	_show_crew(e, false)
 	if control:
 		control.on_pit_done(e)
@@ -764,7 +769,7 @@ func retire(e: RaceEntry) -> void:
 	if e.is_player and net == Net.OFF:
 		_pay_player()
 	_notify(e, "ABANDONO", "%s está fora da corrida" % e.name, false)
-	await get_tree().create_timer(4.0).timeout
+	await get_tree().create_timer(4.0, false).timeout
 	if is_instance_valid(e.car):
 		e.car.visible = false
 		e.car.process_mode = Node.PROCESS_MODE_DISABLED
@@ -776,7 +781,15 @@ func retire(e: RaceEntry) -> void:
 ## Chamados pelo BotDriver.
 func begin_pit_stop(e: RaceEntry) -> void:
 	e.in_pit_stop = true
+	e.pit_stop_start = race_time
 	_show_crew(e, true)
+
+
+## Tempo parado no box (da parada até a liberação), mostrado ao sair.
+func _pit_time_notice(e: RaceEntry) -> void:
+	e.last_pit_time = race_time - e.pit_stop_start
+	_notify(e, "PIT STOP  %s s" % ("%.1f" % e.last_pit_time).replace(".", ","),
+		"Tempo parado no box · pneus %s" % CarConfig.COMPOUND_NAMES[e.pit_compound if e.is_player else e.car.config.tyre_compound], false)
 
 
 func end_pit_stop(e: RaceEntry) -> void:
@@ -786,6 +799,7 @@ func end_pit_stop(e: RaceEntry) -> void:
 		_repair(e)
 	e.pit_count += 1
 	e.compounds_used.append(e.car.config.tyre_compound)
+	_pit_time_notice(e)
 	_show_crew(e, false)
 	if control:
 		control.on_pit_done(e)
@@ -1080,7 +1094,7 @@ func _build_net_grid() -> void:
 func net_go() -> void:
 	state_changed.emit(state)
 	net_event.emit({"event": "grid"})
-	await get_tree().create_timer(2.5).timeout
+	await get_tree().create_timer(2.5, false).timeout
 	for entry in entries:
 		_grid_positions[entry] = entry.car.global_position
 	var hold_time := randf_range(0.2, 3.0)
@@ -1137,8 +1151,7 @@ func _spawn_net_car(node_name: String) -> F1Car:
 	get_parent().add_child(car)
 	var audio := car.get_node_or_null("Audio") as CarAudio
 	if audio:
-		audio.engine_db = -5.0
-		audio.effects_db = -9.0
+		audio.make_rival()
 	return car
 
 
