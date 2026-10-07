@@ -9,10 +9,12 @@ extends Node3D
 ## Tudo discreto: a plateia é ambiente, não pode cobrir os carros.
 
 const DIR := "res://assets/audio/crowd/"
-const MURMUR_DB := -15.0
-const CHEER_DB := -9.0
-const APPLAUSE_DB := -11.0
-const UNIT_SIZE := 16.0
+## Volumes medidos contra o motor na reta dos boxes: a plateia fica audível, uns 5 dB abaixo dos
+## carros (antes ficava 13 dB abaixo e o motor a cobria).
+const MURMUR_DB := -10.0
+const CHEER_DB := -6.0
+const APPLAUSE_DB := -8.0
+const UNIT_SIZE := 24.0
 const MAX_DISTANCE := 260.0
 ## Distância da câmera (m) a partir da qual os players ficam pausados.
 const ACTIVE_RANGE := 320.0

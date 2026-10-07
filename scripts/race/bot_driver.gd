@@ -241,6 +241,9 @@ func _traffic(s: float, v: float, my_lateral: float) -> Vector2:
 	var follow_ds := INF
 	var yellow := manager.control != null and manager.control.yellow
 	var yields := difficulty != Difficulty.HARD and not yellow and mode == Mode.RACE
+	# Sob amarela ninguém ultrapassa: qualquer carro à frente (que não esteja nos boxes nem
+	# envolvido na batida) vira o carro a seguir, mesmo em outra linha da pista
+	var no_pass := yellow and not manager.control.is_involved(entry)
 	var attacker: RaceEntry = null
 	var attacker_ds := -INF
 	for other: RaceEntry in manager.entries:
@@ -260,6 +263,11 @@ func _traffic(s: float, v: float, my_lateral: float) -> Vector2:
 		# Em volta de um humano a faixa "ocupada" é um pouco mais larga (mais respeito, menos batida)
 		var width := 2.9 if other.is_player else 2.5
 		var in_my_way := absf(dlat) < width or (ds < 35.0 and absf(other.lateral - my_lateral) < width - 0.2)
+		if no_pass and not manager.control.is_involved(other):
+			in_my_way = true
+			# Lado a lado e ele um pouco à frente: fica atrás
+			if ds > 0.0 and ds <= 4.5:
+				max_speed = minf(max_speed, other.car.linear_velocity.length() - 1.0)
 		if ds > 4.5 and in_my_way and other != _passing:
 			if ds < follow_ds:
 				follow = other

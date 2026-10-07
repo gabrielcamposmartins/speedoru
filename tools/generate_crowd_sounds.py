@@ -102,7 +102,9 @@ def crowd_murmur(seconds=10.0, voices=70):
         src = voiced(n, f0, rng)
         x += src * syllables(n, rng) * rng.uniform(0.3, 1.0)
     # Formantes médios de fala (vários vogais misturados) e só a faixa de voz
-    x = spectrum(x, lambda f: formants(f, [(500, 180, 1.0), (1100, 300, 0.7), (2300, 500, 0.35)]) * band(f, 130, 3500))
+    # Presença na faixa da voz (1–4 kHz): é o que "corta" o som grave dos motores
+    x = spectrum(x, lambda f: formants(f, [(500, 180, 1.0), (1100, 300, 0.8), (2300, 500, 0.55)]) * band(f, 130, 4200)
+                 * (1.0 + 1.6 * band(f, 1000, 4000, 1.0)))
     x /= np.sqrt(np.mean(x * x))
     floor = spectrum(rng.standard_normal(n), lambda f: band(f, 100, 1800) / np.sqrt(f))
     x += floor / np.sqrt(np.mean(floor * floor)) * 0.25

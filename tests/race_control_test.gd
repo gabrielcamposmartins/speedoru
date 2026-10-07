@@ -49,6 +49,11 @@ func _run() -> void:
 	await _seconds(25.0)
 	var rc := manager.control
 	_check(rc != null and not rc.yellow, "corrida começa em bandeira verde")
+	# Ultrapassagens de bots sob amarela (não devem acontecer)
+	var bot_passes := [0]
+	manager.infraction.connect(func(e: RaceEntry, title: String, _d: String, pen: bool) -> void:
+		if pen and e.bot and title.begins_with("ULTRAPASSAGEM"):
+			bot_passes[0] += 1)
 	# --- Batida de um bot
 	var bot_e: RaceEntry = null
 	for e in manager.entries:
@@ -127,6 +132,23 @@ func _run() -> void:
 	rc.safety_car.progress = other.progress - 50.0
 	await _seconds(0.3)
 	_check(other.penalty_seconds >= pen_before + 10.0, "passar o safety car: +10 s")
+	_check(bot_passes[0] == 0, "bots não ultrapassam sob amarela (%d ultrapassagens)" % bot_passes[0])
+	# Ultrapassagem sob amarela: a ordem do par inverte ao longo de vários passos → +5 s
+	var subjects: Array[RaceEntry] = []
+	for e in manager.entries:
+		if rc._subject(e):
+			subjects.append(e)
+	if subjects.size() >= 2:
+		var a := subjects[0]
+		var b := subjects[1]
+		var base := b.progress
+		var pen_a := a.penalty_seconds
+		a.progress = base - 12.0
+		rc._check_rules(0.01)
+		for k in 8:
+			a.progress = base - 12.0 + k * 3.0
+			rc._check_rules(0.01)
+		_check(a.penalty_seconds >= pen_a + 5.0, "ultrapassagem lenta sob amarela: +5 s (%.0f → %.0f s)" % [pen_a, a.penalty_seconds])
 	Engine.time_scale = 1.0
 	DirAccess.remove_absolute(ProjectSettings.globalize_path("user://test_rc_profile.cfg"))
 	print("Falhas: %d" % failures)

@@ -401,7 +401,8 @@ Visual synthwave + monitor CRT + HUD de ficção científica (`scripts/ui/retro.
     Bots batidos vão ao box sozinhos em ~3,5 s;
   - os outros: "Não ultrapasse · não passe o safety car · safety car sai em 3,2 km".
 - **Regras sob amarela** (fica a cargo dos jogadores; quem não segue é punido): não ultrapassar
-  (+5 s por carro passado; pode passar quem está nos boxes ou envolvido na batida, e os envolvidos
+  (+5 s por carro passado — a ordem de cada par é lembrada durante a amarela, então vale também a
+  ultrapassagem lenta, lado a lado; pode passar quem está nos boxes ou envolvido na batida, e os envolvidos
   podem passar todos para chegar ao box) e não passar o **safety car** (+10 s). O limitador **não
   é obrigatório** sob amarela (só um jeito fácil de andar devagar atrás do safety car). O safety
   car entra à frente do líder com a giroflex âmbar, anda a até 180 km/h na linha ideal (mais devagar
@@ -409,7 +410,8 @@ Visual synthwave + monitor CRT + HUD de ficção científica (`scripts/ui/retro.
 - **Fim:** o safety car fica **uma volta inteira** a partir de onde entrou na pista (uma batida
   nova durante a amarela não a prolonga); completada a volta, bandeira verde e ele sai. Os
   consertos seguem independentes da bandeira.
-- Bots respeitam tudo: não ultrapassam e ficam atrás do safety car (acompanham a velocidade dele).
+- Bots respeitam tudo: sob amarela seguem o carro da frente mesmo em outra linha (não ultrapassam,
+  a não ser quem está nos boxes ou envolvido) e ficam atrás do safety car.
 - O **semáforo** tem som: um bipe a cada coluna acesa e um tom agudo quando as luzes apagam.
 
 ## Linha ideal
@@ -542,8 +544,9 @@ Todos os sons são sintetizados por `tools/generate_car_sounds.py` (Python + num
   com efeito Doppler. Volumes na garagem (Tab → Som) e no inspetor do nó `Audio`.
 - **Plateia** (`scripts/track/crowd_audio.gd`, sons de `tools/generate_crowd_sounds.py` em
   `assets/audio/crowd/`): murmúrio baixo em loop em alto-falantes ao longo de cada arquibancada
-  (só tocam perto da câmera), palmas e torcida discretas de vez em quando, quando o seu carro passa
-  rápido perto, na largada e na sua chegada. Bus `Crowd`. Tudo sintetizado (vozes com formantes e
+  (só tocam perto da câmera), palmas e torcida de vez em quando, quando o seu carro passa rápido
+  perto, na largada e na sua chegada. Bus `Crowd`. Volume medido contra o motor na reta dos boxes:
+  ~4 dB abaixo dos carros, com presença na faixa da voz (1–4 kHz) para não sumir sob o motor. Tudo sintetizado (vozes com formantes e
   sílabas irregulares, palmas aleatórias, eco de estádio).
 - **Carros em volta** (bots e outros jogadores, `CarAudio.make_rival`): bus próprio `Rivals` (o
   compressor do seu motor não os abafa; o volume "Carro" vale para os dois), som que chega de mais

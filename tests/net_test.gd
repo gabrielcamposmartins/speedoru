@@ -183,11 +183,21 @@ func _run() -> void:
 		var start_pos: Vector3 = snaps["A"][-1]["cars"][my_idx]["pos"] if not snaps["A"].is_empty() else Vector3.ZERO
 		# Acelera 4 s (entradas a 60/s, como o jogo)
 		var counts := [0, 0, 0, 0, 0, 0, 0, 0]
+		var b_idx := -1
+		for d2 in roster:
+			if d2["id"] == b.account["id"]:
+				b_idx = int(d2["idx"])
+		var boost_a := 0
+		var boost_b := 0
 		for i in 240:
-			var d := PackedFloat32Array([i, 1.0, 0.0, 0.0, 0.0, 0])
+			var d := PackedFloat32Array([i, 1.0, 0.0, 0.0, 0.0, NetProtocol.BTN_BOOST if i > 120 else 0])
 			d.append_array(PackedFloat32Array(counts))
 			a.inp.rpc_id(1, d)
 			await create_timer(1.0 / 60.0).timeout
+		for snap: Dictionary in snaps["A"].slice(-60):
+			boost_a += int(int(snap["cars"][my_idx]["flags"]) & NetSnapshot.F_BOOST != 0)
+			boost_b += int(int(snap["cars"][b_idx]["flags"]) & NetSnapshot.F_BOOST != 0)
+		_check(boost_a > 0 and boost_b == 0, "boost só no carro de quem apertou (A %d, B %d instantâneos com boost)" % [boost_a, boost_b])
 		var end_snap: Dictionary = snaps["A"][-1]["cars"][my_idx]
 		var moved := (end_snap["pos"] as Vector3).distance_to(start_pos)
 		_check(moved > 15.0, "o carro de A andou com as entradas pela rede (%.0f m, %.0f km/h)" % [moved, (end_snap["vel"] as Vector3).length() * 3.6])

@@ -38,7 +38,8 @@ var _sc_target := 0.0
 ## Progresso em que o safety car termina a volta (onde entrou + uma volta).
 var sc_end := 0.0
 var _flagged := {}
-var _prev_progress := {}
+## Ordem entre pares de carros sob amarela: "idA_idB" -> 1 (A à frente de B) ou -1 (atrás).
+var _order := {}
 
 
 func setup(p_manager: RaceManager) -> void:
@@ -78,7 +79,7 @@ func _start_yellow() -> void:
 	yellow = true
 	_yellow_time = 0.0
 	_flagged.clear()
-	_prev_progress.clear()
+	_order.clear()
 	var leader := _leader()
 	if leader and manager.line:
 		safety_car = SafetyCar.new()
@@ -206,19 +207,35 @@ func _check_rules(_delta: float) -> void:
 		if safety_car and e.progress > safety_car.progress + 2.0 and not _flagged.has([e, "sc"]):
 			_flagged[[e, "sc"]] = true
 			manager.penalize_entry(e, 10.0, "SAFETY CAR", "Ultrapassou o safety car")
-	# Ultrapassagens entre quem está sujeito às regras (quem está nos boxes ou envolvido pode ser passado)
-	for a in subjects:
-		for b in subjects:
-			if a == b or not _prev_progress.has(a) or not _prev_progress.has(b):
+	# Ultrapassagens entre quem está sujeito às regras: a ordem de cada par é lembrada (com folga de
+	# 2 m para não piscar lado a lado) e quem inverte a ordem é punido. Quem está nos boxes ou
+	# envolvido pode ser passado: o par some da memória e recomeça quando ele volta.
+	var seen := {}
+	for i in subjects.size():
+		for j in range(i + 1, subjects.size()):
+			var a := subjects[i]
+			var b := subjects[j]
+			var key := "%d_%d" % [a.get_instance_id(), b.get_instance_id()]
+			seen[key] = true
+			var gap := a.progress - b.progress
+			var now := 0
+			if gap > 2.0:
+				now = 1
+			elif gap < -2.0:
+				now = -1
+			if now == 0:
 				continue
-			var was_behind: bool = _prev_progress[a] < _prev_progress[b] - 0.5
-			var now_ahead := a.progress > b.progress + 1.5
-			if was_behind and now_ahead and not _flagged.has([a, b]):
-				_flagged[[a, b]] = true
-				manager.penalize_entry(a, 5.0, "ULTRAPASSAGEM", "Passou %s sob bandeira amarela" % b.code)
-	_prev_progress.clear()
-	for e in subjects:
-		_prev_progress[e] = e.progress
+			var before: int = _order.get(key, 0)
+			_order[key] = now
+			if before == 0 or before == now:
+				continue
+			# Inverteu: quem ficou à frente ultrapassou
+			var passer := a if now == 1 else b
+			var passed := b if now == 1 else a
+			manager.penalize_entry(passer, 5.0, "ULTRAPASSAGEM", "Passou %s sob bandeira amarela" % passed.code)
+	for key in _order.keys():
+		if not seen.has(key):
+			_order.erase(key)
 
 
 ## Texto de instrução para o jogador (HUD), com a tecla da ação: [título, instrução, urgente].
