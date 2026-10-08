@@ -166,7 +166,7 @@ Cada peça é um `.glb` separado em `assets/car/parts/<slot>/<variante>.glb`:
 | `floor` (assoalho, difusor, prancha) | standard |
 | `halo`, `mirrors`, `suspension_front`, `suspension_rear` | standard |
 | `cockpit` (`SteeringWheel` animado, encostos) | standard |
-| `driver` (capacete, viseira, macacão) | standard |
+| `driver` (piloto humanoide: macacão, luvas, botas, HANS, cintos, capacete com viseira) | standard |
 | `tyre` (`_front` / `_rear`) | slick |
 | `rim` (`_front` / `_rear`) | covered, spoked |
 
@@ -175,6 +175,19 @@ Para regenerar tudo (glb + `blender/f1_car.blend` + imagens em `blender/renders/
 ```
 "C:\Program Files\Blender Foundation\Blender 5.0\blender.exe" -b -P blender/build_f1_car.py
 ```
+
+`-- --only=driver` (ou outra lista de slots separados por vírgula) exporta só essas peças.
+
+**Piloto** (`build_driver`): humanoide de ~1,75 m sentado no cockpit (~6,8 mil triângulos, shade
+smooth): tronco reclinado com o quadril no fundo do monocoque, joelhos logo abaixo do volante, pés
+nos pedais dentro do bico (botas com sola, salto e biqueira, tira de velcro e cano), luvas com
+punho largo sobre a manga, HANS de carbono, cinto de 6 pontos com fivela e capacete com queixeira,
+viseira em relevo e aerofólio. As juntas usam calotas arredondadas (deltoide entrando no tronco,
+glúteo na base do tronco) com pesos de pele divididos entre os ossos. Cores: macacão `Suit`,
+faixas `Livery_Secondary`, luvas/botas/gola `Livery_Accent`, capacete `Helmet`. Prévia sem trocar a
+peça: `blender ... -- --driver-preview <pasta>` (renders sozinho, no carro e em raio-x + `.glb`) e
+`godot --path . -s res://tests/capture_driver.gd -- <pasta>/driver_preview.glb <pasta>` (o `.glb` no
+carro do jogo, com o IK, de fora e da câmera do piloto).
 
 Convenções: todas as peças compartilham a origem do carro (chão, meio do entre-eixos), com a frente
 em +Z e a esquerda em +X no Godot. Os **nomes dos materiais são slots de pintura** (`Livery_Primary`,
@@ -309,12 +322,16 @@ difícil ou mista) e posição de largada. Tudo em `scripts/race/`:
   mostra "VÁCUO" aceso no lugar do câmbio (`tests/slipstream_test.gd`:
   em roda livre a 250 km/h o carro perde 28 km/h em 1 s sozinho e 11 km/h no vácuo).
 - **Classificatória** (`scripts/race/qualifying.gd`; escolhida no Jogar solo, no menu da corrida e
-  na sala online): sem, 1, 2 ou 3 voltas cronometradas, com ou sem colisão entre os carros. Os
-  carros saem espalhados pela pista, fazem a volta de saída e as cronometradas; vale a melhor volta
-  válida. Sair da pista (as quatro rodas além da borda e da zebra) ou levar qualquer penalidade
-  **anula a volta** (sem somar segundos); ir rápido ao box recomeça como volta de saída. No fim o
-  grid é a ordem das melhores voltas (sem tempo larga atrás), os carros são consertados e a corrida
-  larga do zero (`tests/qualifying_test.gd`).
+  na sala online): sem, 1, 2 ou 3 voltas cronometradas ou **voltas livres** até o tempo acabar, com
+  ou sem colisão entre os carros, **tempo limite** (sem limite, 3, 5, 10 ou 15 min; voltas livres
+  sem tempo escolhido = 10 min) e a opção **"infração anula a volta"**. Os carros saem espalhados
+  pela pista, fazem a volta de saída e as cronometradas; vale a melhor volta válida. Com a opção
+  ligada, sair da pista (as quatro rodas além da borda e da zebra) ou levar qualquer penalidade
+  **anula a volta** (sem somar segundos); desligada, as infrações não têm efeito na classificatória.
+  Ir rápido ao box recomeça como volta de saída. O HUD mostra o **tempo restante**; quando acaba,
+  ninguém começa volta nova, mas quem já está numa volta cronometrada válida pode terminá-la (ela
+  vale). No fim o grid é a ordem das melhores voltas (sem tempo larga atrás), os carros são
+  consertados e a corrida larga do zero (`tests/qualifying_test.gd`, `tests/qualifying_time_test.gd`).
 - **Pausa na largada:** pausar com o semáforo acendendo congela a sequência; ao voltar ela continua
   (`tests/start_pause_test.gd`).
 - **Boxes:** os bots fazem fila indiana na pista dos boxes (seguem quem está entrando, parado ou
@@ -362,6 +379,17 @@ e a meta de longo prazo). Catálogo e regras em `scripts/economy/shop_catalog.gd
   saem das pinturas possuídas; capacete, macacão, rodas, boost e neon, das peças daquele tipo; o
   neon só liga com uma peça de neon. Tudo é conferido de novo antes de ir para o carro (o que a
   conta não tem volta para o gratuito).
+- **Decalques** (aba do Estúdio com a estrela, grátis; `scripts/car/car_decals.gd`): adesivos SVG
+  nas **laterais**, no **bico**, na **entrada de ar** e nas **placas da asa traseira** (os lugares de
+  dois lados recebem o mesmo desenho, legível dos dois). Cada um com **cor livre** (as três da
+  pintura, uma paleta e o seletor de cor), **tamanho** e **giro**. 13 desenhos padrão
+  (`assets/decals/`, gerados por `python tools/generate_decals.py`: estrela, raio, chamas, bandeira
+  quadriculada, sakura, coração, asas, listras, garras, disco de número, onda, logo S, cometa) e os
+  **SVGs do jogador**: "Abrir pasta dos meus SVG" abre `user://decals` (desenho branco com fundo
+  transparente, até 512 KB) e "Recarregar" os lista. No carro são nós `Decal` projetados só na
+  carroceria (camada `CAR_LAYER`) e tingidos com a cor. Ficam em `equipped["decals"]` (validado
+  também pelo servidor); online os outros veem os padrão, os SVGs próprios só aparecem para quem
+  tem o arquivo.
 - **Engenharia** (primeira aba do Estúdio, a da chave inglesa, na garagem e no Tab da corrida): o
   comportamento do carro, nunca a aparência. Grupos Aerodinâmica (carga, arrasto, balanço), Freios
   (força, balanço), Pneus (aderência dianteira/traseira, ângulo de pico, queda depois do limite,
@@ -430,7 +458,9 @@ Visual synthwave + monitor CRT + HUD de ficção científica (`scripts/ui/retro.
     1 carro batido ir aos boxes").
 - **Regras sob amarela** (fica a cargo dos jogadores; quem não segue é punido): não ultrapassar
   — o jogador vê **"DEVOLVA A POSIÇÃO PARA XXX!"** piscando no centro da tela com 12 s para deixar o
-  carro passar; se não devolver, **+10 s** (bots: +10 s na hora). A ordem de cada par é lembrada
+  carro passar; se não devolver, **+10 s** (bots: +10 s na hora). Quem é ultrapassado (bot ou outro
+  jogador passando você) também vê o aviso **"ULTRAPASSAGEM SOB SAFETY CAR"** com quem passou e o
+  que acontece com ele, e "POSIÇÃO DEVOLVIDA" quando ele devolve. A ordem de cada par é lembrada
   durante a amarela (por par, independente da classificação), então vale também a
   ultrapassagem lenta, lado a lado; pode passar quem está nos boxes ou envolvido na batida, e os envolvidos
   podem passar todos para chegar ao box) e não passar o **safety car** (+10 s). O limitador **não
@@ -746,12 +776,46 @@ monta a cena certa, e para os clientes no `race_start`).
   `monaco_shore.png` (distância até a terra e máscara do porto, para o shader do mar). As áreas
   planas da pista (boxes, arquibancadas, escapes) ficam em `FLAT_ZONES`/`BARRIER_ZONES` no script e
   precisam bater com o `.tres`.
-- **Cidade** (`track_city.gd`): terreno em blocos com cor por uso (calçada, parques, encosta),
-  colisão só perto da pista; cais de pedra; ruas; piscinas; prédios com fachadas coloridas e janelas
-  procedurais (`shaders/track/city_building.gdshader`: venezianas verdes, varandas modernas,
-  vitrines no térreo), mansardas de zinco, telhados de telha, casas de máquinas; o **Casino** com
-  as torres e cúpulas de cobre; palmeiras e árvores; morros dos Alpes Marítimos e o casario de
+- **Cidade** (`track_city.gd`): terreno em blocos com cor e **tipo de piso** por uso
+  (`shaders/track/city_ground.gdshader`: praças de lajes de pedra desencontradas com faixas
+  decorativas e manchas de calcário/granito, calçadas de ladrilho, jardins com a grama do ambiente
+  e flores, rocha nas encostas, asfalto sob a pista), colisão só perto da pista; cais de pedra; ruas
+  de asfalto com **faixa central tracejada** e ruas de pedestres em **paralelepípedo**; piscinas;
+  prédios com fachadas coloridas e janelas procedurais (`shaders/track/city_building.gdshader`:
+  venezianas verdes, varandas modernas com guarda-corpo, vitrines no térreo com **toldos
+  listrados**, embasamento de pedra, cornija no topo, peitoris, vergas, **pedras de cunhal** nas
+  quinas, **floreiras** em parte das janelas, venezianas de uma cor por prédio — verde,
+  azul-acinzentado, vinho, creme, sálvia —; telhas em fiadas e lajes de cascalho), **varandas em
+  3D** nos prédios a até 110 m da pista (sacadas de pedra com gradil nos clássicos, varandas
+  corridas com guarda-corpo de vidro nos modernos), mansardas de zinco, telhados de telha (também
+  em boa parte dos prédios baixos), **mureta, caixas-d'água, antenas e terraços com jardineiras**
+  nas lajes, casas de máquinas; prédios **sem contorno anime** (rugosidade 0 no shader) e com
+  **sombra de contato**: a base das paredes escurece, as paredes descem 4 m abaixo da base (nunca
+  flutuam em encosta) e o chão em volta ganha uma faixa de calçada de ladrilho e escurece junto à
+  parede (`bdist`, distância de cada vértice ao prédio); o **Casino** com as torres e cúpulas de cobre; encostas com
+  **jardins em terraços** (muretas de pedra nas curvas de nível); morros dos Alpes Marítimos com
+  cristas e penhascos (ruído "ridged"), **mato mediterrâneo**, rocha nas encostas íngremes e
+  milhares de **árvores** (pinheiros, pinheiros-mansos, carvalhos, ciprestes) e o casario de
   Beausoleil além da área dos dados (`build_backdrop`).
+- **Árvores:** as mesmas espécies de Monza (`TrackTrees`, shader das árvores com vento e as cores
+  do ambiente): pinheiro-manso, carvalho, cipreste, arbusto e bétula, com malha simples de longe;
+  e as palmeiras. Nos morros só nos anéis mais perto da cidade; perto da pista (`city_props.gd`),
+  ~200 árvores nos jardins e como árvores de rua a 7–55 m da borda.
+- **Junto à pista** (`city_props.gd`, só em lugares livres — chão de calçada/praça, fora dos
+  prédios, das ruas, das arquibancadas e do mar, além das barreiras): ~500 objetos de mobiliário
+  urbano (bancos, floreiras com flores, frades, lixeiras e, na orla do porto, mesas de café com
+  guarda-sóis de três cores). A faixa que a grade marca "sob a pista" além da borda vira calçada;
+  ruas da cidade com **meio-fio de pedra**; calçadas e praças com **tampas de bueiro e grelhas**
+  (shader, perto); gramados de cidade menos saturados.
+- **Navios e balões** (`track_offshore.gd`): navio de cruzeiro, porta-contêineres (pilhas
+  coloridas), petroleiro e balsa cruzando ao largo em rotas paralelas à costa (longe da costa de
+  verdade dentro da área dos dados), com rastro de espuma; 14 balões de ar quente grandes (o modelo
+  de Monza, `TrackScenery.balloon_mesh`) passando com o vento sobre o porto e a orla, perto do
+  circuito, a 130–260 m (visíveis da pista); e dirigíveis com anúncios (`TrackScenery.blimp_mesh`):
+  seis nos **pontos de vista** do piloto (reta, Beau Rivage, Massenet/Casino, saída do túnel,
+  Tabac/Piscine, Rascasse), pairando sobre a própria pista ~200 m à frente — na faixa de céu que
+  aparece por cima da rua entre os prédios —, acima dos prédios vizinhos e indo e voltando ao
+  longo da pista (sem sombra); e dois altos em órbitas ao longo da costa.
 - **Túnel** (`track_tunnel.gd`): 371 m sob o Fairmont, paredes de azulejo, teto com duas fileiras
   de luminárias, luzes de sódio, portais nas bocas e sondas de reflexo com ambiente escuro (dentro
   fica na penumbra). Sem alambrado lá dentro.
@@ -764,8 +828,9 @@ monta a cena certa, e para os clientes no `race_start`).
 - **Noite:** ~50 postes de rua (`LIGHTS` com `variant = 1`: coluna fina atrás da barreira, braço
   curvo sobre a pista e luz quente) nos pontos-chave da volta, e parte das janelas dos prédios
   acende (`city_building.gdshader`, `TrackCity.set_night`).
-- **Ambiente:** as copas das árvores seguem o tema (outono laranja, sakura rosa, fantasia roxa) e
-  as palmeiras puxam um pouco para ele (`TrackCity.apply_biome`).
+- **Ambiente:** as copas das árvores e a grama dos jardins seguem o tema (outono laranja, sakura
+  rosa, fantasia roxa) pelos globais do shader; as palmeiras puxam um pouco para ele
+  (`TrackCity.apply_biome`).
 - **Área de escape:** a faixa asfaltada entre a pista e a barreira é o piso `RUNOFF` — anda como
   asfalto, mas conta como fora da pista para os limites (cortar a chicane por ela é infração).
 - Nenhum prédio cobre a pista fora do túnel (o gerador descarta plantas que, mesmo recortadas,
@@ -820,7 +885,8 @@ liberada pelo nível) e paga.
   Custom); se o líder sai ou sobra um, o grupo se desfaz.
 - **Salas**: corrida rápida (fila, larga quando todos marcam pronto), Custom (nome, senha, pista,
   voltas 3/5/10/15, bots e dificuldade, **corredores no grid** 2–14 — jogadores + bots; a sala
-  aceita até 10 jogadores —, classificatória e colisão nela, DRS, horário, ambiente; o anfitrião
+  aceita até 10 jogadores —, classificatória (voltas, tempo limite, colisão e se infração anula a
+  volta), DRS, horário, ambiente; o anfitrião
   larga), contra bots (do grupo). Quem está na sala Custom convida amigos online, e o convidado
   entra mesmo com senha.
 - **Ranking**: Geral, Vitórias, Ganhos, Volta mais rápida; Geral = soma de round(valor ÷ líder ×
@@ -841,7 +907,11 @@ física (pedais, direção e contadores das ações de toque, que não se perdem
 de todos os carros 30×/s (`NetSnapshot`, 64 bytes por carro) e o estado da prova 5×/s; desenha os
 carros 0,1 s no passado, interpolando (`NetRaceClient`; os carros do cliente são marionetes
 cinemáticas, `F1Car.set_puppet`). Avisos e penalidades chegam só para o piloto envolvido; peças
-arrancadas para todos. Sem pausa online (Esc abre o menu, os pedais soltam). Fim: quando todos os
+arrancadas para todos. Sem pausa online (Esc abre o menu, os pedais soltam). **Votação para
+recomeçar**: no menu (Esc) qualquer jogador vota; a votação fica aberta 30 s (faixa no HUD com os
+votos) e, com a maioria dos humanos ainda na corrida (2 de 2, 2 de 3, 3 de 4…; sozinho, 1), a
+corrida é descartada sem resultado nem prêmio e o servidor larga outra com a mesma sala (os
+clientes recarregam o grid). Fim: quando todos os
 humanos terminam/abandonam (ou 150 s depois do primeiro); quem sai vira abandono. O servidor paga e
 registra o resultado de cada um e a sala volta ao lobby.
 
@@ -869,7 +939,8 @@ godot --path . -s res://tests/capture_moods.gd -- <pasta>    # todos os horário
 godot --path . -s res://tests/capture_boost.gd -- <pasta>    # boost, marcas de pneu, sombra, fantasia
 godot --headless --path . -s res://tests/race_test.gd -- 3 9 3  # corrida de 3 voltas, 9 bots, dificuldade mista (+ monaco no fim = em Mônaco)
 godot --headless --path . -s res://tests/monaco_test.gd     # Mônaco: traçado, desnível, pisos, túnel coberto, cidade, porto, carro na rampa
-godot --path . -s res://tests/monaco_shots.gd -- <pasta> [horário] [ambiente] [prefixo]  # screenshots de Mônaco
+godot --path . -s res://tests/monaco_shots.gd -- <pasta> [horário] [ambiente] [prefixo]  # screenshots de Mônaco (+ calçadas, navios, balões, dirigíveis e o céu visto da pista)
+godot --path . -s res://tests/capture_decals.gd -- <pasta>   # decalques no carro, SVG do jogador (pasta de teste) e a aba do Estúdio
 godot --path . -s res://tests/capture_race.gd -- <pasta>     # menu, grid, HUD da corrida, boxes, mecânicos
 godot --path . -s res://tests/capture_loading.gd -- <pasta>  # tela de carregamento (circuito e grid)
 godot --path . -s res://tests/capture_ui.gd -- <pasta>       # HUD em cada paleta + garagem
@@ -884,7 +955,7 @@ godot --path . -s res://tests/capture_settings.gd -- <pasta> # menu de configura
 godot --headless --path . -s res://tests/compile_check.gd   # carrega todos os scripts (erros de compilação)
 godot --headless --path . -s res://tests/ccd_probe.gd       # carro não "para do nada" em zebra/raspão a 320 km/h e não atravessa muros
 godot --headless --path . -s res://tests/highspeed_probe.gd # pneus em alta velocidade: carga, aderência, boost, toque de direção, batente
-godot --headless --path . -s res://tests/net_test.gd        # multiplayer de ponta a ponta (precisa do libSQL local)
+godot --headless --path . -s res://tests/net_test.gd        # multiplayer de ponta a ponta, com votação para recomeçar (precisa do libSQL local)
 godot --headless --path . -s res://tests/puppet_wheel_test.gd # rodas dos carros da rede: altura do servidor, esterço e giro, sem tremer
 godot --headless --path . -s res://tests/updater_test.gd    # atualizador: versões e download/SHA-256 da última release (internet)
 godot --headless --path . -s res://tests/chase_camera_test.gd # câmera de perseguição: frenagem, aceleração, curva, batida
@@ -893,8 +964,11 @@ godot --headless --path . -s res://tests/start_pause_test.gd # pausa na largada 
 godot --headless --path . -s res://tests/drs_rule_test.gd   # DRS livre ou só a até 1 s do carro da frente
 godot --headless --path . -s res://tests/slipstream_test.gd # vácuo: força no rastro e perda de velocidade com e sem
 godot --headless --path . -s res://tests/qualifying_test.gd # classificatória: volta anulada, grid pelos tempos, colisão
+godot --headless --path . -s res://tests/qualifying_time_test.gd # classificatória: voltas livres, tempo limite, infração sem efeito
+godot --path . -s res://tests/capture_driver.gd -- <piloto.glb> <pasta>  # prévia de um modelo de piloto no carro (sem trocar o asset)
+godot --path . -s res://tests/capture_quali_vote.gd -- <pasta>  # menu com as opções da classificatória, relógio dela e faixa da votação
 godot --headless --path . -s res://tests/give_back_test.gd  # devolver a posição: resolvido deixando passar, +5 s se não
-godot --headless --path . -s res://tests/yellow_pass_test.gd # jogador passa um carro sob amarela: aviso e +10 s sem devolver
+godot --headless --path . -s res://tests/yellow_pass_test.gd # sob amarela: jogador passa (aviso, +10 s sem devolver) e é passado (aviso)
 godot --path . -s res://tests/capture_slipstream.gd -- <pasta>  # vento do vácuo e pisca dos retrovisores
 godot --headless --path . -s res://tests/track_bot_probe.gd -- monaco 2 2 [adversários]  # bot sozinho: onde bate/perde tempo
 godot --path . -s res://tests/audio_hum_probe.gd -- <pasta>  # grava o som silenciando um bus de cada vez (zumbidos)

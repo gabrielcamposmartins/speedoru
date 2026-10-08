@@ -7,13 +7,20 @@ extends Node
 ## (carros com o visual e a engenharia das contas) e bots; aqui chegam as entradas dos jogadores,
 ## saem os instantâneos (30/s), o estado da prova (5/s) e os acontecimentos; no fim, os resultados
 ## voltam ao GameServer, que paga e registra.
+##
+## Votação para recomeçar: qualquer jogador abre (comando "restart_vote"); com a maioria dos
+## humanos ainda na corrida votando sim em até VOTE_TIME s, a corrida é descartada (sem resultado
+## nem prêmio) e o GameServer larga uma nova com a mesma sala (restart_requested).
 
 signal finished(results: Array)
+signal restart_requested
 
 const LOAD_TIMEOUT := 45.0
 ## Depois que o primeiro humano termina, os outros têm esse tempo (s) para cruzar a linha.
 const FINISH_TIMEOUT := 150.0
 const END_DELAY := 5.0
+## Duração de uma votação para recomeçar (s).
+const VOTE_TIME := 30.0
 
 var server: GameServer
 var room_id := ""
@@ -35,6 +42,9 @@ var _state_acc := 0.0
 var _first_finish := -1.0
 var _end_timer := -1.0
 var _net: Node
+## Votação para recomeçar: contas que votaram sim e até quando ela vale (_t; < 0 = fechada).
+var _votes := {}
+var _vote_until := -1.0
 
 
 func start(p_server: GameServer, p_room: String, p_settings: Dictionary, p_players: Array) -> void:
@@ -62,7 +72,8 @@ func start(p_server: GameServer, p_room: String, p_settings: Dictionary, p_playe
 		list.append({"id": p["id"], "name": p["name"], "profile": p["profile"]})
 	manager.net_setup = {"laps": settings.get("laps", 5), "difficulty": settings.get("difficulty", 1), "drs": settings.get("drs", 0),
 		"bots": settings.get("bots", true), "cars": settings.get("cars", NetProtocol.MAX_ROOM_PLAYERS),
-		"quali_laps": settings.get("quali_laps", 0), "quali_collisions": settings.get("quali_collisions", true), "players": list}
+		"quali_laps": settings.get("quali_laps", 0), "quali_collisions": settings.get("quali_collisions", true),
+		"quali_time": settings.get("quali_time", 0), "quali_strict": settings.get("quali_strict", true), "players": list}
 	manager.net_grid_ready.connect(_on_grid_ready)
 	manager.net_event.connect(_broadcast_event)
 	manager.infraction.connect(_on_infraction)
@@ -122,6 +133,8 @@ func command(acc_id: String, cmd: String, data: Dictionary) -> void:
 				e.pit_compound = clampi(int(data.get("value", 2)), 0, 2) as CarConfig.TyreCompound
 		"quit":
 			player_left(acc_id)
+		"restart_vote":
+			_vote(acc_id, bool(data.get("yes", true)))
 
 
 func _all_loaded() -> bool:
@@ -131,9 +144,61 @@ func _all_loaded() -> bool:
 	return true
 
 
+## Voto (sim/não) para recomeçar a corrida; o primeiro "sim" abre a votação.
+func _vote(acc_id: String, yes: bool) -> void:
+	if _phase != "racing" or _left.has(acc_id) or not manager.humans.has(acc_id):
+		return
+	if yes:
+		if _vote_until < 0.0:
+			_votes.clear()
+			_vote_until = _t + VOTE_TIME
+		_votes[acc_id] = true
+	elif _vote_until >= 0.0:
+		_votes.erase(acc_id)
+	_check_vote()
+
+
+## Humanos ainda na corrida (votam) e quantos "sim" aprovam (maioria simples).
+func votes_needed() -> int:
+	var active := 0
+	for p in players:
+		if not _left.has(p["id"]):
+			active += 1
+	return active / 2 + 1
+
+
+func _check_vote() -> void:
+	if _vote_until < 0.0:
+		return
+	for id in _votes.keys():
+		if _left.has(id):
+			_votes.erase(id)
+	var needed := votes_needed()
+	if _votes.size() >= needed:
+		_vote_until = -1.0
+		_phase = "done"
+		_broadcast_event({"event": "restarting"})
+		restart_requested.emit()
+		return
+	var names := []
+	for p in players:
+		if _votes.has(p["id"]):
+			names.append(p["name"])
+	_broadcast_event({"event": "vote", "yes": _votes.size(), "needed": needed, "left": maxf(_vote_until - _t, 0.0),
+		"voters": names, "ids": _votes.keys()})
+
+
+func _close_vote() -> void:
+	_vote_until = -1.0
+	_votes.clear()
+	_broadcast_event({"event": "vote", "yes": 0, "needed": votes_needed(), "left": 0.0, "closed": true})
+
+
 ## Saiu da sala ou da corrida: o carro abandona (DNF).
 func player_left(acc_id: String) -> void:
 	_left[acc_id] = true
+	if _vote_until >= 0.0 and _phase == "racing":
+		_check_vote()
 	var e: RaceEntry = manager.humans.get(acc_id) if manager else null
 	if e and not e.finished and not e.retired:
 		manager.retire(e)
@@ -168,6 +233,8 @@ func _physics_process(delta: float) -> void:
 		for peer in _peers():
 			_net.race.rpc_id(peer, st)
 	if _phase == "racing":
+		if _vote_until >= 0.0 and _t > _vote_until:
+			_close_vote()
 		_check_end(delta)
 
 

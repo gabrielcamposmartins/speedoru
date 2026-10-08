@@ -4,6 +4,8 @@ Gerador procedural do carro de Fórmula 1 do F1 Gatcha (escala real, metros).
 Uso (a partir da raiz do projeto):
     blender -b -P blender/build_f1_car.py              # gera .glb + .blend + renders
     blender -b -P blender/build_f1_car.py -- --no-render
+    blender -b -P blender/build_f1_car.py -- --only=driver      # exporta só essas peças
+    blender -b -P blender/build_f1_car.py -- --driver-preview <pasta>   # prévia do piloto
 
 Convenções:
   * Coordenadas "de carro" usadas no script: x = lateral (+ esquerda), s = longitudinal
@@ -33,6 +35,8 @@ RENDER_DIR = os.path.join(HERE, "renders")
 
 ARGS = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
 DO_RENDER = "--no-render" not in ARGS
+# --only=driver,halo: exporta só essas peças (o .blend e os renders continuam completos)
+ONLY = next((a.split("=", 1)[1].split(",") for a in ARGS if a.startswith("--only=")), [])
 
 # ---------------------------------------------------------------------------
 # Dimensões principais (regulamento 2022-2025, aproximadas)
@@ -439,22 +443,6 @@ def radial_box(theta, r0, r1, a0, a1, w0, w1):
     return verts, faces
 
 
-def ellipsoid_shell_patch(cx, cs, cz, rx, rs, rz, phi, theta, scale_out, scale_in, nu=16, nv=6):
-    """Faixa de casca elipsoidal fechada (viseira do capacete)."""
-    rings = []
-    for j in range(nv + 1):
-        th = theta[0] + (theta[1] - theta[0]) * j / nv
-        ring_pts = []
-        for scale, rng in ((scale_out, range(nu + 1)), (scale_in, range(nu, -1, -1))):
-            for i in rng:
-                ph = phi[0] + (phi[1] - phi[0]) * i / nu
-                ring_pts.append(P(cx + rx * scale * math.sin(ph) * math.cos(th),
-                                  cs + rs * scale * math.cos(ph) * math.cos(th),
-                                  cz + rz * scale * math.sin(th)))
-        rings.append(ring_pts)
-    return skin(rings)
-
-
 # ---------------------------------------------------------------------------
 # Pintura (atribuição de materiais por região)
 # ---------------------------------------------------------------------------
@@ -847,16 +835,8 @@ def build_cockpit(col):
     return [wheel_obj, hb.build(col)]
 
 
-# Comprimentos dos segmentos do braço (m) e direção para onde o cotovelo aponta (lado esquerdo).
-UPPER_ARM_LENGTH = 0.24
-LOWER_ARM_LENGTH = 0.23
+# Distância do pulso ao centro da palma, ao longo do osso da mão (o DriverRig usa o mesmo valor).
 HAND_PALM_OFFSET = 0.05
-ELBOW_POLE = (0.35, 0.0, -1.0)
-
-
-def _smoothstep(e0, e1, x):
-    t = max(0.0, min(1.0, (x - e0) / (e1 - e0)))
-    return t * t * (3 - 2 * t)
 
 
 def car_xyz(v):
@@ -864,47 +844,289 @@ def car_xyz(v):
     return (v.x, -v.y, v.z)
 
 
-def solve_arm(shoulder, grip, pole_hint):
-    """Pose de repouso do braço já segurando a manopla (IK analítico de 2 ossos, coords do Blender)."""
-    reach = (grip - shoulder).normalized()
-    hand_dir = (reach + Vector((0.0, 0.0, 0.25))).normalized()
-    wrist = grip - hand_dir * HAND_PALM_OFFSET
-    to_wrist = wrist - shoulder
-    dist = min(to_wrist.length, UPPER_ARM_LENGTH + LOWER_ARM_LENGTH - 0.01)
-    axis = to_wrist.normalized()
-    a = (UPPER_ARM_LENGTH ** 2 - LOWER_ARM_LENGTH ** 2 + dist ** 2) / (2 * dist)
-    h = math.sqrt(max(UPPER_ARM_LENGTH ** 2 - a * a, 0.0))
-    pole = (pole_hint - axis * pole_hint.dot(axis)).normalized()
-    elbow = shoulder + axis * a + pole * h
-    return elbow, wrist, wrist + hand_dir * 0.09, pole
+# --- Piloto humanoide low poly ---------------------------------------------------
+class Sweep:
+    """Tubo de seção superelíptica ao longo de um caminho Catmull-Rom (coordenadas de carro).
+
+    secs: uma por ponto do caminho, (rx, ry, expoente[, deslocamento em ry]); rx segue `side`
+    (projetado no plano da seção) e ry a normal = tangente × side.
+    round0/round1: fecha a ponta com uma calota arredondada (juntas sem "tampa" chapada); o
+    comprimento da calota é round * raio. Os índices de anel de point() ignoram as calotas.
+    """
+
+    CAP_ANGLES = (80.0, 62.0, 40.0)
+
+    def __init__(self, path, secs, side=(1.0, 0.0, 0.0), sub=2, n=12, round0=0.0, round1=0.0):
+        pts = [Vector(p) for p in path]
+        self.n = n
+        self.centers, params = [], []
+        for i in range(len(pts) - 1):
+            p0, p1 = pts[max(i - 1, 0)], pts[i]
+            p2, p3 = pts[i + 1], pts[min(i + 2, len(pts) - 1)]
+            for k in range(sub):
+                self.centers.append(catmull(p0, p1, p2, p3, k / sub))
+                params.append(i + k / sub)
+        self.centers.append(pts[-1])
+        params.append(len(pts) - 1.0)
+        self.secs = []
+        for prm in params:
+            i = min(int(prm), len(secs) - 2)
+            f = prm - i
+            a = tuple(secs[i]) + (0.0,) * (4 - len(secs[i]))
+            b = tuple(secs[i + 1]) + (0.0,) * (4 - len(secs[i + 1]))
+            self.secs.append(tuple(a[j] + (b[j] - a[j]) * f for j in range(4)))
+        self.base0 = self.base1 = 0
+        if round0 > 0.0:
+            self._cap(0, round0)
+        if round1 > 0.0:
+            self._cap(-1, round1)
+        self.last = len(self.centers) - 1 - self.base0 - self.base1
+        side = Vector(side)
+        self.frames = []
+        m = len(self.centers)
+        for i in range(m):
+            t = (self.centers[min(i + 1, m - 1)] - self.centers[max(i - 1, 0)]).normalized()
+            sd = (side - t * side.dot(t)).normalized()
+            self.frames.append((t, sd, t.cross(sd)))
+
+    def _cap(self, end, length):
+        c, (rx, ry, e, oy) = self.centers[end], self.secs[end]
+        nb = self.centers[1] if end == 0 else self.centers[-2]
+        out = (c - nb).normalized()
+        rings = []
+        for deg in self.CAP_ANGLES:
+            ang = math.radians(deg)
+            k = math.cos(ang)
+            rings.append((c + out * (length * max(rx, ry) * math.sin(ang)), (rx * k, ry * k, e, oy)))
+        if end == 0:
+            self.centers[:0] = [r[0] for r in rings]
+            self.secs[:0] = [r[1] for r in rings]
+            self.base0 = len(rings)
+        else:
+            self.centers.extend(r[0] for r in reversed(rings))
+            self.secs.extend(r[1] for r in reversed(rings))
+            self.base1 = len(rings)
+
+    def radius(self, fi):
+        i = max(0, min(int(fi), self.last)) + self.base0
+        return max(self.secs[i][:2])
+
+    def _ring_point(self, i, a, grow):
+        rx, ry, e, oy = self.secs[i]
+        _, sd, nm = self.frames[i]
+        return (self.centers[i] + sd * ((rx + grow) * _sgnpow(math.cos(a), 2.0 / e))
+                + nm * (oy + (ry + grow) * _sgnpow(math.sin(a), 2.0 / e)))
+
+    def point(self, fi, a, grow=0.0):
+        """Ponto da superfície (coords de carro) no anel fracionário fi e ângulo a (0 = +side,
+        pi/2 = +normal), afastado `grow` metros."""
+        fi += self.base0
+        i = max(0, min(int(fi), len(self.centers) - 2))
+        f = max(0.0, min(1.0, fi - i))
+        return self._ring_point(i, a, grow).lerp(self._ring_point(i + 1, a, grow), f)
+
+    def mesh(self, cap0=True, cap1=True):
+        rings = [[P(*self._ring_point(i, 2 * math.pi * k / self.n, 0.0)) for k in range(self.n)]
+                 for i in range(len(self.centers))]
+        return skin(rings, cap0, cap1)
+
+
+def surface_strap(sweep, samples, width, th=0.006, gap=0.002):
+    """Faixa (cinto) colada na superfície de um Sweep: samples = [(anel fracionário, ângulo)]."""
+    rings = []
+    for fi, a in samples:
+        r = sweep.radius(fi)
+        da = width * 0.5 / max(r, 0.02)
+        rings.append([P(*sweep.point(fi, a - da, gap)), P(*sweep.point(fi, a + da, gap)),
+                      P(*sweep.point(fi, a + da, gap + th)), P(*sweep.point(fi, a - da, gap + th))])
+    return skin(rings)
+
+
+def chain_weights(chain, power=6.0):
+    """Pesos de pele pela distância aos ossos: chain = [(osso, cabeça, cauda)] em coords de carro.
+    Cada vértice fica com os dois ossos mais próximos (mistura suave nas juntas)."""
+    segs = [(name, Vector(h), Vector(t)) for name, h, t in chain]
+
+    def fn(pos):
+        p = Vector((pos.x, -pos.y, pos.z))
+        raw = []
+        for name, h, t in segs:
+            d = t - h
+            k = max(0.0, min(1.0, (p - h).dot(d) / d.length_squared))
+            raw.append((1.0 / ((h + d * k - p).length ** power + 1e-9), name))
+        raw.sort(reverse=True)
+        top = raw[:2]
+        total = sum(w for w, _ in top)
+        return {name: w / total for w, name in top}
+    return fn
+
+
+# Proporções do piloto (≈1,75 m) sentado no cockpit: quadril no fundo do monocoque, tronco
+# reclinado, joelhos logo abaixo do volante e pés nos pedais (dentro do bico).
+DRIVER_UPPER_ARM = 0.285
+DRIVER_LOWER_ARM = 0.26
+DRIVER_SHOULDER = (0.175, -0.15, 0.495)
+DRIVER_HIP = (0.085, -0.06, 0.17)
+DRIVER_KNEE = (0.10, 0.40, 0.36)
+DRIVER_ANKLE = (0.095, 0.82, 0.28)
+DRIVER_FOOT_DIR = (0.0, 0.42, 0.91)
+HELMET_CENTER = (0.0, -0.115, 0.715)
+# Linhas de latitude do capacete (graus); a viseira vai de -8° a 22°, ±60° da frente.
+HELMET_ROWS = (-78, -60, -42, -24, -8, 6, 22, 38, 54, 70, 84)
+HELMET_LON = 18
+VISOR_ROWS = (4, 6)
+VISOR_HALF = math.radians(60)
+
+
+def helmet_point(phi, th, grow=0.0):
+    """Casca do capacete (coords de carro). phi = 0 na frente (+s), th = latitude.
+    Abaixo do equador a frente desce e avança (queixeira) e a nuca desce até o HANS."""
+    cx, cs, cz = HELMET_CENTER
+    rx, rs = 0.123 + grow, 0.148 + grow
+    rz = (0.135 if th > 0 else 0.13) + grow
+    cf = math.cos(phi)
+    # Metade de baixo mais "cheia" (casca desce quase reta até a borda, cobrindo o pescoço)
+    ch = math.cos(th) ** (0.6 if th < 0 else 1.0)
+    x = rx * math.sin(phi) * ch
+    s = rs * cf * ch
+    z = rz * math.sin(th)
+    if th < 0:
+        k = -math.sin(th)
+        z -= 0.045 * k * max(cf, 0.0) ** 1.5
+        s += 0.035 * k * max(cf, 0.0) ** 2
+        z -= 0.03 * k * max(-cf, 0.0)
+    return Vector((cx + x, cs + s, cz + z))
+
+
+def _helmet_phi(i):
+    return -math.pi + 2.0 * math.pi * i / HELMET_LON
+
+
+def build_helmet(name):
+    rows = [math.radians(t) for t in HELMET_ROWS]
+    rings = [[P(*helmet_point(_helmet_phi(i), th)) for i in range(HELMET_LON)] for th in rows]
+    shell = skin(rings)
+
+    def paint(c):
+        if c.tag == "cap0":
+            return "Interior"
+        if c.tag == "cap1":
+            return "Livery_Accent"
+        i = int(round(c.u * HELMET_LON - 0.5))
+        k = int(round(c.v * (len(rows) - 1) - 0.5))
+        phi = abs(_helmet_phi(i + 0.5))
+        if VISOR_ROWS[0] <= k < VISOR_ROWS[1] and phi < VISOR_HALF:
+            return "Visor"
+        if k >= 9:
+            return "Livery_Accent"  # coroa
+        if k == 3 and phi < math.radians(140):
+            return "Livery_Accent"  # faixa abaixo da viseira
+        return "Helmet"
+
+    hb = Builder(name)
+    hb.add(shell, paint)
+    # Viseira em relevo (casca fina sobre a abertura)
+    vrows = [math.radians(HELMET_ROWS[k]) for k in range(VISOR_ROWS[0], VISOR_ROWS[1] + 1)]
+    steps = 6
+    vr = []
+    for th in vrows:
+        outer = [helmet_point(-VISOR_HALF + 2 * VISOR_HALF * j / steps, th, 0.006) for j in range(steps + 1)]
+        inner = [helmet_point(-VISOR_HALF + 2 * VISOR_HALF * j / steps, th, -0.002) for j in range(steps, -1, -1)]
+        vr.append([P(*p) for p in outer + inner])
+    hb.add(skin(vr), lambda c: "Carbon" if c.tag in ("cap0", "cap1") else "Visor")
+    # Aerofólio traseiro e tomada de ar no topo
+    sp = helmet_point(math.pi, math.radians(40), 0.008)
+    hb.add(box(sp.x, sp.y - 0.01, sp.z + 0.008, 0.058, 0.02, 0.004), "Carbon")
+    for sx in (-1, 1):
+        fin = helmet_point(math.pi - sx * 0.36, math.radians(36), -0.004)
+        hb.add(box(fin.x, fin.y - 0.006, fin.z + 0.004, 0.003, 0.02, 0.012), "Carbon")
+    return hb
+
+
+def add_boot(b, ankle, knee, fd, weights):
+    """Bota de corrida no pedal: cano subindo pela canela, corpo do pé com salto e biqueira de
+    carbono, tira de velcro e sola. O pé aponta para cima (fd) e a sola olha para os pedais."""
+    shin = (ankle - knee).normalized()
+    # Cano (aberto em cima, por onde passa a perna) e a borda acolchoada
+    b.add(Sweep([ankle - shin * 0.12, ankle - shin * 0.06, ankle],
+                [(0.047, 0.045, 2.2), (0.05, 0.048, 2.2), (0.053, 0.051, 2.2)], n=12,
+                round1=0.5).mesh(cap0=False), "Livery_Accent", weights=weights)
+    b.add(Sweep([ankle - shin * 0.128, ankle - shin * 0.108], [(0.052, 0.05, 2.2), (0.053, 0.051, 2.2)],
+                n=12, sub=1).mesh(), "Livery_Secondary", weights=weights)
+    # Corpo do pé ao longo de fd: (t ao longo do pé, meia-largura, meia-altura, centro em direção à sola)
+    st = [(-0.07, 0.036, 0.04, 0.03), (-0.045, 0.043, 0.054, 0.018), (0.0, 0.047, 0.062, 0.012),
+          (0.06, 0.05, 0.052, 0.02), (0.12, 0.052, 0.046, 0.026), (0.165, 0.048, 0.041, 0.03),
+          (0.2, 0.04, 0.033, 0.036)]
+
+    def foot_paint(c):
+        t = (Vector((c.x, c.s, c.z)) - ankle).dot(fd)
+        return "Livery_Secondary" if t > 0.16 or t < -0.065 else "Livery_Accent"
+
+    b.add(Sweep([ankle + fd * t for t, *_ in st], [(hw, hn, 2.5, cn) for _, hw, hn, cn in st], n=12,
+                round0=0.6, round1=0.8).mesh(), foot_paint, weights=weights)
+    # Tira de velcro no peito do pé
+    b.add(Sweep([ankle + fd * 0.03, ankle + fd * 0.056],
+                [(0.052, 0.06, 2.5, 0.017), (0.053, 0.056, 2.5, 0.02)], n=12, sub=1).mesh(),
+          "Livery_Secondary", weights=weights)
+    # Sola fina de borracha (mais grossa no salto), colada na face do pé que pisa no pedal
+    sole = [(t, hw * 0.92, 0.009 if t < -0.03 else 0.005, cn + hn - 0.001) for t, hw, hn, cn in st]
+    b.add(Sweep([ankle + fd * t for t, *_ in sole], [(hw, hn, 3.0, c) for _, hw, hn, c in sole], n=12,
+                round0=0.3, round1=0.5).mesh(), "Carbon", weights=weights)
 
 
 def build_driver(col):
-    """Piloto com esqueleto humanoide (nomes do SkeletonProfileHumanoid do Godot).
+    """Piloto humanoide (macacão, luvas, botas, HANS, cintos e capacete) sentado no cockpit, com o
+    esqueleto do SkeletonProfileHumanoid do Godot (nomes de ossos padrão).
 
-    * DriverBody: malha com pesos de pele (tronco, braços, luvas).
+    * DriverBody: malha com pesos de pele (juntas com calotas arredondadas e pesos divididos).
     * DriverHelmet: preso ao osso Head; a câmera de 1ª pessoa o esconde.
     * DriverRig: armature. Na pose de repouso as mãos já seguram as manoplas; no Godot um
       TwoBoneIK3D mantém as mãos no volante enquanto ele gira (o modelo pode ser trocado
       por qualquer personagem com os mesmos nomes de ossos).
     """
-    bones = {
-        "Hips": ((0, -0.26, 0.26), (0, -0.23, 0.38), None),
-        "Spine": ((0, -0.23, 0.38), (0, -0.19, 0.46), "Hips"),
-        "Chest": ((0, -0.19, 0.46), (0, -0.15, 0.55), "Spine"),
-        "Neck": ((0, -0.15, 0.55), (0, -0.13, 0.62), "Chest"),
-        "Head": ((0, -0.13, 0.62), (0, -0.12, 0.80), "Neck"),
-    }
-    arms = {}
+    spine = [("Hips", (0, -0.10, 0.20), (0, -0.12, 0.30)),
+             ("Spine", (0, -0.12, 0.30), (0, -0.15, 0.40)),
+             ("Chest", (0, -0.15, 0.40), (0, -0.19, 0.52)),
+             ("Neck", (0, -0.19, 0.52), (0, -0.155, 0.615)),
+             ("Head", (0, -0.155, 0.615), (0, -0.11, 0.80))]
+    bones = {}
+    parent = None
+    for name, h, t in spine:
+        bones[name] = (h, t, parent)
+        parent = name
+    bone_pos = {name: (h, t) for name, h, t in spine}
+    arms, legs = {}, {}
+    fd = Vector(DRIVER_FOOT_DIR).normalized()
     for side, prefix in ((1, "Left"), (-1, "Right")):
-        shoulder = P(side * 0.17, -0.06, 0.53)
-        hint = P(side * ELBOW_POLE[0], ELBOW_POLE[1], ELBOW_POLE[2])
-        elbow, wrist, knuckles, pole = solve_arm(shoulder, grip_point(side), hint)
-        arms[prefix] = (shoulder, elbow, wrist, knuckles, pole)
-        bones[prefix + "Shoulder"] = ((side * 0.04, -0.14, 0.54), car_xyz(shoulder), "Chest")
-        bones[prefix + "UpperArm"] = (car_xyz(shoulder), car_xyz(elbow), prefix + "Shoulder")
+        sh = (side * DRIVER_SHOULDER[0], DRIVER_SHOULDER[1], DRIVER_SHOULDER[2])
+        hint = P(side * 0.2, 0.0, -1.0)
+        shoulder = P(*sh)
+        grip = grip_point(side)
+        reach = (grip - shoulder).normalized()
+        hand_dir = (reach + Vector((0.0, 0.0, 0.25))).normalized()
+        wrist = grip - hand_dir * HAND_PALM_OFFSET
+        to_wrist = wrist - shoulder
+        dist = min(to_wrist.length, DRIVER_UPPER_ARM + DRIVER_LOWER_ARM - 0.01)
+        axis = to_wrist.normalized()
+        a = (DRIVER_UPPER_ARM ** 2 - DRIVER_LOWER_ARM ** 2 + dist ** 2) / (2 * dist)
+        h = math.sqrt(max(DRIVER_UPPER_ARM ** 2 - a * a, 0.0))
+        pole = (hint - axis * hint.dot(axis)).normalized()
+        elbow = shoulder + axis * a + pole * h
+        knuckles = wrist + hand_dir * 0.09
+        arms[prefix] = (shoulder, elbow, wrist, knuckles, pole, hand_dir)
+        bones[prefix + "Shoulder"] = ((side * 0.04, -0.17, 0.50), sh, "Chest")
+        bones[prefix + "UpperArm"] = (sh, car_xyz(elbow), prefix + "Shoulder")
         bones[prefix + "LowerArm"] = (car_xyz(elbow), car_xyz(wrist), prefix + "UpperArm")
         bones[prefix + "Hand"] = (car_xyz(wrist), car_xyz(knuckles), prefix + "LowerArm")
+
+        hip = Vector((side * DRIVER_HIP[0], DRIVER_HIP[1], DRIVER_HIP[2]))
+        knee = Vector((side * DRIVER_KNEE[0], DRIVER_KNEE[1], DRIVER_KNEE[2]))
+        ankle = Vector((side * DRIVER_ANKLE[0], DRIVER_ANKLE[1], DRIVER_ANKLE[2]))
+        toe = ankle + fd * 0.15
+        legs[prefix] = (hip, knee, ankle, toe)
+        bones[prefix + "UpperLeg"] = (tuple(hip), tuple(knee), "Hips")
+        bones[prefix + "LowerLeg"] = (tuple(knee), tuple(ankle), prefix + "UpperLeg")
+        bones[prefix + "Foot"] = (tuple(ankle), tuple(toe), prefix + "LowerLeg")
 
     # --- Armature
     arm_data = bpy.data.armatures.new("DriverRig")
@@ -922,49 +1144,96 @@ def build_driver(col):
             eb.parent = arm_data.edit_bones[parent]
             eb.use_connect = (eb.parent.tail - eb.head).length < 1e-4
     for prefix in ("Left", "Right"):
-        pole = arms[prefix][4]
         for part in ("UpperArm", "LowerArm", "Hand"):
-            arm_data.edit_bones[prefix + part].align_roll(pole)
+            arm_data.edit_bones[prefix + part].align_roll(arms[prefix][4])
+        for part in ("UpperLeg", "LowerLeg", "Foot"):
+            arm_data.edit_bones[prefix + part].align_roll(Vector((0.0, 0.0, 1.0)))
     bpy.ops.object.mode_set(mode="OBJECT")
 
-    # --- Corpo com pesos de pele
+    def chain(*names):
+        return chain_weights([(n, bones[n][0], bones[n][1]) for n in names])
+
     b = Builder("DriverBody")
-    b.add(loft([S(-0.06, 0.07, 0.52, 0.64, nt=2, nb=2), S(-0.22, 0.09, 0.52, 0.64, nt=2, nb=2)], n=20, sub=1),
-          "Interior", weights=lambda p: {"Neck": 1.0})
-    b.add(loft([S(0.06, 0.15, 0.30, 0.50, nt=2.5, nb=4), S(-0.08, 0.21, 0.30, 0.57, nt=2.5, nb=4),
-                S(-0.32, 0.21, 0.30, 0.57, nt=2.5, nb=4)], n=28, sub=2), "Suit", weights=lambda p: {"Chest": 1.0})
-    for prefix in ("Left", "Right"):
-        shoulder, elbow, wrist, knuckles, _ = arms[prefix]
-        split = ((elbow - shoulder).normalized() + (wrist - elbow).normalized()).normalized()
+    # --- Tronco (macacão com painéis laterais); base arredondada
+    torso = Sweep([(0, -0.075, 0.115), (0, -0.10, 0.21), (0, -0.13, 0.33), (0, -0.16, 0.43),
+                   (0, -0.185, 0.505), (0, -0.195, 0.548)],
+                  [(0.13, 0.085, 2.6), (0.17, 0.11, 2.8), (0.152, 0.10, 2.6, 0.005),
+                   (0.18, 0.115, 2.8, 0.01), (0.195, 0.105, 3.0), (0.115, 0.075, 2.4)], n=16, round0=0.6)
+    b.add(torso.mesh(), lambda c: "Livery_Secondary" if abs(c.nx) > 0.85 and c.z > 0.22 else "Suit",
+          weights=chain("Hips", "Spine", "Chest"))
+    top = torso.last
+    # Gola, pescoço (balaclava) e HANS
+    b.add(Sweep([(0, -0.197, 0.538), (0, -0.182, 0.595)], [(0.074, 0.068, 2.2), (0.064, 0.058, 2.2)],
+                n=16, sub=1).mesh(), "Livery_Accent", weights=chain("Chest", "Neck"))
+    b.add(Sweep([(0, -0.19, 0.55), (0, -0.165, 0.61), (0, -0.145, 0.655)],
+                [(0.05, 0.05, 2.0), (0.046, 0.046, 2.0), (0.044, 0.044, 2.0)], n=12).mesh(),
+          "Interior", weights=chain("Neck", "Head"))
+    # (ângulos contínuos: o lado direito é o espelho -pi - a do esquerdo)
+    hans_angles = [(top - 2.2, 1.12), (top - 1.2, 1.06), (top - 0.35, 0.9), (top - 0.2, 0.0),
+                   (top - 0.2, -math.pi / 2), (top - 0.2, -math.pi), (top - 0.35, -math.pi - 0.9),
+                   (top - 1.2, -math.pi - 1.06), (top - 2.2, -math.pi - 1.12)]
+    hans_path = [tuple(torso.point(fi, a, 0.012)) for fi, a in hans_angles]
+    b.add(Sweep(hans_path, [(0.010, 0.03, 2.4)] * len(hans_path), side=(0, 0, 1), sub=3, n=10,
+                round0=0.4, round1=0.4).mesh(), "Carbon", weights=chain("Chest", "Neck"))
+    pad = torso.point(top - 0.5, -math.pi / 2, 0.02)
+    b.add(box(pad.x, pad.y - 0.004, pad.z + 0.03, 0.055, 0.016, 0.035), "Carbon", weights=chain("Chest", "Neck"))
+    # Cintos de 6 pontos (ombros e abdominal) com fivela central
+    belt_w = 0.05
+    a_top, a_low = math.pi / 2 - 0.55, math.pi / 2 - 0.12
+    for sx in (1, -1):
+        def m(a, sx=sx):
+            return a if sx > 0 else math.pi - a
+        # Das costas, por cima do ombro, até a fivela na barriga
+        samples = [(top - 1.6, m(-a_top)), (top - 0.6, m(-a_top)), (top, m(-0.6)), (top, m(0.6)),
+                   (top - 0.6, m(a_top))]
+        for k in range(1, 8):
+            samples.append((top - 0.6 - k * (top - 4.9) / 7, m(a_top + (a_low - a_top) * k / 7)))
+        b.add(surface_strap(torso, samples, belt_w), "Interior", weights=chain("Hips", "Spine", "Chest"))
+        # (nasce na lateral do quadril, escondida pela coxa, e vem até a fivela)
+        lap = [(2.3 + 1.65 * k / 8, m(0.05 + 1.42 * k / 8)) for k in range(9)]
+        b.add(surface_strap(torso, lap, belt_w), "Interior", weights=chain("Hips", "Spine"))
+    buckle = torso.point(4.1, math.pi / 2, 0.012)
+    b.add(box(buckle.x, buckle.y, buckle.z, 0.04, 0.012, 0.04), "Metal", weights=chain("Hips", "Spine"))
 
-        def arm_weights(p, elbow=elbow, split=split, prefix=prefix):
-            lower = _smoothstep(-0.035, 0.035, (p - elbow).dot(split))
-            return {prefix + "UpperArm": 1.0 - lower, prefix + "LowerArm": lower}
-
-        def hand_weights(p, prefix=prefix):
-            return {prefix + "Hand": 1.0}
-
-        path = [shoulder, shoulder.lerp(elbow, 0.5), elbow, elbow.lerp(wrist, 0.5), wrist]
-        b.add(tube([car_xyz(v) for v in path], 0.037, sides=12, sub=4), "Suit", weights=arm_weights)
-        cuff = [car_xyz(wrist - (knuckles - wrist) * 0.15), car_xyz(wrist + (knuckles - wrist) * 0.12)]
-        b.add(tube(cuff, 0.042, sides=12, sub=1), "Livery_Accent", weights=hand_weights)
-        palm = car_xyz(wrist + (knuckles - wrist).normalized() * HAND_PALM_OFFSET)
-        b.add(ellipsoid(palm[0], palm[1], palm[2], 0.038, 0.05, 0.042, n=16, rows=8), "Livery_Accent",
-              weights=hand_weights)
-    body = b.build(col)
+    for side, prefix in ((1, "Left"), (-1, "Right")):
+        shoulder, elbow, wrist, knuckles, pole, hand_dir = arms[prefix]
+        g = steering_matrix().to_3x3() @ Vector((0.0, 0.0, 1.0))
+        g_car = Vector(car_xyz(g)).normalized()
+        hd = Vector(car_xyz(hand_dir))
+        sh, el, wr = Vector(car_xyz(shoulder)), Vector(car_xyz(elbow)), Vector(car_xyz(wrist))
+        # Braço (manga com faixa na lateral externa). A calota do início vira o deltoide, que
+        # entra no tronco e acompanha o ombro (pesos divididos com o osso Shoulder).
+        arm = Sweep([sh, sh.lerp(el, 0.5), el, el.lerp(wr, 0.5), wr - hd * 0.03],
+                    [(0.058, 0.054, 2.2), (0.048, 0.046, 2.2), (0.042, 0.041, 2.2), (0.039, 0.036, 2.2),
+                     (0.033, 0.031, 2.2)], side=tuple(car_xyz(pole)), sub=3, n=12, round0=1.0)
+        b.add(arm.mesh(), lambda c, side=side: "Livery_Secondary" if c.nx * side > 0.8 else "Suit",
+              weights=chain(prefix + "Shoulder", prefix + "UpperArm", prefix + "LowerArm"))
+        # Luva: punho largo sobre a manga + mão fechada na manopla + polegar
+        b.add(Sweep([wr - hd * 0.06, wr - hd * 0.02, wr + hd * 0.012],
+                    [(0.042, 0.039, 2.4), (0.046, 0.042, 2.4), (0.04, 0.036, 2.4)],
+                    side=tuple(g_car), n=12, sub=2).mesh(), "Livery_Accent", weights=chain(prefix + "Hand"))
+        b.add(Sweep([wr, wr + hd * 0.035, wr + hd * 0.075, wr + hd * 0.1],
+                    [(0.032, 0.025, 2.4), (0.042, 0.03, 2.6), (0.043, 0.032, 2.6), (0.035, 0.027, 2.4)],
+                    side=tuple(g_car), n=12, round1=0.6).mesh(),
+              "Livery_Accent", weights=chain(prefix + "Hand"))
+        b.add(Sweep([wr + hd * 0.025 + g_car * 0.034, wr + hd * 0.08 + g_car * 0.05],
+                    [(0.015, 0.014, 2.0), (0.013, 0.012, 2.0)], side=tuple(hd), n=8, sub=2, round1=0.8).mesh(),
+              "Livery_Accent", weights=chain(prefix + "Hand"))
+        # Perna: a calota do início forma o glúteo, encaixado na base do tronco
+        hip, knee, ankle, toe = legs[prefix]
+        leg = Sweep([hip, hip.lerp(knee, 0.5), knee, knee.lerp(ankle, 0.5), ankle],
+                    [(0.09, 0.087, 2.3), (0.076, 0.071, 2.3), (0.061, 0.058, 2.2), (0.05, 0.046, 2.2),
+                     (0.041, 0.039, 2.2)], sub=3, n=12, round0=1.0)
+        b.add(leg.mesh(), lambda c, side=side: "Livery_Secondary" if c.nx * side > 0.8 else "Suit",
+              weights=chain("Hips", prefix + "UpperLeg", prefix + "LowerLeg"))
+        add_boot(b, ankle, knee, fd, chain(prefix + "LowerLeg", prefix + "Foot"))
+    body = b.build(col, smooth_angle=60.0)
     body.parent = rig
     mod = body.modifiers.new("Armature", "ARMATURE")
     mod.object = rig
 
     # --- Capacete preso ao osso Head
-    hb = Builder("DriverHelmet")
-    hc = (0.0, -0.12, 0.715)
-    rx, rs, rz = 0.122, 0.145, 0.135
-    hb.add(ellipsoid(hc[0], hc[1], hc[2], rx, rs, rz, n=32, rows=14),
-           lambda c: "Livery_Accent" if abs(c.x) < 0.035 and c.z > 0.74 else "Helmet")
-    hb.add(ellipsoid_shell_patch(hc[0], hc[1], hc[2], rx, rs, rz, (-1.05, 1.05),
-                                 (math.radians(-6), math.radians(19)), 1.018, 0.99), "Visor")
-    helmet = hb.build(col)
+    helmet = build_helmet("DriverHelmet").build(col, smooth_angle=50.0)
     head = arm_data.bones["Head"]
     helmet.parent = rig
     helmet.parent_type = "BONE"
@@ -1126,7 +1395,8 @@ def main():
             col = new_collection("%s.%s" % (slot, variant), slot_col)
             objs = fn(col)
             built[(slot, variant, None)] = objs
-            export_glb(objs, os.path.join(PARTS_DIR, slot, variant + ".glb"))
+            if not ONLY or slot in ONLY:
+                export_glb(objs, os.path.join(PARTS_DIR, slot, variant + ".glb"))
             total_tris["%s/%s" % (slot, variant)] = mesh_stats(objs)
 
     for slot, variants in WHEEL_BUILDERS.items():
@@ -1136,7 +1406,8 @@ def main():
                 col = new_collection("%s.%s.%s" % (slot, variant, axle), slot_col)
                 objs = fn(col, axle)
                 built[(slot, variant, axle)] = objs
-                export_glb(objs, os.path.join(PARTS_DIR, slot, "%s_%s.glb" % (variant, axle)))
+                if not ONLY or slot in ONLY:
+                    export_glb(objs, os.path.join(PARTS_DIR, slot, "%s_%s.glb" % (variant, axle)))
                 total_tris["%s/%s_%s" % (slot, variant, axle)] = mesh_stats(objs)
 
     # Visibilidade: só as variantes padrão ficam visíveis no .blend
@@ -1234,5 +1505,94 @@ def render_previews():
     bpy.data.objects.remove(cam)
 
 
+XRAY_PARTS = ("Chassis", "Nose", "SteeringWheel", "Headrest", "Halo")
+
+
+def driver_preview(out_dir):
+    """Prévia do piloto (não altera os assets): monta o carro padrão com o piloto, exporta o piloto
+    em <out_dir>/driver_preview.glb e renderiza vistas (sozinho, no carro e em raio-x). O .glb pode
+    ser visto no jogo, sem trocar a peça, com tests/capture_driver.gd."""
+    reset_scene()
+    root = new_collection("F1Car")
+    car_col = new_collection("car", root)
+    for slot, variants in PART_BUILDERS.items():
+        if slot != "driver":
+            variants[DEFAULT_VARIANTS.get(slot, "standard")](car_col)
+    for axle, s, half_track in (("front", FRONT_AXLE_S, FRONT_HALF_TRACK), ("rear", REAR_AXLE_S, REAR_HALF_TRACK)):
+        for side in (1, -1):
+            for obj in build_tyre(car_col, axle) + build_rim(car_col, "covered", axle):
+                obj.location = P(side * half_track, s, WHEEL_RADIUS)
+                if side < 0:
+                    obj.rotation_euler = (0, 0, math.pi)
+    new_col = new_collection("driver", root)
+    new_objs = build_driver(new_col)
+    os.makedirs(out_dir, exist_ok=True)
+    export_glb(new_objs, os.path.join(out_dir, "driver_preview.glb"))
+    print("triângulos do piloto:", mesh_stats(new_objs))
+
+    scene = bpy.context.scene
+    scene.render.engine = "BLENDER_WORKBENCH"
+    scene.render.resolution_x = 1280
+    scene.render.resolution_y = 720
+    sh = scene.display.shading
+    sh.light = "STUDIO"
+    sh.color_type = "MATERIAL"
+    sh.show_object_outline = True
+    sh.object_outline_color = (0.02, 0.02, 0.05)
+    sh.show_shadows = True
+    sh.show_cavity = True
+    if scene.world is None:
+        scene.world = bpy.data.worlds.new("World")
+    scene.world.color = (0.55, 0.7, 0.9)
+    ground_mesh = bpy.data.meshes.new("Ground")
+    bm = bmesh.new()
+    bmesh.ops.create_grid(bm, x_segments=1, y_segments=1, size=12)
+    bm.to_mesh(ground_mesh)
+    bm.free()
+    ground = bpy.data.objects.new("Ground", ground_mesh)
+    gmat = bpy.data.materials.new("GroundPreview")
+    gmat.diffuse_color = (0.35, 0.37, 0.4, 1)
+    ground_mesh.materials.append(gmat)
+    scene.collection.objects.link(ground)
+    cam_data = bpy.data.cameras.new("PreviewCam")
+    cam = bpy.data.objects.new("PreviewCam", cam_data)
+    scene.collection.objects.link(cam)
+    scene.camera = cam
+
+    cols = {"car": car_col, "new": new_col}
+    views = [
+        # nome, câmera, alvo, ângulo, coleções visíveis, raio-x
+        ("piloto_frente34", (1.7, -1.9, 1.2), (0, -0.3, 0.42), 38, ("new",), False),
+        ("piloto_lado", (3.2, -0.38, 0.5), (0, -0.38, 0.45), 32, ("new",), False),
+        ("piloto_tras34", (-1.4, 1.5, 1.3), (0, -0.2, 0.42), 38, ("new",), False),
+        ("piloto_capacete", (0.62, -0.75, 0.9), (0, 0.1, 0.66), 30, ("new",), False),
+        ("piloto_bota", (0.55, -1.5, 0.7), (0.0, -0.9, 0.36), 26, ("new",), False),
+        ("piloto_bota_lado", (0.75, -0.95, 0.42), (0.1, -0.92, 0.36), 32, ("new",), False),
+        ("piloto_juntas", (0.85, -0.45, 0.8), (0.1, 0.05, 0.42), 34, ("new",), False),
+        ("carro_cockpit34", (1.6, -1.2, 2.0), (0, 0.1, 0.6), 35, ("car", "new"), False),
+        ("carro_lado_raiox", (3.2, -0.45, 0.5), (0, -0.45, 0.45), 32, ("car", "new"), True),
+        ("carro_frente", (0.0, -3.6, 1.25), (0, 0.0, 0.62), 22, ("car", "new"), False),
+        ("carro_tras34", (-1.5, 2.1, 1.55), (0, 0.0, 0.6), 35, ("car", "new"), False),
+        ("carro_topo", (0.0, 0.1, 3.2), (0, 0.1, 0.4), 30, ("car", "new"), False),
+    ]
+    for name, loc, target, lens_deg, visible, xray in views:
+        for key, c in cols.items():
+            c.hide_render = key not in visible
+        for obj in car_col.objects:
+            # No raio-x só a estrutura do cockpit (monocoque, bico, volante, halo)
+            obj.hide_render = xray and not obj.name.startswith(XRAY_PARTS)
+        sh.show_xray = xray
+        sh.xray_alpha = 0.3
+        cam.location = Vector(loc)
+        cam.rotation_euler = (Vector(target) - Vector(loc)).to_track_quat("-Z", "Y").to_euler()
+        cam_data.angle = math.radians(lens_deg)
+        scene.render.filepath = os.path.join(out_dir, name + ".png")
+        bpy.ops.render.render(write_still=True)
+        print("  render:", scene.render.filepath)
+
+
 if __name__ == "__main__":
-    main()
+    if "--driver-preview" in ARGS:
+        driver_preview(ARGS[ARGS.index("--driver-preview") + 1])
+    else:
+        main()

@@ -79,6 +79,22 @@ func _run() -> void:
 		await physics_frame
 
 	_check(pe.penalty_seconds >= pen + 10.0, "sem devolver: +10 s (%.0f → %.0f)" % [pen, pe.penalty_seconds])
+	# Agora é o bot que passa o jogador: o jogador vê o aviso e o bot leva +10 s na hora
+	_check(manager.control.yellow, "amarela ainda ativa (carro batido não foi ao box)")
+	notices.clear()
+	var bot_pen := other.penalty_seconds
+	_place(pe, 1200.0, 2.0)
+	pe.car.linear_velocity = Vector3.ZERO
+	_place(other, 1180.0, -2.0)
+	for k in 30:
+		await physics_frame
+	for k in 50:
+		_place(other, 1180.0 + k * 1.0, -2.0)
+		await physics_frame
+	await physics_frame
+	print("  avisos: ", notices)
+	_check(notices.any(func(t: String) -> bool: return t.begins_with("ULTRAPASSAGEM SOB")), "jogador vê o aviso quando o bot o ultrapassa")
+	_check(other.penalty_seconds >= bot_pen + 10.0, "bot que ultrapassou levou +10 s")
 	DirAccess.remove_absolute(ProjectSettings.globalize_path("user://test_yellowpass_profile.cfg"))
 	print("Falhas: %d" % failures)
 	quit(1 if failures > 0 else 0)

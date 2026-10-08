@@ -82,5 +82,38 @@ func _run() -> void:
 	await _shot("rascasse", _at_track(2850.0, 0.0, 2.4, 0.0, 50.0))
 	await _shot("iates", Transform3D(Basis.looking_at(Vector3(300, 0, -100) - Vector3(120, 18, -40)), Vector3(120, 18, -40)), 65.0)
 	await _shot("cidade_alto", Transform3D(Basis.looking_at(Vector3(450, 30, -450) - Vector3(1100, 260, 400)), Vector3(1100, 260, 400)), 60.0)
+	# Calçadas junto à pista (altura de pessoa, além da barreira): chão, mobiliário, pé dos prédios
+	for item in [["calcada_porto_a", 2350.0, 1], ["calcada_porto_b", 2350.0, -1], ["calcada_casino_a", 930.0, 1],
+			["calcada_casino_b", 930.0, -1], ["calcada_beau_rivage", 470.0, 1], ["calcada_rascasse", 2800.0, -1]]:
+		var i := p.index_at(item[1])
+		var lat: float = item[2] * (p.half_width(i, item[2]) + 9.0)
+		var from := p.frame_at(item[1], lat, 1.7).origin
+		var to := p.frame_at(item[1] + 35.0, lat * 1.1, 1.2).origin
+		await _shot(item[0], Transform3D(Basis.looking_at(to - from), from), 75.0)
+	# Navios ao largo e balões (TrackOffshore)
+	var off := scene.find_child("Offshore", true, false) as Node3D
+	if off:
+		var ship := off.get_node("Ship3") as Node3D
+		var harbour := Vector3(300, 0, -100)
+		var eye := harbour.lerp(Vector3(ship.global_position.x, 0, ship.global_position.z), 0.35) + Vector3(0, 45, 0)
+		await _shot("navios", Transform3D(Basis.looking_at(ship.global_position + Vector3(0, 10, 0) - eye), eye), 55.0)
+		var cruise := off.get_node("Ship0") as Node3D
+		eye = cruise.global_position + cruise.global_basis.z * 260.0 + Vector3(0, 70, 0)
+		await _shot("cruzeiro", Transform3D(Basis.looking_at(cruise.global_position + Vector3(0, 15, 0) - eye), eye), 60.0)
+		var balloon := off.get_node("Balloon0") as Node3D
+		eye = balloon.global_position + Vector3(160, -120, 160)
+		await _shot("baloes", Transform3D(Basis.looking_at(balloon.global_position - eye), eye), 70.0)
+		var blimp := off.get_node("ViewBlimp1") as Node3D
+		eye = blimp.global_position + blimp.global_basis.x * 160.0 + Vector3(0, -40, 0)
+		await _shot("dirigivel", Transform3D(Basis.looking_at(blimp.global_position - eye), eye), 60.0)
+		# Da pista: olhando para o céu sobre o porto (balões e dirigíveis que o piloto vê)
+		for item in [["ceu_reta", -260.0], ["ceu_beau_rivage", 330.0], ["ceu_casino", 760.0], ["ceu_tunel", 1990.0],
+				["ceu_piscine", 2280.0], ["ceu_rascasse", 2850.0]]:
+			var f := p.frame_at(item[1] + 50.0, 0.0, 1.2)
+			var ahead := p.frame_at(item[1] + 110.0, 0.0, 1.2).origin
+			# Altura e ângulo de uma câmera de perseguição (atrás e acima do carro, olhando à frente)
+			var chase := f.origin - (ahead - f.origin).normalized() * 6.0 + Vector3(0, 1.6, 0)
+			var look := f.origin + (ahead - f.origin).normalized() * 100.0 + Vector3(0, 9, 0)
+			await _shot(item[0], Transform3D(Basis.looking_at(look - chase), chase), 75.0)
 	DirAccess.remove_absolute(ProjectSettings.globalize_path("user://test_shots_profile.cfg"))
 	quit(0)

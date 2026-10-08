@@ -22,6 +22,8 @@ const OWN_LAYERS := CAR_LAYER | HEAD_LAYER | INTERIOR_LAYER
 var livery := CarLivery.new()
 
 var _built := {}        # slot -> variante instanciada
+var _decals_key := ""   # decalques montados (texto do dicionário)
+var _decals_root: Node3D
 var _nodes := {}        # slot -> Node3D (peças da carroceria)
 var _wheel_nodes := {}  # "slot:NomeDaRoda" -> Node3D
 
@@ -45,8 +47,30 @@ func sync(config: CarConfig, wheels: Array) -> void:
 			_replace_wheel_part(slot, variant, wheel)
 		_built[slot] = variant
 		changed = true
+	_sync_decals(config)
 	if changed:
 		parts_rebuilt.emit()
+
+
+## Remonta os decalques mesmo sem mudança (arquivos da pasta do jogador trocados).
+func refresh_decals() -> void:
+	_decals_key = ""
+	var f1 := get_parent() as F1Car
+	if f1 and f1.config:
+		_sync_decals(f1.config)
+
+
+## Decalques SVG projetados na carroceria (só remonta quando o dicionário muda).
+func _sync_decals(config: CarConfig) -> void:
+	var key := var_to_str(config.decals)
+	if key == _decals_key and is_instance_valid(_decals_root):
+		return
+	_decals_key = key
+	if not is_instance_valid(_decals_root):
+		_decals_root = Node3D.new()
+		_decals_root.name = "Decals"
+		add_child(_decals_root)
+	CarDecals.build(_decals_root, config.decals)
 
 
 func get_part_node(slot: String) -> Node3D:

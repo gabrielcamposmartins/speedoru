@@ -28,9 +28,21 @@ static var time_of_day := 0
 static var biome := 0
 ## DRS: 0 = livre, 1 = só a até 1 s do carro da frente.
 static var drs_rule := 0
-## Classificatória antes da corrida: voltas cronometradas (0 = sem) e se os carros colidem nela.
+## Classificatória antes da corrida: voltas cronometradas (índice de QUALI_LAP_NAMES: 0 = sem,
+## 1-3 voltas, QUALI_FREE = livres até o tempo acabar), se os carros colidem nela, tempo limite
+## (índice de QUALI_TIMES) e se infrações (sair da pista, penalidades) anulam a volta.
 static var quali_laps := 0
 static var quali_collisions := true
+static var quali_time := 0
+static var quali_strict := true
+
+const QUALI_LAP_NAMES := ["Sem", "1 volta", "2 voltas", "3 voltas", "Livres (até o tempo acabar)"]
+const QUALI_FREE := 4
+## Tempo limite da classificatória (min; 0 = sem limite).
+const QUALI_TIMES := [0, 3, 5, 10, 15]
+const QUALI_TIME_NAMES := ["Sem limite", "3 min", "5 min", "10 min", "15 min"]
+## Voltas livres sem tempo escolhido: a sessão dura isto (min).
+const QUALI_FREE_MINUTES := 10
 
 ## Tela que o menu principal abre ao voltar de uma corrida ("" = inicial, "multiplayer" = sala).
 static var return_to := ""
@@ -50,6 +62,19 @@ static func track_scene(id: String) -> String:
 
 static func track_name(id: String) -> String:
 	return TRACKS[track_index(id)]["name"]
+
+
+## Voltas cronometradas da classificatória para o índice do menu (-1 = livres).
+static func quali_lap_count(index: int) -> int:
+	return -1 if index >= QUALI_FREE else maxi(index, 0)
+
+
+## Tempo limite (s) da classificatória para os índices do menu (0 = sem limite).
+static func quali_seconds(lap_index: int, time_index: int) -> float:
+	var minutes: int = QUALI_TIMES[clampi(time_index, 0, QUALI_TIMES.size() - 1)]
+	if minutes == 0 and lap_index >= QUALI_FREE:
+		minutes = QUALI_FREE_MINUTES
+	return minutes * 60.0
 
 
 static func valid_track(id: String) -> String:

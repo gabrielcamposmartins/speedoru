@@ -13,6 +13,7 @@ var standings: Standings
 var minimap: Minimap
 var banner: Banner
 var flag_panel: FlagPanel
+var vote_bar: VoteBar
 var info: RaceInfo
 var menu: Control
 var results: Control
@@ -44,6 +45,12 @@ func _ready() -> void:
 	flag_panel.position = Vector2(-320, 262)
 	flag_panel.size = Vector2(640, 64)
 	add_child(flag_panel)
+	vote_bar = VoteBar.new()
+	vote_bar.hud = self
+	vote_bar.set_anchors_preset(Control.PRESET_CENTER_TOP)
+	vote_bar.position = Vector2(-260, 334)
+	vote_bar.size = Vector2(520, 46)
+	add_child(vote_bar)
 	banner = Banner.new()
 	banner.hud = self
 	banner.set_anchors_preset(Control.PRESET_CENTER_RIGHT)
@@ -124,6 +131,7 @@ func _on_state(state: int) -> void:
 	standings.visible = show_race and state != RaceManager.State.PRACTICE and state != RaceManager.State.QUALIFYING
 	minimap.visible = show_race
 	flag_panel.visible = show_race
+	vote_bar.visible = show_race
 	info.visible = show_race
 	if state == RaceManager.State.MENU:
 		_show_menu()
@@ -196,6 +204,16 @@ func _option(box: VBoxContainer, label_text: String, items: Array, selected: int
 	box.add_child(row)
 
 
+## Caixa de marcar na mesma linha da última opção adicionada.
+func _row_check(box: VBoxContainer, text: String, value: bool, on_toggle: Callable) -> void:
+	var row: Control = box.get_child(box.get_child_count() - 1)
+	var cb := CheckBox.new()
+	cb.text = text
+	cb.button_pressed = value
+	cb.toggled.connect(on_toggle)
+	row.add_child(cb)
+
+
 func _button(box: Container, text: String, on_press: Callable, primary := false) -> Button:
 	var b := Button.new()
 	b.text = text.to_upper() if primary else text
@@ -230,14 +248,12 @@ func _show_menu() -> void:
 		func(i: int) -> void: RaceSettings.grid = i as RaceSettings.Grid)
 	_option(box, "DRS", ["Livre", "Só a até 1 s do carro da frente"], RaceSettings.drs_rule,
 		func(i: int) -> void: RaceSettings.drs_rule = i)
-	_option(box, "Classificatória", ["Sem", "1 volta", "2 voltas", "3 voltas"], RaceSettings.quali_laps,
+	_option(box, "Classificatória", RaceSettings.QUALI_LAP_NAMES, RaceSettings.quali_laps,
 		func(i: int) -> void: RaceSettings.quali_laps = i)
-	var quali_row: Control = box.get_child(box.get_child_count() - 1)
-	var cb := CheckBox.new()
-	cb.text = "Colisão"
-	cb.button_pressed = RaceSettings.quali_collisions
-	cb.toggled.connect(func(on: bool) -> void: RaceSettings.quali_collisions = on)
-	quali_row.add_child(cb)
+	_row_check(box, "Colisão", RaceSettings.quali_collisions, func(on: bool) -> void: RaceSettings.quali_collisions = on)
+	_option(box, "Tempo da classif.", RaceSettings.QUALI_TIME_NAMES, RaceSettings.quali_time,
+		func(i: int) -> void: RaceSettings.quali_time = i)
+	_row_check(box, "Infração anula a volta", RaceSettings.quali_strict, func(on: bool) -> void: RaceSettings.quali_strict = on)
 	_option(box, "Horário", Array(DaylightPresets.TIME_NAMES), RaceSettings.time_of_day,
 		func(i: int) -> void: RaceSettings.time_of_day = i)
 	_option(box, "Ambiente", Array(DaylightPresets.BIOME_NAMES), RaceSettings.biome,
@@ -363,6 +379,19 @@ func _toggle_pause() -> void:
 	_button(box, "Continuar", _toggle_pause, true)
 	if online:
 		_button(box, "Configurações", _open_settings)
+		if manager.state != RaceManager.State.FINISHED:
+			# Votação para recomeçar: maioria dos jogadores na corrida
+			_button(box, "Retirar voto para recomeçar" if manager.my_restart_vote else "Votar para recomeçar a corrida",
+				func() -> void:
+					manager.vote_restart(not manager.my_restart_vote)
+					_toggle_pause())
+			var status := Label.new()
+			status.theme_type_variation = "RetroMuted"
+			status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			var v := manager.restart_vote
+			status.text = ("Votação aberta: %d/%d votos · %d s" % [v["yes"], v["needed"], ceili(manager.restart_vote_left())]) \
+				if not v.is_empty() else "Recomeça do zero (sem resultado nem prêmio) se a maioria votar em 30 s."
+			box.add_child(status)
 		_button(box, "Sair da corrida", func() -> void: manager.restart(false))
 		return
 	if manager.state == RaceManager.State.PRACTICE:
@@ -698,11 +727,15 @@ class RaceInfo extends Control:
 				elif qd["start"] < 0.0:
 					top += " · VOLTA DE SAÍDA"
 				else:
-					top += " · %d/%d%s" % [int(qd["laps"]) + 1, m.quali.laps, " ANULADA" if qd["invalid"] else ""]
+					top += " · %s%s" % [m.quali._lap_label(int(qd["laps"]) + 1), " ANULADA" if qd["invalid"] else ""]
 		var back := Rect2(cx - 175, 0, 350, 128 if practice else 156)
 		draw_rect(back, Color(Retro.c("bg"), 0.36))
 		Retro.draw_corners(self, back.grow(1.0), Color(Retro.c("accent"), 0.6), 10.0, 2.0)
-		Retro.draw_glow_text(self, disp, Vector2(0, 32), top, HORIZONTAL_ALIGNMENT_CENTER, size.x, 26, Retro.c("text"))
+		# Textos longos (classificatória) diminuem para caber no painel
+		var top_size := 26
+		while top_size > 14 and disp.get_string_size(top, HORIZONTAL_ALIGNMENT_LEFT, -1, top_size).x > back.size.x - 24:
+			top_size -= 1
+		Retro.draw_glow_text(self, disp, Vector2(0, 32), top, HORIZONTAL_ALIGNMENT_CENTER, size.x, top_size, Retro.c("text"))
 		# Tempo da volta: grande; logo depois de fechar uma volta, o tempo dela com a cor do resultado
 		if _lap_flash > 0.0:
 			var a := clampf(_lap_flash / 0.6, 0.0, 1.0)
@@ -736,6 +769,14 @@ class RaceInfo extends Control:
 			else:
 				Retro.draw_label(self, Retro.display(700), Vector2(0, 126), line, HORIZONTAL_ALIGNMENT_CENTER, size.x, 12,
 					Color(Retro.FASTEST, 0.95))
+		# Relógio da classificatória (tempo limite)
+		var q_left := m.quali_time_left()
+		if quali and q_left >= 0.0:
+			var secs := int(ceilf(q_left))
+			var clock := "TEMPO RESTANTE  %d:%02d" % [secs / 60, secs % 60] if secs > 0 else "TEMPO ESGOTADO · TERMINE A VOLTA"
+			var urgent := secs <= 30
+			Retro.draw_label(self, Retro.display(800), Vector2(0, 148), clock, HORIZONTAL_ALIGNMENT_CENTER, size.x, 13,
+				Retro.c("warn") if urgent else Retro.c("text_2"))
 		if not practice and not quali:
 			var done := e.pit_count >= RaceSettings.mandatory_pits
 			var pit_text := "PIT OBRIGATÓRIO: FEITO" if done else "PIT OBRIGATÓRIO: PENDENTE"
@@ -831,6 +872,38 @@ class FlagPanel extends Control:
 		Retro.draw_label(self, Retro.body(600), Vector2(x, 48), str(info[1]), HORIZONTAL_ALIGNMENT_LEFT, size.x - x - 12, 16,
 			Color.WHITE if urgent else Retro.c("text_2"))
 		Retro.draw_corners(self, r.grow(1.0), Color(col, 0.8), 10.0, 2.0)
+
+
+# ---------------------------------------------------------------------------
+# Votação para recomeçar (online)
+# ---------------------------------------------------------------------------
+## Faixa abaixo da bandeira enquanto há votação aberta: votos, tempo e como votar.
+class VoteBar extends Control:
+	var hud: RaceModeHud
+	var _t := 0.0
+
+	func _ready() -> void:
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+
+	func _process(delta: float) -> void:
+		_t += delta
+		queue_redraw()
+
+	func _draw() -> void:
+		var m := hud.manager
+		if m.restart_vote.is_empty() or m.restart_vote_left() <= 0.0:
+			return
+		var v := m.restart_vote
+		var col := Retro.c("accent")
+		var r := Rect2(Vector2.ZERO, size)
+		draw_rect(r, Color(Retro.c("bg"), 0.62))
+		draw_rect(Rect2(0, 0, 6, size.y), col if int(_t * 2.0) % 2 == 0 else col.lightened(0.4))
+		var title := "VOTAÇÃO: RECOMEÇAR A CORRIDA  %d/%d" % [v["yes"], v["needed"]]
+		Retro.draw_label(self, Retro.display(800), Vector2(18, 20), title, HORIZONTAL_ALIGNMENT_LEFT, -1, 13, col)
+		var how := "Você votou sim · Esc para retirar" if m.my_restart_vote else "Esc → Votar para recomeçar"
+		Retro.draw_label(self, Retro.body(600), Vector2(18, 38), "%s · %d s" % [how, ceili(m.restart_vote_left())],
+			HORIZONTAL_ALIGNMENT_LEFT, size.x - 30, 13, Retro.c("text_2"))
+		Retro.draw_corners(self, r.grow(1.0), Color(col, 0.8), 8.0, 2.0)
 
 
 ## Nome da pista em jogo (do layout; antes de a pista existir, o escolhido no menu).

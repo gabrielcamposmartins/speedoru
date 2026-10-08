@@ -76,6 +76,12 @@ const RIM_FINISHES := ["Polido", "Cromado", "Acetinado", "Fosco"]
 		rim_finish = value
 		emit_changed()
 
+## Decalques SVG por lugar do carro (ver CarDecals).
+@export var decals: Dictionary = {}:
+	set(value):
+		decals = value
+		emit_changed()
+
 @export_group("Pneus")
 @export var tyre_compound: TyreCompound = TyreCompound.MEDIUM:
 	set(value):

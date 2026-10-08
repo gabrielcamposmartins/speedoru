@@ -350,9 +350,12 @@ func _build_solo() -> void:
 		["Dificuldade dos bots", ["Fácil", "Médio", "Difícil", "Mista"], RaceSettings.difficulty, func(i: int) -> void: RaceSettings.difficulty = i],
 		["Largada", ["Pole position", "Meio do grid", "Última fila"], RaceSettings.grid, func(i: int) -> void: RaceSettings.grid = i as RaceSettings.Grid],
 		["DRS", ["Livre", "Só a até 1 s do carro da frente"], RaceSettings.drs_rule, func(i: int) -> void: RaceSettings.drs_rule = i],
-		["Classificatória", ["Sem", "1 volta", "2 voltas", "3 voltas"], RaceSettings.quali_laps,
+		["Classificatória", RaceSettings.QUALI_LAP_NAMES, RaceSettings.quali_laps,
 			func(i: int) -> void: RaceSettings.quali_laps = i,
 			["Colisão", RaceSettings.quali_collisions, func(on: bool) -> void: RaceSettings.quali_collisions = on]],
+		["Tempo da classificatória", RaceSettings.QUALI_TIME_NAMES, RaceSettings.quali_time,
+			func(i: int) -> void: RaceSettings.quali_time = i,
+			["Infração anula a volta", RaceSettings.quali_strict, func(on: bool) -> void: RaceSettings.quali_strict = on]],
 		["Horário", Array(DaylightPresets.TIME_NAMES), RaceSettings.time_of_day, func(i: int) -> void: RaceSettings.time_of_day = i],
 		["Ambiente", Array(DaylightPresets.BIOME_NAMES), RaceSettings.biome, func(i: int) -> void: RaceSettings.biome = i],
 	]

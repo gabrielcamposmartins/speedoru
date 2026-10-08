@@ -718,7 +718,7 @@ func _new_room(kind: String, name: String, host_id: String) -> Dictionary:
 	return {
 		"id": _id("r"), "kind": kind, "name": name.substr(0, 24), "host": host_id, "password": "",
 		"members": [], "ready": {}, "state": "lobby", "session": null, "invited": {},
-		"settings": {"track": "monza", "laps": 5, "difficulty": 1, "bots": true, "cars": NetProtocol.MAX_ROOM_PLAYERS, "quali_laps": 0, "quali_collisions": true, "drs": 0, "time_of_day": 0, "biome": 0, "max": NetProtocol.MAX_ROOM_PLAYERS},
+		"settings": {"track": "monza", "laps": 5, "difficulty": 1, "bots": true, "cars": NetProtocol.MAX_ROOM_PLAYERS, "quali_laps": 0, "quali_collisions": true, "quali_time": 0, "quali_strict": true, "drs": 0, "time_of_day": 0, "biome": 0, "max": NetProtocol.MAX_ROOM_PLAYERS},
 	}
 
 
@@ -764,9 +764,13 @@ func _apply_room_settings(room: Dictionary, data: Dictionary) -> void:
 	if data.has("track"):
 		st["track"] = RaceSettings.valid_track(str(data["track"]))
 	if data.has("quali_laps"):
-		st["quali_laps"] = clampi(int(data["quali_laps"]), 0, 3)
+		st["quali_laps"] = clampi(int(data["quali_laps"]), 0, RaceSettings.QUALI_FREE)
 	if data.has("quali_collisions"):
 		st["quali_collisions"] = bool(data["quali_collisions"])
+	if data.has("quali_time"):
+		st["quali_time"] = clampi(int(data["quali_time"]), 0, RaceSettings.QUALI_TIMES.size() - 1)
+	if data.has("quali_strict"):
+		st["quali_strict"] = bool(data["quali_strict"])
 	if data.has("cars") and room["kind"] == "custom":
 		# Total do grid; a sala aceita até esse número de jogadores (nunca menos que os que já estão)
 		var members: int = (room["members"] as Array).size()
@@ -966,10 +970,24 @@ func _start_race(room_id: String) -> void:
 	races.add_child(session)
 	room["session"] = session
 	session.finished.connect(_on_race_finished.bind(room_id))
+	session.restart_requested.connect(_restart_race.bind(room_id), CONNECT_DEFERRED)
 	session.start(self, room_id, room["settings"].duplicate(), players)
 	_push_room(room_id)
 	for m in room["members"]:
 		await _broadcast_presence(m)
+
+
+## Votação aprovada: descarta a corrida (sem resultado nem prêmio) e larga outra com a mesma sala.
+## Os clientes recebem um novo race_start e recarregam a pista.
+func _restart_race(room_id: String) -> void:
+	if not rooms.has(room_id):
+		return
+	var room: Dictionary = rooms[room_id]
+	var old: Variant = room["session"]
+	room["session"] = null
+	if old:
+		old.stop()
+	_start_race(room_id)
 
 
 ## Fim da corrida: aplica resultados (créditos, contadores, histórico) e volta a sala para o lobby.

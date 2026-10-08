@@ -261,10 +261,16 @@ func _check_rules(_delta: float) -> void:
 			if manager.give_back_restored(passed, passer):
 				continue
 			# O jogador pode devolver a posição antes de ser punido; os bots são punidos na hora
-			if passer.is_player or passer.is_human:
-				manager.request_give_back(passer, passed, YELLOW_PASS_PENALTY, "ULTRAPASSAGEM", "Passou %s sob bandeira amarela" % passed.code)
+			var under := "safety car" if safety_car else "bandeira amarela"
+			var human := passer.is_player or passer.is_human
+			if human:
+				manager.request_give_back(passer, passed, YELLOW_PASS_PENALTY, "ULTRAPASSAGEM", "Passou %s sob %s" % [passed.code, under])
 			else:
-				manager.penalize_entry(passer, YELLOW_PASS_PENALTY, "ULTRAPASSAGEM", "Passou %s sob bandeira amarela" % passed.code)
+				manager.penalize_entry(passer, YELLOW_PASS_PENALTY, "ULTRAPASSAGEM", "Passou %s sob %s" % [passed.code, under])
+			# Quem foi ultrapassado também vê o aviso (bot ou outro jogador)
+			if passed.is_player or passed.is_human:
+				manager.notify_entry(passed, "ULTRAPASSAGEM SOB %s" % under.to_upper(), "%s passou você · %s" % [passer.code,
+					"ele tem %d s para devolver a posição" % int(RaceManager.GIVE_BACK_TIME) if human else "+%d s para ele" % int(YELLOW_PASS_PENALTY)], false)
 	for key in _order.keys():
 		if not seen.has(key):
 			_order.erase(key)

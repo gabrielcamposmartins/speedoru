@@ -3,11 +3,14 @@ extends Node
 ## Classificatória antes da corrida (escolhida no menu solo e na sala online).
 ##
 ## Os carros saem espalhados pela pista (antes da linha de chegada, longe uns dos outros), fazem a
-## volta de saída e depois `laps` voltas cronometradas. Vale a melhor volta VÁLIDA: sair da pista
-## (as quatro rodas além da borda e da zebra) ou levar qualquer penalidade anula a volta em andamento (sem
-## somar segundos na corrida). Com `collisions` falso os carros se atravessam. No fim, o grid é a
-## ordem das melhores voltas (quem não marcou tempo larga atrás, na ordem original) e todos voltam
-## para as posições de largada com o carro consertado.
+## volta de saída e depois `laps` voltas cronometradas (ou voltas livres, `laps` < 0, até o tempo
+## acabar). Vale a melhor volta VÁLIDA: com `strict`, sair da pista (as quatro rodas além da borda e
+## da zebra) ou levar qualquer penalidade anula a volta em andamento (sem somar segundos na corrida);
+## sem `strict` as infrações não têm efeito. Com `collisions` falso os carros se atravessam.
+## Tempo limite (`time_limit`, s): quando acaba, ninguém começa volta nova, mas quem já está numa
+## volta cronometrada pode terminá-la (como na F1). No fim, o grid é a ordem das melhores voltas
+## (quem não marcou tempo larga atrás, na ordem original) e todos voltam para as posições de
+## largada com o carro consertado.
 
 signal finished
 
@@ -18,8 +21,14 @@ const SPACING := 150.0
 const OFF_TRACK_MARGIN := 1.05
 
 var manager: RaceManager
+## Voltas cronometradas (-1 = livres até o tempo acabar).
 var laps := 1
 var collisions := true
+## Tempo limite da sessão (s; 0 = sem limite) e se infrações anulam a volta.
+var time_limit := 0.0
+var strict := true
+## O tempo acabou (bandeira quadriculada da sessão).
+var time_up := false
 var active := false
 ## entry -> {best, laps, start, invalid, done}
 var data := {}
@@ -29,10 +38,19 @@ var _saved_pit_laps := {}
 var _saved_profiles := {}
 
 
-func setup(p_manager: RaceManager, p_laps: int, p_collisions: bool) -> void:
+func setup(p_manager: RaceManager, p_laps: int, p_collisions: bool, p_time_limit := 0.0, p_strict := true) -> void:
 	manager = p_manager
-	laps = maxi(p_laps, 1)
+	laps = p_laps if p_laps > 0 else -1
 	collisions = p_collisions
+	time_limit = maxf(p_time_limit, 0.0)
+	strict = p_strict
+	if laps < 0 and time_limit <= 0.0:
+		time_limit = RaceSettings.QUALI_FREE_MINUTES * 60.0
+
+
+## Segundos que faltam da sessão (-1 = sem limite).
+func time_left() -> float:
+	return maxf(time_limit - manager.race_time, 0.0) if time_limit > 0.0 else -1.0
 
 
 ## Roda a sessão inteira (aguardar com await). Ao voltar, entries[].grid_slot já está na ordem nova.
@@ -65,14 +83,37 @@ func run() -> void:
 			e.bot.pit_lap = -1
 			e.bot.released = true
 	m.state_changed.emit(m.state)
+	var what := "voltas livres" if laps < 0 else ("%d volta cronometrada" % laps if laps == 1 else "%d voltas cronometradas" % laps)
+	var rules := "Sair da pista ou levar penalidade anula a volta" if strict else "Infrações não anulam a volta"
+	var clock := " · %d min" % roundi(time_limit / 60.0) if time_limit > 0.0 else ""
 	for e in m.entries:
 		if e.is_player or e.is_human:
-			m.notify_entry(e, "CLASSIFICATÓRIA", "Volta de saída + %d %s. Sair da pista ou levar penalidade anula a volta%s" % [
-				laps, "volta cronometrada" if laps == 1 else "voltas cronometradas", "" if collisions else " · sem colisão"], false)
-	var limit := (laps + 1) * p.length / 26.0 + 45.0
-	while m.race_time < limit and not _all_done():
+			m.notify_entry(e, "CLASSIFICATÓRIA", "Volta de saída + %s%s. %s%s" % [what, clock, rules, "" if collisions else " · sem colisão"], false)
+	# Limite de segurança: com tempo, o tempo + uma volta lenta para terminar a que estava em andamento
+	var lap_guess := p.length / 26.0
+	var hard := time_limit + lap_guess + 30.0 if time_limit > 0.0 else (laps + 1) * lap_guess + 45.0
+	while m.race_time < hard and not _all_done():
+		if time_limit > 0.0 and not time_up and m.race_time >= time_limit:
+			_on_time_up()
 		await get_tree().physics_frame
 	_finish()
+
+
+## Acabou o tempo: quem não está numa volta cronometrada válida encerra; os outros terminam a volta.
+func _on_time_up() -> void:
+	time_up = true
+	for e: RaceEntry in data:
+		var d: Dictionary = data[e]
+		if d["done"]:
+			continue
+		var running: bool = d["start"] >= 0.0 and not d["invalid"]
+		if not running:
+			d["done"] = true
+		if e.is_player or e.is_human:
+			if running:
+				manager.notify_entry(e, "TEMPO ESGOTADO", "Termine a volta em andamento: ela ainda vale", false)
+			else:
+				manager.notify_entry(e, "TEMPO ESGOTADO", "Classificatória encerrada · aguarde os outros pilotos", false)
 
 
 func _all_done() -> bool:
@@ -96,7 +137,7 @@ func physics_update(_delta: float) -> void:
 			d["start"] = -1.0
 			d["invalid"] = false
 			continue
-		if d["start"] < 0.0 or d["invalid"] or e.in_pit:
+		if not strict or d["start"] < 0.0 or d["invalid"] or e.in_pit:
 			continue
 		var i := p.index_at(e.s)
 		var side := 1 if e.lateral >= 0.0 else -1
@@ -105,9 +146,9 @@ func physics_update(_delta: float) -> void:
 			invalidate(e, "SAIU DA PISTA")
 
 
-## Anula a volta cronometrada em andamento (sair da pista, penalidade).
+## Anula a volta cronometrada em andamento (sair da pista, penalidade). Sem `strict`, não faz nada.
 func invalidate(e: RaceEntry, reason: String) -> void:
-	if not data.has(e):
+	if not data.has(e) or not strict:
 		return
 	var d: Dictionary = data[e]
 	if d["done"] or d["start"] < 0.0 or d["invalid"]:
@@ -127,6 +168,9 @@ func on_cross(e: RaceEntry) -> void:
 	if d["done"]:
 		return
 	if d["start"] < 0.0:
+		if time_up:
+			d["done"] = true
+			return
 		# Fim da volta de saída: começa a primeira cronometrada
 		d["start"] = now
 		d["invalid"] = false
@@ -139,19 +183,24 @@ func on_cross(e: RaceEntry) -> void:
 		if d["best"] <= 0.0 or lap < d["best"]:
 			d["best"] = lap
 			e.best_lap = lap
-		manager.notify_entry(e, "VOLTA %d/%d  %s" % [d["laps"], laps, RaceManager.format_time(lap)],
+		manager.notify_entry(e, "VOLTA %s  %s" % [_lap_label(d["laps"]), RaceManager.format_time(lap)],
 			"Melhor: %s" % RaceManager.format_time(d["best"]), false)
 	else:
-		manager.notify_entry(e, "VOLTA %d/%d ANULADA" % [d["laps"], laps], "Não conta para o grid", true)
+		manager.notify_entry(e, "VOLTA %s ANULADA" % _lap_label(d["laps"]), "Não conta para o grid", true)
 	d["start"] = now
 	d["invalid"] = false
 	e.lap_invalid = false
-	if d["laps"] >= laps:
+	if time_up or (laps > 0 and d["laps"] >= laps):
 		d["done"] = true
 		if e.bot:
 			e.bot.profile = manager._slow_profile(e.bot.profile)
 		if e.is_player or e.is_human:
 			manager.notify_entry(e, "CLASSIFICATÓRIA CONCLUÍDA", "Aguarde os outros pilotos", false)
+
+
+## "2/3" (voltas contadas) ou só "2" (voltas livres).
+func _lap_label(n: int) -> String:
+	return str(n) if laps < 0 else "%d/%d" % [n, laps]
 
 
 ## Melhor volta válida de cada carro (0 = sem tempo).

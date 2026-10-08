@@ -277,39 +277,44 @@ static func _turbines(terrain: TrackTerrain, rng: RandomNumberGenerator, root: N
 		animator.add_rotor(rotor, rng.randf_range(0.8, 1.3))
 
 
+## Balão de ar quente (gomos nas duas cores da paleta, cesto e cabos); boca do envelope em y = -10,
+## cesto em y = -15.
+static func balloon_mesh(pal: Array) -> ArrayMesh:
+	var mb := MeshBuilder.new()
+	var gores := 16
+	var rows := 10
+	for r in rows:
+		for g in gores:
+			var col: Color = pal[g % 2]
+			var p := []
+			var n := []
+			for corner in [[r, g], [r, g + 1], [r + 1, g + 1], [r + 1, g]]:
+				var t: float = float(corner[0]) / rows
+				var ang: float = TAU * float(corner[1]) / gores
+				# Perfil de gota: largo em cima, fino embaixo
+				var radius := sin(PI * (0.08 + 0.92 * t)) * (0.6 + 0.4 * t) * 9.0 + 1.0
+				var y := -cos(PI * t) * 10.0
+				p.append(Vector3(cos(ang) * radius, y, sin(ang) * radius))
+				n.append(Vector3(cos(ang), 0.3 - 0.6 * (1.0 - t), sin(ang)).normalized())
+			mb.tri_smooth(p[0], p[1], p[2], n[0], n[1], n[2], col)
+			mb.tri_smooth(p[0], p[2], p[3], n[0], n[2], n[3], col)
+	mb.box(Transform3D(Basis(), Vector3(0, -15.0, 0)), Vector3(2.0, 1.5, 2.0), Color(0.55, 0.38, 0.22))
+	for c in 4:
+		var ang := TAU * c / 4.0 + PI * 0.25
+		var top := Vector3(cos(ang) * 1.8, -10.5, sin(ang) * 1.8)
+		var bottom := Vector3(cos(ang) * 0.9, -14.3, sin(ang) * 0.9)
+		mb.box(Transform3D(Basis.looking_at(top - bottom), (top + bottom) * 0.5), Vector3(0.08, 0.08, (top - bottom).length()),
+			Color(0.3, 0.25, 0.2))
+	return mb.commit(null, TrackMaterials.structure())
+
+
 static func _balloons(terrain: TrackTerrain, rng: RandomNumberGenerator, root: Node3D, animator: SceneryAnimator) -> void:
 	var palettes := [[Color(0.95, 0.25, 0.3), Color(1.0, 0.85, 0.2)], [Color(0.2, 0.55, 0.95), Color(1, 1, 1)],
 		[Color(0.55, 0.3, 0.85), Color(0.3, 0.9, 0.7)], [Color(1.0, 0.55, 0.15), Color(0.95, 0.2, 0.5)]]
 	for k in palettes.size():
-		var mb := MeshBuilder.new()
-		var pal: Array = palettes[k]
-		var gores := 16
-		var rows := 10
-		for r in rows:
-			for g in gores:
-				var col: Color = pal[g % 2]
-				var p := []
-				var n := []
-				for corner in [[r, g], [r, g + 1], [r + 1, g + 1], [r + 1, g]]:
-					var t: float = float(corner[0]) / rows
-					var ang: float = TAU * float(corner[1]) / gores
-					# Perfil de gota: largo em cima, fino embaixo
-					var radius := sin(PI * (0.08 + 0.92 * t)) * (0.6 + 0.4 * t) * 9.0 + 1.0
-					var y := -cos(PI * t) * 10.0
-					p.append(Vector3(cos(ang) * radius, y, sin(ang) * radius))
-					n.append(Vector3(cos(ang), 0.3 - 0.6 * (1.0 - t), sin(ang)).normalized())
-				mb.tri_smooth(p[0], p[1], p[2], n[0], n[1], n[2], col)
-				mb.tri_smooth(p[0], p[2], p[3], n[0], n[2], n[3], col)
-		mb.box(Transform3D(Basis(), Vector3(0, -15.0, 0)), Vector3(2.0, 1.5, 2.0), Color(0.55, 0.38, 0.22))
-		for c in 4:
-			var ang := TAU * c / 4.0 + PI * 0.25
-			var top := Vector3(cos(ang) * 1.8, -10.5, sin(ang) * 1.8)
-			var bottom := Vector3(cos(ang) * 0.9, -14.3, sin(ang) * 0.9)
-			mb.box(Transform3D(Basis.looking_at(top - bottom), (top + bottom) * 0.5), Vector3(0.08, 0.08, (top - bottom).length()),
-				Color(0.3, 0.25, 0.2))
 		var node := MeshInstance3D.new()
 		node.name = "Balloon%d" % k
-		node.mesh = mb.commit(null, TrackMaterials.structure())
+		node.mesh = balloon_mesh(palettes[k])
 		var a := rng.randf() * TAU
 		var r := terrain.track_radius * rng.randf_range(0.5, 1.1)
 		var p2 := terrain.center + Vector2(cos(a), sin(a)) * r
@@ -321,6 +326,17 @@ static func _balloons(terrain: TrackTerrain, rng: RandomNumberGenerator, root: N
 
 static func _blimp(root: Node3D, animator: SceneryAnimator, node_name: String, band: Color,
 		ad: int, center: Vector3, radii: Vector2, speed: float, direction: float) -> Node3D:
+	var node := MeshInstance3D.new()
+	node.name = node_name
+	node.mesh = blimp_mesh(band, ad)
+	root.add_child(node)
+	animator.add_blimp(node, center, radii, speed * direction)
+	return node
+
+
+## Dirigível (proa para +Z, ~70 m): envelope branco com faixa e lemes na cor `band`, gôndola e o
+## anúncio `ad` (atlas do TrackAds) nos dois lados.
+static func blimp_mesh(band: Color, ad: int) -> ArrayMesh:
 	var mb := MeshBuilder.new()
 	mb.blob(Vector3.ZERO, Vector3(8.0, 8.0, 32.0), Color(0.94, 0.95, 0.98), 16, 10, 0.25)
 	mb.blob(Vector3(0, 0, 0), Vector3(8.1, 1.4, 22.0), band, 16, 6)
@@ -340,12 +356,7 @@ static func _blimp(root: Node3D, animator: SceneryAnimator, node_name: String, b
 			Vector2(uv.position.x, uv.end.y), Vector2(uv.end.x, uv.end.y), Vector2(uv.end.x, uv.position.y), uv.position)
 	var mesh := mb.commit(null, TrackMaterials.structure())
 	ads.commit(mesh, TrackMaterials.ads())
-	var node := MeshInstance3D.new()
-	node.name = node_name
-	node.mesh = mesh
-	root.add_child(node)
-	animator.add_blimp(node, center, radii, speed * direction)
-	return node
+	return mesh
 
 
 # ---------------------------------------------------------------------------

@@ -204,6 +204,30 @@ func _run() -> void:
 		var moved := (end_snap["pos"] as Vector3).distance_to(start_pos)
 		_check(moved > 15.0, "o carro de A andou com as entradas pela rede (%.0f m, %.0f km/h)" % [moved, (end_snap["vel"] as Vector3).length() * 3.6])
 		_check(snaps["B"].size() > 50, "B recebe os instantâneos (%d)" % snaps["B"].size())
+
+		# --- Votação para recomeçar: A abre (1/2), B vota e a corrida recomeça do grid
+		a.send_to_server("race_cmd", {"cmd": "restart_vote", "yes": true})
+		ok = await _wait_for(func() -> bool:
+			return states["B"].any(func(s: Dictionary) -> bool: return s.get("event", "") == "vote" and int(s.get("yes", 0)) == 1), 5.0)
+		_check(ok, "votação aberta chega a B (1/2)")
+		var vote_ev: Array = states["B"].filter(func(s: Dictionary) -> bool: return s.get("event", "") == "vote")
+		_check(not vote_ev.is_empty() and int(vote_ev[-1]["needed"]) == 2 and a_id in (vote_ev[-1]["ids"] as Array),
+			"maioria de 2 humanos = 2 votos; A conta como sim")
+		var starts_before: int = inbox["A"].filter(func(m: Array) -> bool: return m[0] == "race_start").size()
+		b.send_to_server("race_cmd", {"cmd": "restart_vote", "yes": true})
+		ok = await _wait_for(func() -> bool:
+			return states["A"].any(func(s: Dictionary) -> bool: return s.get("event", "") == "restarting"), 5.0)
+		_check(ok, "votação aprovada: aviso de recomeço")
+		ok = await _wait_for(func() -> bool:
+			return inbox["A"].filter(func(m: Array) -> bool: return m[0] == "race_start").size() > starts_before \
+				and inbox["B"].filter(func(m: Array) -> bool: return m[0] == "race_start").size() > starts_before, 60.0)
+		_check(ok, "novo race_start para os dois (corrida recomeçou)")
+		states["A"].clear()
+		a.send_to_server("race_cmd", {"cmd": "loaded"})
+		b.send_to_server("race_cmd", {"cmd": "loaded"})
+		ok = await _wait_for(func() -> bool:
+			return states["A"].any(func(s: Dictionary) -> bool: return int(s.get("state", 0)) == RaceManager.State.RACING), 40.0)
+		_check(ok, "corrida nova largou")
 		a.send_to_server("race_cmd", {"cmd": "quit"})
 		b.send_to_server("race_cmd", {"cmd": "quit"})
 		ok = await _wait_for(func() -> bool:

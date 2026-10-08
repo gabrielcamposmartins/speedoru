@@ -88,6 +88,11 @@ var net := Net.OFF
 var drs_rule := 0
 ## Classificatória em andamento (ou a última que rodou).
 var quali: Qualifying
+## Rede (cliente): race_time em que o tempo da classificatória acaba (0 = sem limite).
+var quali_end := 0.0
+## Rede (cliente): votação para recomeçar ({yes, needed, until, voters}; vazio = nenhuma) e o meu voto.
+var restart_vote := {}
+var my_restart_vote := false
 const DRS_GAP := 1.0
 ## Configuração da corrida em rede, definida antes de a cena entrar na árvore. Servidor:
 ## {laps, difficulty, bots, players: [{id, name, profile}]}; cliente: {me, roster, settings}.
@@ -319,7 +324,8 @@ func _start_race() -> void:
 			await _loading_step(1.0, "Pronto")
 			get_tree().paused = false
 			LoadingScreen.done()
-		await _run_qualifying(RaceSettings.quali_laps, RaceSettings.quali_collisions)
+		await _run_qualifying(RaceSettings.quali_lap_count(RaceSettings.quali_laps), RaceSettings.quali_collisions,
+			RaceSettings.quali_seconds(RaceSettings.quali_laps, RaceSettings.quali_time), RaceSettings.quali_strict)
 	for entry in entries:
 		entry.car.global_transform = track.get_grid_transform(entry.grid_slot)
 		entry.car.linear_velocity = Vector3.ZERO
@@ -1089,6 +1095,19 @@ func _unhandled_input(event: InputEvent) -> void:
 			_net_cmd({"cmd": "pit_compound", "value": chosen})
 
 
+## Rede (cliente): vota para recomeçar a corrida (ou retira o voto).
+func vote_restart(yes: bool) -> void:
+	if net != Net.CLIENT:
+		return
+	my_restart_vote = yes
+	_net_cmd({"cmd": "restart_vote", "yes": yes})
+
+
+## Votação aberta para recomeçar: segundos que faltam (0 = nenhuma).
+func restart_vote_left() -> float:
+	return maxf(float(restart_vote.get("until", 0.0)) - race_time, 0.0) if not restart_vote.is_empty() else 0.0
+
+
 func _net_cmd(data: Dictionary) -> void:
 	var n := get_node_or_null("/root/Net")
 	if n:
@@ -1200,8 +1219,10 @@ func _build_net_grid() -> void:
 func net_go() -> void:
 	var q_laps := int(net_setup.get("quali_laps", 0))
 	if q_laps > 0:
-		net_event.emit({"event": "quali"})
-		await _run_qualifying(q_laps, bool(net_setup.get("quali_collisions", true)))
+		var q_time := RaceSettings.quali_seconds(q_laps, int(net_setup.get("quali_time", 0)))
+		net_event.emit({"event": "quali", "end": q_time})
+		await _run_qualifying(RaceSettings.quali_lap_count(q_laps), bool(net_setup.get("quali_collisions", true)),
+			q_time, bool(net_setup.get("quali_strict", true)))
 		for entry in entries:
 			entry.car.global_transform = track.get_grid_transform(entry.grid_slot)
 			entry.car.linear_velocity = Vector3.ZERO
@@ -1479,6 +1500,7 @@ func apply_net_event(d: Dictionary) -> void:
 	match str(d.get("event", "")):
 		"quali":
 			# Classificatória antes do grid: sem apresentação agora (ela vem no "grid")
+			quali_end = float(d.get("end", 0.0))
 			state = State.QUALIFYING
 			state_changed.emit(state)
 		"grid":
@@ -1509,6 +1531,24 @@ func apply_net_event(d: Dictionary) -> void:
 			if player_entry and int(d.get("idx", -1)) == player_entry.index:
 				_client_give_back = {"target": str(d.get("target", "")), "until": race_time + float(d.get("left", GIVE_BACK_TIME)),
 					"seconds": float(d.get("seconds", 10.0))}
+		"vote":
+			if bool(d.get("closed", false)):
+				restart_vote = {}
+				my_restart_vote = false
+			else:
+				restart_vote = {"yes": int(d.get("yes", 0)), "needed": int(d.get("needed", 1)),
+					"until": race_time + float(d.get("left", 0.0)), "voters": d.get("voters", [])}
+				var n := get_node_or_null("/root/Net")
+				if n:
+					my_restart_vote = str(n.account.get("id", "")) in (d.get("ids", []) as Array)
+				if not my_restart_vote and player_entry:
+					_notify(player_entry, "VOTAÇÃO: RECOMEÇAR A CORRIDA", "%d/%d votos · abra o menu (Esc) para votar" % [
+						restart_vote["yes"], restart_vote["needed"]], false)
+		"restarting":
+			restart_vote = {}
+			my_restart_vote = false
+			if player_entry:
+				_notify(player_entry, "RECOMEÇANDO A CORRIDA", "Votação aprovada · carregando o grid de novo", false)
 		"give_back_end":
 			if player_entry and int(d.get("idx", -1)) == player_entry.index:
 				_client_give_back = {}
@@ -1569,6 +1609,8 @@ func give_back_restored(e: RaceEntry, passer: RaceEntry) -> bool:
 		net_event.emit({"event": "give_back_end", "idx": e.index})
 		_restored[e] = passer
 		_notify(e, "POSIÇÃO DEVOLVIDA", "Sem penalidade", false)
+		if passer.is_player or passer.is_human:
+			_notify(passer, "POSIÇÃO DEVOLVIDA", "%s devolveu a sua posição" % e.code, false)
 		return true
 	# Já resolvido neste passo (a troca de volta não é uma ultrapassagem irregular de quem recebeu)
 	if _restored.get(e) == passer:
@@ -1593,15 +1635,24 @@ func _update_give_backs() -> void:
 
 
 ## Classificatória (solo ou servidor): ao voltar, entries[].grid_slot é o grid novo e o estado volta a GRID.
-func _run_qualifying(q_laps: int, collisions: bool) -> void:
+func _run_qualifying(q_laps: int, collisions: bool, time_limit := 0.0, strict := true) -> void:
 	quali = Qualifying.new()
 	quali.name = "Qualifying"
 	add_child(quali)
-	quali.setup(self, q_laps, collisions)
+	quali.setup(self, q_laps, collisions, time_limit, strict)
 	await quali.run()
 	state = State.GRID
 	race_time = 0.0
 	leader_finished = false
+
+
+## Segundos que faltam da classificatória (-1 = sem limite ou fora dela).
+func quali_time_left() -> float:
+	if state != State.QUALIFYING:
+		return -1.0
+	if quali:
+		return quali.time_left()
+	return maxf(quali_end - race_time, 0.0) if quali_end > 0.0 else -1.0
 
 
 ## Carros na pista (para o vácuo).

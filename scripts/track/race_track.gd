@@ -57,7 +57,7 @@ var start_lights: StartLights
 ## em etapas de um quadro cada (sem pausar as outras salas).
 static var server_mode := false
 const SERVER_SKIP := ["arquibancadas", "árvores", "folhas", "pinheiros", "cenário", "grama", "prédios", "túnel", "porto",
-	"jardins", "entorno"]
+	"jardins", "entorno", "navios", "detalhes"]
 
 var terrain: TrackTerrain
 ## Circuito de rua: dados da cidade (layout.city); nulo nos circuitos de campo.
@@ -128,7 +128,9 @@ func rebuild(staged := false) -> void:
 			["túnel", "Túnel", 60, func(): TrackTunnel.build(self, city.tunnel.x, city.tunnel.y, _root)],
 			["porto", "Mar, porto e barcos", 300, func(): TrackHarbour.build(self, city, _root)],
 			["jardins", "Palmeiras e jardins", 120, func(): TrackCity.build_trees(self, city, _root)],
+			["detalhes", "Calçadas, cafés e árvores", 150, func(): CityProps.build(self, city, _root)],
 			["entorno", "Morros e horizonte", 250, func(): TrackCity.build_backdrop(self, city, _root)],
+			["navios", "Navios e balões", 80, func(): TrackOffshore.build(self, city, _root)],
 		])
 	else:
 		steps.append_array([

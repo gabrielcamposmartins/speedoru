@@ -372,10 +372,14 @@ func _build_room() -> void:
 		func(i: int) -> void: _ask("room_settings", {"cars": NetProtocol.ROOM_CARS[i]}))
 	_setting(grid, "Dificuldade", DIFFICULTIES, int(st.get("difficulty", 1)), editable,
 		func(i: int) -> void: _ask("room_settings", {"difficulty": i}))
-	_setting(grid, "Classificatória", ["Sem", "1 volta", "2 voltas", "3 voltas"], int(st.get("quali_laps", 0)), editable,
+	_setting(grid, "Classificatória", RaceSettings.QUALI_LAP_NAMES, int(st.get("quali_laps", 0)), editable,
 		func(i: int) -> void: _ask("room_settings", {"quali_laps": i}))
+	_setting(grid, "Tempo da classif.", RaceSettings.QUALI_TIME_NAMES, int(st.get("quali_time", 0)), editable,
+		func(i: int) -> void: _ask("room_settings", {"quali_time": i}))
 	_check(grid, "Colisão na classif.", bool(st.get("quali_collisions", true)), editable,
 		func(on: bool) -> void: _ask("room_settings", {"quali_collisions": on}))
+	_check(grid, "Infração anula volta", bool(st.get("quali_strict", true)), editable,
+		func(on: bool) -> void: _ask("room_settings", {"quali_strict": on}))
 	_setting(grid, "DRS", ["Livre", "Até 1 s do carro da frente"], int(st.get("drs", 0)), editable,
 		func(i: int) -> void: _ask("room_settings", {"drs": i}))
 	_setting(grid, "Horário", Array(DaylightPresets.TIME_NAMES), int(st.get("time_of_day", 0)), editable,

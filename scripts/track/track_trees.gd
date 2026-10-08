@@ -121,6 +121,17 @@ static func _pick_species(rng: RandomNumberGenerator, f: float, h: float) -> int
 	return Species.BUSH
 
 
+## Malhas prontas (para outros cenários, como a cidade de Mônaco).
+static func ensure_meshes() -> void:
+	_make_meshes()
+
+
+## Malha de uma espécie: detalhada (perto) ou simples (longe).
+static func mesh(species: int, near: bool) -> ArrayMesh:
+	_make_meshes()
+	return _near[species] if near else _far[species]
+
+
 static func _make_meshes() -> void:
 	if not _near.is_empty():
 		return

@@ -11,6 +11,8 @@ extends HBoxContainer
 ## * Peças: as variantes ganhas (a padrão sempre), com o efeito na aerodinâmica no tooltip.
 ## * Engenharia: o comportamento do carro (aerodinâmica, freios, pneus, direção, câmbio,
 ##   suspensão, assistências), com slider, ajuste grosso/fino e explicação de cada parâmetro.
+## * Decalques: SVG (padrão ou da pasta do jogador) em cada lugar do carro, com cor livre,
+##   tamanho e giro (CarDecals). São grátis.
 ## Cada escolha vai para o Profile (que confere e salva) e para o carro na hora.
 
 const TILE := Vector2(148, 92)
@@ -18,6 +20,7 @@ const CATEGORIES := [
 	["engineering", "Engenharia"],
 	["livery", "Pinturas"],
 	["finish", "Acabamento"],
+	["decals", "Decalques"],
 	["primary", "Cor principal"],
 	["secondary", "Cor secundária"],
 	["accent", "Cor de destaque"],
@@ -33,6 +36,7 @@ const CATEGORY_TIPS := {
 	"engineering": "Comportamento do carro: aerodinâmica, freios, pneus, direção, câmbio, suspensão e assistências. Não muda a aparência.",
 	"livery": "Pinturas que você tem. Uma pintura aplica as 3 cores do carro de uma vez.",
 	"finish": "Acabamento da pintura (brilhante, metálico, perolado, acetinado, fosco, cromado) e das rodas. Todos vêm com o jogo.",
+	"decals": "Adesivos SVG nas laterais, no bico, na entrada de ar e na asa traseira, pintados na cor que você quiser. Dá para usar os seus próprios SVGs.",
 	"primary": "Cor principal do carro, escolhida entre as cores das suas pinturas.",
 	"secondary": "Cor secundária do carro, escolhida entre as cores das suas pinturas.",
 	"accent": "Cor de destaque (detalhes e faixas), escolhida entre as cores das suas pinturas.",
@@ -46,6 +50,12 @@ const CATEGORY_TIPS := {
 
 var car: F1Car
 var category := "engineering"
+## Lugar do carro escolhido na aba de decalques.
+var decal_slot := "sidepods"
+
+## Cores rápidas dos decalques (além das três da pintura e do seletor livre).
+const DECAL_SWATCHES := ["ffffff", "15161a", "e8202a", "ff7a1a", "ffd21f", "2fd36b", "1fd6e8", "1f5fe0", "8a3df0",
+	"ff4fb0", "d4af37", "b8bcc6"]
 
 var _profile: PlayerProfile
 var _tabs: VBoxContainer
@@ -80,7 +90,15 @@ func setup(target: F1Car, _compact := false) -> void:
 	right.add_child(_grid)
 	if not _profile.changed.is_connected(_on_profile_changed):
 		_profile.changed.connect(_on_profile_changed)
+	if not _profile.decals_changed.is_connected(_on_decals_changed):
+		_profile.decals_changed.connect(_on_decals_changed)
 	_build()
+
+
+## Cor/tamanho/giro de decalque (sliders): só o carro, sem reconstruir a tela.
+func _on_decals_changed() -> void:
+	if car and car.config:
+		_profile.apply_to_config(car.config)
 
 
 func _on_profile_changed() -> void:
@@ -105,7 +123,7 @@ func _build() -> void:
 		_tabs.add_child(t)
 	for c in _grid.get_children():
 		c.queue_free()
-	_grid.columns = 1 if category == "engineering" else 2
+	_grid.columns = 1 if category in ["engineering", "decals"] else 2
 	var eq := _profile.equipped
 	for cat in CATEGORIES:
 		if cat[0] == category:
@@ -146,6 +164,9 @@ func _build() -> void:
 		"finish":
 			_note.text = "como a luz reflete na pintura e nas rodas"
 			_build_finishes()
+		"decals":
+			_note.text = "adesivos SVG na cor que você quiser · grátis"
+			_build_decals()
 		"parts":
 			_note.text = "trocam aderência por velocidade"
 			for slot in CarPartCatalog.all_slots():
@@ -196,6 +217,138 @@ func _build_finishes() -> void:
 			_add(t)
 		if names.size() % 2 == 1:
 			_grid.add_child(Control.new())
+
+
+func _build_decals() -> void:
+	var decals: Dictionary = _profile.equipped["decals"]
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 8)
+	row.add_child(_kicker("LUGAR"))
+	var place := OptionButton.new()
+	place.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	for k in CarDecals.SLOT_ORDER.size():
+		var s: String = CarDecals.SLOT_ORDER[k]
+		place.add_item(CarDecals.slot_label(s) + ("  ●" if decals.has(s) else ""))
+		if s == decal_slot:
+			place.selected = k
+	place.item_selected.connect(func(i: int) -> void:
+		decal_slot = CarDecals.SLOT_ORDER[i]
+		_build())
+	row.add_child(place)
+	_grid.add_child(row)
+	var cur: Dictionary = decals.get(decal_slot, {})
+	if not cur.is_empty():
+		_decal_controls(cur)
+	var tiles := GridContainer.new()
+	tiles.columns = 2
+	tiles.add_theme_constant_override("h_separation", 8)
+	tiles.add_theme_constant_override("v_separation", 8)
+	_grid.add_child(tiles)
+	var none := OptionTile.new()
+	none.title = "Nenhum"
+	none.art_kind = "off"
+	none.selected = cur.is_empty()
+	none.pressed.connect(_profile.set_decal.bind(decal_slot, ""))
+	tiles.add_child(none)
+	var tint := Color(str(cur.get("color", "ffffff")))
+	var ids: Array = CarDecals.PRESETS.map(func(p: Array) -> String: return p[0])
+	ids.append_array(CarDecals.custom_ids())
+	for id: String in ids:
+		var t := OptionTile.new()
+		t.title = CarDecals.preset_name(id)
+		t.subtitle = "seu SVG" if id.begins_with(CarDecals.CUSTOM_PREFIX) else ""
+		t.art_kind = "decal"
+		t.decal = CarDecals.texture(id)
+		t.color = tint
+		t.selected = str(cur.get("id", "")) == id
+		t.tip_text = "Seu arquivo em decals/%s (só você vê online)." % id.substr(CarDecals.CUSTOM_PREFIX.length()) \
+			if id.begins_with(CarDecals.CUSTOM_PREFIX) else "Decalque padrão."
+		t.pressed.connect(_profile.set_decal.bind(decal_slot, id))
+		tiles.add_child(t)
+	var files := HBoxContainer.new()
+	files.add_theme_constant_override("separation", 8)
+	var open := Button.new()
+	open.text = "Abrir pasta dos meus SVG"
+	open.add_theme_font_size_override("font_size", 12)
+	open.tooltip_text = "Coloque arquivos .svg (desenho branco, fundo transparente) nesta pasta e clique em Recarregar."
+	open.pressed.connect(func() -> void: OS.shell_open(CarDecals.ensure_user_dir()))
+	files.add_child(open)
+	var reload := Button.new()
+	reload.text = "Recarregar"
+	reload.add_theme_font_size_override("font_size", 12)
+	reload.pressed.connect(func() -> void:
+		CarDecals.clear_cache()
+		if car and car.assembly:
+			car.assembly.refresh_decals()
+		_build())
+	files.add_child(reload)
+	_grid.add_child(files)
+
+
+## Cor (paleta + seletor livre), tamanho e giro do decalque do lugar escolhido.
+func _decal_controls(cur: Dictionary) -> void:
+	var eq := _profile.equipped
+	var colors := row_box()
+	colors.add_child(_kicker("COR"))
+	var current := str(cur.get("color", "ffffff"))
+	var swatches: Array = [str(eq["primary"]), str(eq["secondary"]), str(eq["accent"])]
+	swatches.append_array(DECAL_SWATCHES)
+	for html: String in swatches:
+		var sw := Swatch.new()
+		sw.color = Color(html)
+		sw.selected = Color(html).to_html(false) == Color(current).to_html(false)
+		sw.tooltip_text = "Cor da pintura" if swatches.find(html) < 3 else "#" + html
+		sw.pressed.connect(func() -> void:
+			_profile.set_decal_value(decal_slot, "color", Color(html).to_html(false))
+			_build())
+		colors.add_child(sw)
+	var picker := ColorPickerButton.new()
+	picker.color = Color(current)
+	picker.edit_alpha = false
+	picker.custom_minimum_size = Vector2(34, 22)
+	picker.tooltip_text = "Qualquer cor"
+	picker.color_changed.connect(func(c: Color) -> void: _profile.set_decal_value(decal_slot, "color", c.to_html(false)))
+	picker.popup_closed.connect(_build)
+	colors.add_child(picker)
+	_grid.add_child(colors)
+	for spec in [["TAMANHO", "scale", 0.3, 1.5, 0.05, "%d%%", 100.0], ["GIRO", "rot", -180.0, 180.0, 5.0, "%d°", 1.0]]:
+		var r := row_box()
+		r.add_child(_kicker(spec[0]))
+		var value := Label.new()
+		value.custom_minimum_size = Vector2(48, 0)
+		value.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		value.add_theme_font_size_override("font_size", 12)
+		var sl := HSlider.new()
+		sl.min_value = spec[2]
+		sl.max_value = spec[3]
+		sl.step = spec[4]
+		sl.value = float(cur.get(spec[1], 1.0 if spec[1] == "scale" else 0.0))
+		sl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		sl.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		sl.custom_minimum_size = Vector2(0, 20)
+		StudioPanel.style_slider(sl)
+		value.text = spec[5] % roundi(sl.value * spec[6])
+		sl.value_changed.connect(func(v: float) -> void:
+			value.text = spec[5] % roundi(v * spec[6])
+			_profile.set_decal_value(decal_slot, spec[1], v))
+		r.add_child(sl)
+		r.add_child(value)
+		_grid.add_child(r)
+
+
+func row_box() -> HBoxContainer:
+	var r := HBoxContainer.new()
+	r.add_theme_constant_override("separation", 6)
+	return r
+
+
+func _kicker(text: String) -> Label:
+	var l := Label.new()
+	l.text = text
+	l.theme_type_variation = "RetroKicker"
+	l.add_theme_font_size_override("font_size", 11)
+	l.custom_minimum_size = Vector2(64, 0)
+	return l
 
 
 func _build_engineering() -> void:
@@ -338,6 +491,8 @@ class OptionTile extends Button:
 	var tip_title := ""
 	var tip_text := ""
 	var tip_rows: Array = []
+	## Decalque (art_kind "decal"): o desenho, tingido com `color`.
+	var decal: Texture2D
 	## Galeria: selo de estado ("✓", "FALTA", "GRÁTIS") e peça que falta apagada.
 	var badge := ""
 	var badge_color := Color.WHITE
@@ -392,6 +547,21 @@ class OptionTile extends Button:
 			"part":
 				draw_string(Retro.display(800), Vector2(art.position.x, art.get_center().y + 5), subtitle.to_upper(),
 					HORIZONTAL_ALIGNMENT_CENTER, art.size.x, 11, Retro.c("accent_2"))
+			"decal":
+				# Fundo cinza-escuro (decalques claros e escuros aparecem) e o desenho na proporção
+				draw_rect(art, Color(0.24, 0.25, 0.3, 0.9))
+				if decal:
+					var aspect := float(decal.get_width()) / maxf(decal.get_height(), 1.0)
+					var box := art.grow(-6.0)
+					var w := minf(box.size.x, box.size.y * aspect)
+					var dr := Rect2(box.get_center() - Vector2(w, w / aspect) * 0.5, Vector2(w, w / aspect))
+					draw_texture_rect(decal, dr, false, Color(color, a_mul))
+				else:
+					draw_string(Retro.body(600), Vector2(art.position.x, art.get_center().y + 5), "SVG inválido",
+						HORIZONTAL_ALIGNMENT_CENTER, art.size.x, 11, Retro.c("bad"))
+				if subtitle != "":
+					draw_string(Retro.display(700), Vector2(art.position.x + 4, art.position.y + 12), subtitle.to_upper(),
+						HORIZONTAL_ALIGNMENT_LEFT, -1, 9, Retro.c("accent_2"))
 		draw_string(Retro.body(600), Vector2(8, size.y - 11), title, HORIZONTAL_ALIGNMENT_LEFT, size.x - 16, 13,
 			Retro.c("text") if selected else Retro.c("text_2"))
 		if badge != "":
@@ -479,6 +649,15 @@ class IconTab extends Button:
 					draw_line(c + Vector2(-12 + g * 2, 5 + g * 3), c + Vector2(12 - g * 2, 5 + g * 3), Color(tint, 0.9 - g * 0.25), 2.0)
 			"finish":
 				StudioPanel.draw_finish_ball(self, c, 12.0, Retro.c("accent"), 1)
+			"decals":
+				# Estrela (adesivo) com a ponta descolando
+				var pts := PackedVector2Array()
+				for k in 10:
+					var rad := 12.0 if k % 2 == 0 else 5.0
+					var ang := -PI * 0.5 + k * PI / 5.0
+					pts.append(c + Vector2(cos(ang), sin(ang)) * rad)
+				draw_colored_polygon(pts, ink)
+				draw_colored_polygon(PackedVector2Array([c + Vector2(6, 6), c + Vector2(12, 6), c + Vector2(6, 12)]), Retro.c("accent"))
 			"engineering":
 				# Chave inglesa
 				draw_line(c + Vector2(-10, 10), c + Vector2(5, -5), ink, 4.0)
@@ -611,6 +790,27 @@ class SetupRow extends VBoxContainer:
 		_value.add_theme_color_override("font_color", Retro.c("accent_2") if changed else Retro.c("text"))
 		_reset.disabled = not changed
 		_reset.modulate.a = 1.0 if changed else 0.0
+
+
+## Bolinha de cor clicável (cores dos decalques).
+class Swatch extends Button:
+	var color := Color.WHITE
+	var selected := false
+
+	func _ready() -> void:
+		custom_minimum_size = Vector2(22, 22)
+		flat = true
+		mouse_entered.connect(queue_redraw)
+		mouse_exited.connect(queue_redraw)
+
+	func _draw() -> void:
+		var c := size * 0.5
+		draw_circle(c, 8.0, color)
+		draw_arc(c, 8.0, 0.0, TAU, 20, Color(0, 0, 0, 0.5), 1.0)
+		if selected:
+			draw_arc(c, 10.5, 0.0, TAU, 24, Retro.c("accent_2"), 2.0)
+		elif is_hovered():
+			draw_arc(c, 10.5, 0.0, TAU, 24, Retro.line(3), 1.0)
 
 
 ## Trilho fino e escuro, parte preenchida na cor de destaque (sliders da engenharia).

@@ -14,6 +14,8 @@ extends Node
 signal changed
 ## Engenharia mudou (separado de `changed` para não reconstruir as telas a cada clique de slider).
 signal setup_changed
+## Cor, tamanho ou giro de um decalque mudou (idem: sliders do Estúdio).
+signal decals_changed
 ## Modo "remote": o jogador mudou o que está equipado; o cliente manda para o servidor validar.
 signal equip_requested(equipped: Dictionary)
 
@@ -64,6 +66,7 @@ static func default_equipped() -> Dictionary:
 		"paint_finish": 0,
 		"rim_finish": 0,
 		"setup": {},
+		"decals": {},
 	}
 
 
@@ -307,6 +310,34 @@ func equip_part(slot: String, variant: String) -> void:
 	_commit()
 
 
+## Coloca (ou tira, com id vazio) um decalque num lugar do carro; mantém cor/tamanho/giro.
+func set_decal(slot: String, id: String) -> void:
+	if not CarDecals.SLOTS.has(slot):
+		return
+	var decals: Dictionary = equipped["decals"]
+	if id == "":
+		decals.erase(slot)
+	elif CarDecals.valid_id(id):
+		var cur: Dictionary = decals.get(slot, {"color": "ffffff", "scale": 1.0, "rot": 0.0})
+		cur["id"] = id
+		decals[slot] = cur
+	_commit()
+
+
+## Cor ("rrggbb"), tamanho ("scale") ou giro ("rot", graus) de um decalque já colocado. Não
+## reconstrói as telas (sliders): avisa por decals_changed.
+func set_decal_value(slot: String, key: String, value: Variant) -> void:
+	var decals: Dictionary = equipped["decals"]
+	if not decals.has(slot) or not key in ["color", "scale", "rot"]:
+		return
+	decals[slot][key] = value
+	equipped["decals"] = CarDecals.sanitize(decals)
+	save_profile()
+	decals_changed.emit()
+	if mode == "remote":
+		equip_requested.emit(equipped.duplicate(true))
+
+
 func set_neon(on: bool) -> void:
 	equipped["neon_on"] = on and not owned_of_type("neon").is_empty()
 	if equipped["neon_on"] and equipped["neon"] == "":
@@ -370,6 +401,8 @@ func clamp_equipped() -> void:
 		if not CarPartCatalog.has_variant(slot, str(parts[slot])) or not str(parts[slot]) in owned_variants(slot):
 			parts.erase(slot)
 	equipped["neon_on"] = bool(equipped.get("neon_on", false)) and has_neon() and equipped["neon"] != ""
+	# Decalques: grátis (padrão e SVGs do jogador), só lugares/ids válidos e valores nos limites
+	equipped["decals"] = CarDecals.sanitize(equipped.get("decals", {}))
 	equipped["paint_finish"] = clampi(int(equipped.get("paint_finish", 0)), 0, CarConfig.PAINT_FINISHES.size() - 1)
 	equipped["rim_finish"] = clampi(int(equipped.get("rim_finish", 0)), 0, CarConfig.RIM_FINISHES.size() - 1)
 	if not owns(str(equipped.get("livery", ""))):
@@ -432,6 +465,8 @@ func apply_to_config(config: CarConfig) -> void:
 	config.boost_color = Color(equipped["boost"])
 	config.neon_enabled = equipped["neon_on"]
 	config.paint_finish = equipped["paint_finish"]
+	if var_to_str(config.decals) != var_to_str(equipped["decals"]):
+		config.decals = (equipped["decals"] as Dictionary).duplicate(true)
 	config.rim_finish = equipped["rim_finish"]
 	if equipped["neon"] != "":
 		config.neon_color = Color(equipped["neon"])
