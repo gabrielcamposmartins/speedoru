@@ -8,10 +8,9 @@ extends HBoxContainer
 ## câmera vai até a peça) e o cartão de detalhes: raridade, roleta onde cai, chance exata, quanto
 ## devolve se sair repetida e o botão Equipar (se for sua) ou Ir à loja (se faltar).
 
-const TYPE_ICONS := {"livery": "livery", "helmet": "helmet", "suit": "suit", "rim": "rim", "boost": "boost",
-	"neon": "neon", "part": "parts"}
+const TYPE_ICONS := {"part": "parts", "decal": "decals", "boost": "boost", "neon": "neon"}
 
-var type := "livery"
+var type := "part"
 var selected_id := ""
 ## Menu principal (prévia no carro); pode ser null.
 var menu: Node
@@ -98,10 +97,14 @@ func _rebuild() -> void:
 			"part":
 				t.art_kind = "part"
 				t.subtitle = CarPartCatalog.slot_label(it["slot"])
+			"decal":
+				t.art_kind = "decal"
+				t.decal = CarDecals.texture(ShopCatalog.decal_of(id))
+				t.color = Color.WHITE
 			_:
 				t.art_kind = "color"
 		var cols := ShopCatalog.colors_of(id)
-		if not cols.is_empty():
+		if not cols.is_empty() and it["type"] != "decal":
 			t.color = cols[0]
 		t.selected = id == selected_id
 		t.dim = not owned
@@ -211,6 +214,9 @@ func _equip(id: String) -> void:
 			_profile.set_neon(true)
 		"part":
 			_profile.equip_part(it["slot"], it["variant"])
+		"decal":
+			# Nas laterais (o lugar mais visível); o Estúdio troca de lugar, cor, posição e tamanho
+			_profile.set_decal("sidepods", ShopCatalog.decal_of(id))
 		_:
 			_profile.equip_color(it["type"], cols[0])
 
@@ -291,6 +297,14 @@ class ItemCard extends Control:
 					ci.draw_colored_polygon(PackedVector2Array([art.position + Vector2(a + (k if i > 0 else 0.0), 0),
 						art.position + Vector2(b + (k if i < 2 else 0.0), 0), art.position + Vector2(b, art.size.y),
 						art.position + Vector2(a, art.size.y)]), Color(cols[i], dim))
+			"decal":
+				var tex := CarDecals.texture(ShopCatalog.decal_of(id))
+				if tex:
+					var aspect := float(tex.get_width()) / maxf(tex.get_height(), 1.0)
+					var box := art.grow(-8.0)
+					var w := minf(box.size.x, box.size.y * aspect)
+					ci.draw_texture_rect(tex, Rect2(box.get_center() - Vector2(w, w / aspect) * 0.5, Vector2(w, w / aspect)), false,
+						Color(1, 1, 1, dim))
 			"part":
 				ci.draw_string(Retro.display(800), art.position + Vector2(0, art.size.y * 0.62),
 					CarPartCatalog.slot_label(it["slot"]).to_upper(), HORIZONTAL_ALIGNMENT_CENTER, art.size.x,

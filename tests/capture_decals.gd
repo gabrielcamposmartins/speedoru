@@ -59,6 +59,9 @@ func _run() -> void:
 	_check(CarDecals.custom_ids().has(CarDecals.CUSTOM_PREFIX + TEST_SVG), "SVG do jogador listado")
 	_check(CarDecals.texture(CarDecals.CUSTOM_PREFIX + TEST_SVG) != null, "SVG do jogador vira imagem")
 	_check(not CarDecals.valid_id("custom:../x.svg") and not CarDecals.valid_id("nada"), "ids inválidos recusados")
+	# Decalques das roletas usados aqui (estrela e disco de número vêm com a conta)
+	for id in ["decal_chamas", "decal_logo_s"]:
+		profile.owned[id] = true
 	profile.set_decal("sidepods", "chamas")
 	profile.set_decal_value("sidepods", "color", "ffd21f")
 	profile.set_decal("nose", "estrela")
@@ -79,6 +82,38 @@ func _run() -> void:
 	await _shot("decal_frente34", Vector3(2.2, 1.8, 3.0), Vector3(0, 0.45, 0.6), 45.0)
 	await _shot("decal_tras34", Vector3(-2.4, 1.6, -3.6), Vector3(0, 0.6, -1.4), 45.0)
 	await _shot("decal_lado_direito", Vector3(-3.2, 1.0, -0.2), Vector3(0, 0.45, -0.3), 45.0)
+	# Espelhamento: desenhos com direção, deslocados e girados; o lado esquerdo é o reflexo do direito
+	profile.owned["decal_cometa"] = true
+	profile.set_decal("airbox", "cometa")
+	profile.set_decal_value("airbox", "x", 0.35)
+	profile.set_decal_value("airbox", "rot", 20.0)
+	profile.set_decal_value("airbox", "color", "1fd6e8")
+	profile.set_decal_value("sidepods", "x", 0.3)
+	profile.set_decal_value("sidepods", "rot", 12.0)
+	profile.apply_to_config(car.config)
+	for k in 6:
+		await process_frame
+	var l := car.find_child("Decal_airbox_0", true, false) as Decal
+	var r := car.find_child("Decal_airbox_1", true, false) as Decal
+	var mirrored := l != null and r != null and is_equal_approx(l.position.x, -r.position.x) 		and is_equal_approx(l.position.z, r.position.z) and is_equal_approx(l.position.y, r.position.y)
+	_check(mirrored, "entrada de ar: o lado esquerdo fica no reflexo exato do direito")
+	_check(l != null and l.texture_albedo != r.texture_albedo and l.basis.determinant() > 0.0,
+		"lado espelhado usa a imagem virada e uma rotação de verdade")
+	await _shot("espelho_entrada_esq", Vector3(1.6, 1.15, -0.6), Vector3(0, 0.8, -0.8), 40.0)
+	await _shot("espelho_entrada_dir", Vector3(-1.6, 1.15, -0.6), Vector3(0, 0.8, -0.8), 40.0)
+	await _shot("espelho_lado_esq", Vector3(3.2, 1.0, -0.2), Vector3(0, 0.45, -0.3), 45.0)
+	await _shot("espelho_lado_dir", Vector3(-3.2, 1.0, -0.2), Vector3(0, 0.45, -0.3), 45.0)
+	# Sem espelhar (textos): cada lado lê o desenho normalmente
+	profile.set_decal_value("airbox", "mirror", false)
+	profile.apply_to_config(car.config)
+	for k in 6:
+		await process_frame
+	l = car.find_child("Decal_airbox_0", true, false) as Decal
+	r = car.find_child("Decal_airbox_1", true, false) as Decal
+	_check(l != null and l.texture_albedo == r.texture_albedo, "sem espelhar: os dois lados com a imagem normal")
+	_check(not CarDecals.default_mirror("logo_s") and CarDecals.default_mirror("chamas"), "logo S não espelha por padrão")
+	profile.set_decal_value("airbox", "mirror", true)
+	profile.apply_to_config(car.config)
 	# Estúdio, aba Decalques (lugar: laterais)
 	var layer := CanvasLayer.new()
 	layer.layer = 20

@@ -1,4 +1,4 @@
-# F1 Gatcha
+# Speedoru
 
 Jogo 3D de Fórmula 1 em estilo anime — **Godot 4.7** (Forward+) + **Blender 5.0**.
 
@@ -36,7 +36,9 @@ com o mouse gira, a roda aproxima. O carro fica à direita; à esquerda, os bot�
     lane.
 
   Pisos e paredes usam várias texturas procedurais por material (cor com manchas, sujeira ou
-  rejunte/emendas multiplicados, normal map e rugosidade variando), em mapeamento triplanar.
+  rejunte/emendas multiplicados, normal map e rugosidade variando), em mapeamento triplanar. Sem
+  névoa nenhuma: o ambiente da garagem desliga a névoa comum e a volumétrica e fica de fora da opção
+  "Neblina volumétrica" das Configurações (meta `no_fog`), então o fundo fica nítido.
 - **Configurações** e **Sair**.
 
 "Menu principal" na pausa ou no resultado da corrida volta para cá.
@@ -74,7 +76,7 @@ Para mostrar em outro carregamento: `LoadingScreen.start("Texto")`,
 | Trocar câmera | C | Y |
 | Olhar para trás (segurar) | V | R3 |
 | Câmera em órbita (liga/desliga) | O (arrastar mouse = girar, roda = zoom) | L3 + analógico direito |
-| Recolocar o carro | R | Back |
+| Recolocar o carro | R | — |
 | Reparar o carro | F (ou botão na garagem) | — |
 | Música liga/desliga | M (volume e faixa em Configurações → Áudio) | — |
 | Horário (dia → entardecer → noite) | N (ou garagem) | — |
@@ -82,7 +84,7 @@ Para mostrar em outro carregamento: `LoadingScreen.start("Texto")`,
 | Configurações (dentro e fora da corrida) | F10 | — |
 | Linha ideal (desligada → frenagens e curvas → completa) | L | — |
 | Limitador de velocidade (80 km/h: boxes e bandeira amarela) | P | D-pad ← |
-| Ir aos boxes depois de uma batida forte | K | Back |
+| Voltar aos boxes (popup de confirmação; apertar de novo confirma): teletransporte para o box, a volta em andamento recomeça e há um pit stop, com conserto se houver dano | K | Back |
 | Pedir passagem (pisca 4× a luz âmbar dos retrovisores) | X | Share |
 | Menus: navegar / confirmar / voltar | setas · Enter · Esc | D-pad ou analógico · A · B |
 | Menus: abas da garagem e das configurações | — | LB / RB |
@@ -92,6 +94,8 @@ Para mostrar em outro carregamento: `LoadingScreen.start("Texto")`,
 | Mostrar/esconder ajuda | H | — |
 | Ambiente (verão → outono → sakura → fantasia) | B (ou garagem) | — |
 | Garagem (peças e pintura) | Tab | Start |
+| Votar sim na votação aberta (online: pausa, voltar, recomeçar) | Y | Touchpad |
+| Modo espectador (veja abaixo) | F6 (ou botão na pausa) | — |
 
 ## Instalar (Windows)
 
@@ -100,7 +104,14 @@ Baixe o instalador da [última release](https://github.com/gabrielcamposmartins/
 sempre aponta para a versão mais nova. Ele instala só para o usuário atual, sem pedir
 administrador, em `%LOCALAPPDATA%\Programs\Speedoru` (atalho no menu Iniciar e, se marcado, na
 área de trabalho). Para atualizar, instale a versão nova por cima. Perfil, configurações e conta
-ficam em `%APPDATA%\Godotpp_userdata\F1 Gatcha` e continuam depois de atualizar ou desinstalar.
+ficam em `%APPDATA%\Godot\app_userdata\Speedoru` e continuam depois de atualizar ou desinstalar. Até a
+0.4 o projeto se chamava F1 Gatcha e a pasta era `...\app_userdata\F1 Gatcha`: na primeira vez que o
+Speedoru abre, o autoload `UserDataMigration` (o primeiro da lista) copia tudo de lá — perfil,
+configurações, interface, a conta do multiplayer e os SVGs — se a pasta nova ainda estiver vazia
+(a antiga fica como está). O ícone (uma roda de F1: pneu com a faixa amarela, raios ciano, pinça
+vermelha) sai de `python tools/make_icon.py` (`assets/ui/speedoru_icon.png` e `.ico`) e vai na janela,
+no `.exe` (export com `modify_resources`), no instalador e nos atalhos do menu Iniciar e da área de
+trabalho.
 
 O instalador não é assinado com certificado de código, então o SmartScreen avisa na primeira vez:
 *Mais informações* → *Executar assim mesmo*. Cada release publica o `SHA256SUMS.txt`
@@ -151,24 +162,26 @@ iscc /DAppVersion=0.2.0 installer\speedoru.iss     # gera build/installer/Speedo
 
 Gerado proceduralmente por `blender/build_f1_car.py` (regulamento 2022–2025, aproximado):
 5,6 m de comprimento · 1,98 m de largura · entre-eixos de 3,6 m · rodas de 720 mm (aro de 18") ·
-pneus de 305/405 mm · 800 kg.
+pneus de 305/405 mm · 880 kg (um pouco acima do mínimo real, para os carros assentarem mais e as batidas pesarem).
 
 Cada peça é um `.glb` separado em `assets/car/parts/<slot>/<variante>.glb`:
 
 | Slot | Variantes |
 |---|---|
 | `chassis` (monocoque com cockpit) | standard |
-| `nose` | standard, pointed |
-| `front_wing` | standard (4 elementos), lowdf (3 elementos) |
-| `rear_wing` (+ beam wing, `DRSFlap` animado) | standard, lowdf, highdf |
-| `sidepods` | downwash, slim |
-| `engine_cover` (airbox, T-cam, estrutura de impacto, luz de chuva) | standard, sharkfin |
+| `nose` | standard, pointed, duckbill (bico de pato: ponta larga e chata com "narinas"), shark (tubarão: agulha longa com canards), hammer (tubarão-martelo: barra larga com "olhos"), dragon_snout (focinho de dragão: escamas, chifres, narinas e dentes), drill (broca: cone com rosca em espiral), tusks (presas curvas) |
+| `front_wing` | standard (4 elementos), lowdf (3 elementos), gull (gaivota: plano principal em arco, pontas viradas para cima), biplane (biplano: segundo plano inteiro em cima, com montantes), bat (morcego: placa recortada com três pontas e varetas), ring (anel no lugar da placa lateral), delta (bordo de ataque varrido), scales (escamas no plano principal) |
+| `rear_wing` (+ beam wing, `DRSFlap` animado) | standard, lowdf, highdf, twin (dupla: segundo plano no alto das placas) e as de formato livre (`build_rear_wing_creative`, largas até ±0,98 m como a asa dianteira, sem placas laterais, cada uma com um flap de DRS central): dragon (ossos saindo de um "pulso", membranas com a borda recortada, garras e corpo com escamas e espinhos), butterfly (borboleta: asa da frente e de trás em lobos, nervuras, "olhos" e antenas), phoenix (fênix: leque de penas nas três cores curvando para cima, penas de cauda), omega (arco largo que desce nas pontas por fora das rodas), blade (lâmina: delta muito varrido com aletinhas e quilha) |
+| `sidepods` | downwash, slim, gills (guelras: aletas atravessadas no topo), jet (turbina: boca redonda com anel, cone e hélice), scales (escamas de dragão no topo), vents (persianas: frestas inclinadas na lateral), bulge (musculoso: mais largo e alto, com friso), periscope (periscópio: torre de captação) |
+| `engine_cover` (airbox, T-cam, estrutura de impacto, luz de chuva) | standard, sharkfin, spine (espinha de dragão: barbatanas em dente de serra), twing (barbatana com asa em T), horns (chifres curvos ao lado da entrada de ar), scales (escamas na crista), twin_airbox (duas entradas de ar), exhaust (escapamentos aparentes com bocas em brasa e aletas de calor) |
 | `floor` (assoalho, difusor, prancha) | standard |
-| `halo`, `mirrors`, `suspension_front`, `suspension_rear` | standard |
+| `halo` | standard, winged (com aletas laterais, carenagem no pilar e crista), crown (coroa de espinhos), airfoil (asa em cima), ribbed (costelas em volta do tubo), horned (chifres atrás) |
+| `mirrors` (`MirrorGlassL/R` no mesmo lugar em todas) | standard, bullet (bala: carenagem pontuda com aleta), eye (olho: carcaça redonda com sobrancelha), fin (aleta alta), spiked (espinhos), winglet (asinha para fora) |
+| `suspension_front`, `suspension_rear` | standard |
 | `cockpit` (`SteeringWheel` animado, encostos) | standard |
 | `driver` (piloto humanoide: macacão, luvas, botas, HANS, cintos, capacete com viseira) | standard |
 | `tyre` (`_front` / `_rear`) | slick |
-| `rim` (`_front` / `_rear`) | covered, spoked |
+| `rim` (`_front` / `_rear`) | covered, spoked, turbine (14 pás curvas), star (estrela: 5 raios em cunha), mesh (colmeia: pás cruzadas), yspoke (raios em Y), disc (disco liso com furos), shuriken (4 lâminas curvas) |
 
 Para regenerar tudo (glb + `blender/f1_car.blend` + imagens em `blender/renders/`):
 
@@ -192,7 +205,8 @@ carro do jogo, com o IK, de fora e da câmera do piloto).
 Convenções: todas as peças compartilham a origem do carro (chão, meio do entre-eixos), com a frente
 em +Z e a esquerda em +X no Godot. Os **nomes dos materiais são slots de pintura** (`Livery_Primary`,
 `Livery_Secondary`, `Livery_Accent`, `Carbon`, `Rim`, `Helmet`, `Suit`, `Tire_Stripe`...) que o Godot
-troca por materiais toon (`scripts/car/car_livery.gd`).
+troca por materiais toon (`scripts/car/car_livery.gd`). A borracha dos pneus (`Tire`) é preta e
+lustrosa: faixa de brilho toon forte, verniz fino (clearcoat) e borda de luz.
 
 ### Adicionar uma variante de peça
 
@@ -203,7 +217,7 @@ troca por materiais toon (`scripts/car/car_livery.gd`).
 
 ## Estrutura no Godot
 
-- `scenes/car/f1_car.tscn` — `VehicleBody3D` (800 kg, centro de massa customizado) com 4 `VehicleWheel3D`
+- `scenes/car/f1_car.tscn` — `VehicleBody3D` (880 kg, centro de massa customizado) com 4 `VehicleWheel3D`
   e caixas de colisão. O nó `Visual` (`CarAssembly`) instancia as peças conforme o `CarConfig`.
 - `scripts/car/f1_car.gd` — motor (curva de torque + limite de 760 kW), câmbio de 8 marchas, ré,
   controle de tração, freios limitados pela carga, downforce ∝ v² dividida entre os eixos, arrasto,
@@ -349,43 +363,76 @@ e a meta de longo prazo). Catálogo e regras em `scripts/economy/shop_catalog.gd
   (bots fácil / médio / difícil; mista 30), ou seja 200 / 300 / 400 em 10 voltas; abandono recebe
   metade, desclassificado e treino livre não recebem. O resultado mostra quanto entrou.
 - **Ticket = um giro** numa roleta, 2.500 créditos. Sem estoque, sem pacote, sem giro de 10, sem
-  desconto. Duas roletas temáticas e sem sobreposição: **Neon** (luz, céu, gelo, neon, sakura) e
-  **Inferno** (fogo, sombra, noite, metal, bordô), 36 peças cada.
+  desconto. Duas roletas temáticas e sem sobreposição, com **peças, decalques e as cores de luz
+  (brilho do boost e neon)**: **Neon** (asas leves, bico, sidepods; sakura, asas, cometa, coração,
+  onda, listras, raio; boost Hiperluz, Gelo, Rosa choque, Violeta; neon Aurora, Ciano, Sakura) e
+  **Inferno** (asas traseiras, barbatana, rodas raiadas; chamas, garras, logo S, xadrez, shuriken,
+  faixas duplas; boost Chama solar, Rubi, Ouro; neon Lava, Âmbar, Carmesim, Violeta), 40 itens cada.
+  Peças: a Neon tem as de luz, céu e máquina (asas traseiras Borboleta e Ômega, sidepods Turbina e
+  Periscópio, asas dianteiras Gaivota, Anel e Delta, bicos de pato, Tubarão-martelo e Broca, rodas
+  Turbina, Colmeia e Disco…); a Inferno, as de fogo e bicho (asas traseiras Fênix, Dragão, Dupla e
+  Lâmina, focinho de dragão, Tubarão e Presas, Morcego, escamas, chifres, Guelras, rodas Estrela,
+  Shuriken e Raios em Y…).
 - **Sorteio:** um degrau de raridade com fatia fixa e, dentro dele, uma peça com chance igual. Sem
   pity nem garantia. Gerador criptográfico (`Crypto`), e a loja mostra a mesma tabela que o sorteio
   usa.
 
-| Raridade | Fatia | Peças por roleta | Chance de cada | Repetida devolve |
+| Raridade | Fatia | Itens (Neon / Inferno) | Chance de cada (Neon / Inferno) | Repetida devolve |
 |---|---|---|---|---|
-| Lendário | 2,5% | 4 | 0,63% | 3.600 a 4.500 |
-| Épico | 6% | 8 | 0,75% | 2.100 a 2.625 |
-| Raro | 10% | 6 | 1,67% | 1.350 a 1.695 |
-| Incomum | 26% | 10 | 2,6% | 900 a 1.125 |
-| Comum | 55,5% | 8 | 6,94% | 600 a 750 |
+| Lendário | 2,5% | 5 / 5 | 0,5% | 3.600 a 4.320 |
+| Épico | 6% | 6 / 9 | 1% / 0,67% | 2.100 a 2.520 |
+| Raro | 10% | 10 / 10 | 1% | 1.350 a 1.620 |
+| Incomum | 26% | 12 / 9 | 2,17% / 2,89% | 900 a 1.080 |
+| Comum | 55,5% | 7 / 7 | 7,93% | 600 a 720 |
 
 - **Repetida vira créditos:** 30% do preço de tabela; o giro nunca sai vazio. Um lendário
-  específico custa em média 160 giros (400 mil créditos).
-- **O que se coleciona:** pinturas (3 cores), capacetes, macacões, cor das rodas, brilho do boost,
-  neon e peças de desempenho (asas, bico, sidepods, cobertura, rodas raiadas: trocam aderência por
-  velocidade, nunca melhores em tudo). Vêm com a conta, fora do sorteio: a pintura Akane Racing,
-  capacete, macacão, rodas e boost iniciais e todas as peças padrão.
+  específico custa em média 200 giros (500 mil créditos).
+- **O que se coleciona:** peças de desempenho (asas, bico, sidepods, cobertura, rodas raiadas:
+  trocam aderência por velocidade, nunca melhores em tudo), decalques e as cores do **brilho do
+  boost** e do **neon** (`ShopCatalog.GACHA_COLORS`: só se equipa cor ganha). Vêm com a conta, fora
+  do sorteio: todas as peças padrão, os decalques Estrela e Disco de número e o boost Ciano. Conta
+  nova não tem neon (desligado até ganhar um).
+- **Cores livres:** pintura (3 cores), capacete, macacão e rodas são de graça e com qualquer cor
+  (seletor de cor e sugestões). As 25 pinturas prontas (`ShopCatalog.PAINTS`) aplicam as 3 cores
+  de uma vez; a pintura equipada é a que bate com as cores (ou nenhuma).
+- **Esquemas de pintura** (aba do Estúdio, grátis; `CarConfig.PAINT_SCHEMES`): como as 3 cores se
+  dividem pela carroceria. Clássico (as cores nas peças como o modelo foi pintado), Dois tons
+  (cima/baixo com filete), Faixas de corrida, Diagonal, Flechas (chevrons), Degradê (frente → trás),
+  Metades (esquerda/direita), Relâmpago (zigue-zague), Ondas, Camuflagem, Pontas (bico e asas) e
+  Faixa lateral. A pintura é o shader `shaders/car/car_paint.gdshader` (toon, com os acabamentos
+  como parâmetros): como todas as malhas da carroceria ficam no espaço do carro, a posição de cada
+  ponto decide a cor (bordas suavizadas em ~1 pixel); rodas, volante, piloto e flap do DRS usam a
+  variante `#plain` (cor do slot, para o desenho não "andar" quando giram). As prévias do Estúdio
+  (carro de lado e de cima, nas cores atuais) usam as mesmas contas em `CarLivery.scheme_weights`.
+  Os bots têm um esquema por equipe.
 - **Acabamento** (aba do Estúdio, grátis): pintura brilhante, metálica (flocos + verniz),
   perolada (borda iridescente + verniz), acetinada, fosca ou cromada; rodas polidas, cromadas,
   acetinadas ou foscas (`CarLivery.apply_paint_finish`, shader `car_rim` com reflexo e rugosidade
-  por acabamento).
-- **Estúdio** (garagem e Tab na corrida): equipa e combina só o que a conta tem. Coluna de abas
-  só com ícones (pinturas, cor 1/2/3, capacete, macacão, rodas, boost, neon, peças; o nome no
-  tooltip) e uma grade de 2 colunas em que toda opção tem o mesmo tamanho. As cores da pintura
-  saem das pinturas possuídas; capacete, macacão, rodas, boost e neon, das peças daquele tipo; o
-  neon só liga com uma peça de neon. Tudo é conferido de novo antes de ir para o carro (o que a
-  conta não tem volta para o gratuito).
+  por acabamento; na pintura, `CarLivery.PAINT_FINISH_PARAMS` → parâmetros do shader `car_paint`).
+- **Estúdio** (garagem e Tab na corrida): coluna de abas só com ícones (pinturas, esquema, cor 1/2/3,
+  capacete, macacão, rodas, boost, neon, decalques, peças; o nome no tooltip) e uma grade de 2
+  colunas em que toda opção tem o mesmo tamanho. As abas de cor livre têm o seletor (o carro muda
+  enquanto se arrasta) e uma grade de sugestões; boost e neon mostram só as cores ganhas (o neon
+  com Desligado). Peças e decalques só os da conta. Tudo é conferido de novo antes de ir para o
+  carro (peça, decalque, boost ou neon que a conta não tem volta para o gratuito; cor livre só
+  precisa ser válida).
 - **Decalques** (aba do Estúdio com a estrela, grátis; `scripts/car/car_decals.gd`): adesivos SVG
   nas **laterais**, no **bico**, na **entrada de ar** e nas **placas da asa traseira** (os lugares de
-  dois lados recebem o mesmo desenho, legível dos dois). Cada um com **cor livre** (as três da
-  pintura, uma paleta e o seletor de cor), **tamanho** e **giro**. 13 desenhos padrão
-  (`assets/decals/`, gerados por `python tools/generate_decals.py`: estrela, raio, chamas, bandeira
-  quadriculada, sakura, coração, asas, listras, garras, disco de número, onda, logo S, cometa) e os
-  **SVGs do jogador**: "Abrir pasta dos meus SVG" abre `user://decals` (desenho branco com fundo
+  dois lados recebem o mesmo desenho: o lado direito, o que a garagem mostra, é a referência e o
+  esquerdo é o **reflexo exato** dele — imagem virada, posição e giro espelhados no meio do carro —,
+  então chamas, setas e asas apontam para o mesmo lado nos dois lados; "Espelhar no lado
+  esquerdo" desligado faz cada lado ler o desenho normalmente, para textos, e já vem desligado no
+  logo S e nos SVGs do jogador). Cada um com **cor livre** (só o seletor de
+  cor), e posição e tamanho livres numa **prévia do lugar** (`StudioPanel.PositionPad`: o lugar na
+  proporção real e na cor da pintura, o limite até onde o desenho pode ir e o desenho como fica;
+  arrastar move, roda = tamanho, Shift+roda = giro, Ctrl+roda = largura, duplo clique centraliza)
+  ou nos sliders **tamanho**, **largura**, **giro**, **horizontal** e **vertical**, e um botão que
+  centraliza e volta ao tamanho padrão. Na garagem a câmera vai até o lugar escolhido. Arrastar e
+  sliders mudam o carro na hora; o perfil grava (e, online, manda ao servidor) quando os valores
+  param de mudar. 15 desenhos (`assets/decals/`, gerados por `python tools/generate_decals.py`: estrela,
+  raio, chamas, bandeira quadriculada, sakura, coração, asas, listras, garras, disco de número,
+  onda, logo S, cometa, shuriken, faixas duplas): estrela e disco de número vêm com a conta, os
+  outros saem nas roletas. Os **SVGs do jogador** são livres: "Abrir pasta dos meus SVG" abre `user://decals` (desenho branco com fundo
   transparente, até 512 KB) e "Recarregar" os lista. No carro são nós `Decal` projetados só na
   carroceria (camada `CAR_LAYER`) e tingidos com a cor. Ficam em `equipped["decals"]` (validado
   também pelo servidor); online os outros veem os padrão, os SVGs próprios só aparecem para quem
@@ -402,11 +449,10 @@ e a meta de longo prazo). Catálogo e regras em `scripts/economy/shop_catalog.gd
   linha, valor atual, de fábrica, limites, passos e o efeito do botão). Fica salvo no perfil
   (`equipped.setup`, só o que mudou) e vale na corrida. Potência, desgaste e regras não entram
   (são iguais para todos). Catálogo em `scripts/economy/car_setup.gd`.
-- **Galeria:** mesmo layout do Estúdio (abas de ícones por tipo, grade de 2 colunas); cada peça
+- **Galeria:** mesmo layout do Estúdio (abas Peças, Decalques, Boost e Neon, grade de 2 colunas); cada item
   com arte, raridade e selo ("✓", "FALTA", "GRÁTIS"). Clicar mostra **no carro** como ficaria (sem
-  equipar): se a peça tem lugar no carro (asas, bico, sidepods, cobertura, rodas, capacete,
-  macacão, boost, neon), a câmera orbita até ela e a centraliza, alternando o sentido a cada clique
-  (horário, anti-horário). O cartão de detalhes traz raridade, roleta, chance exata, quanto devolve
+  equipar): a câmera orbita até a peça (ou até a lateral, onde o decalque aparece) e a centraliza,
+  alternando o sentido a cada clique (horário, anti-horário). O cartão de detalhes traz raridade, roleta, chance exata, quanto devolve
   se sair repetida e o botão Equipar (se for sua) ou Girar na roleta (se faltar).
 - **Loja:** só tickets. Nenhum cosmético se compra direto; sem rotação nem ofertas. As paletas da
   interface vêm todas com o jogo (troca em Configurações → Tela).
@@ -448,8 +494,8 @@ Visual synthwave + monitor CRT + HUD de ficção científica (`scripts/ui/retro.
   boxes é você quem aciona; passar de 80 km/h na pista dos boxes continua dando +5 s.
 - **Bandeira amarela:** entra quando uma batida arranca peças (ou quebra uma roda). Um painel no
   topo mostra a instrução da sua situação, com a tecla certa (ou botão, se estiver no controle):
-  - quem bateu: "Pressione [K] para ir aos boxes ou vá sozinho 1:40". O botão leva direto ao box
-    para o conserto; dá para ir dirigindo; se não chegar em uma volta (tempo da sua melhor volta,
+  - quem bateu: "Pressione [K] para voltar aos boxes ou vá sozinho 1:40". O botão (depois do
+    popup de confirmação) leva direto ao box para o conserto; dá para ir dirigindo; se não chegar em uma volta (tempo da sua melhor volta,
     ou 110 s), é levado ao box. Levado ao box (botão, tempo esgotado ou bot), a volta em que você
     estava recomeça: ao sair do box e cruzar a linha ela começa de novo, sem contar como completada
     (você perde a distância que tinha andado nela). Indo dirigindo até o box, a volta segue normal.
@@ -469,7 +515,9 @@ Visual synthwave + monitor CRT + HUD de ficção científica (`scripts/ui/retro.
   nas curvas, pelo perfil de velocidade) e aparece no minimapa (SC). Quem não bateu pode aproveitar para trocar pneus; isso não muda a bandeira.
 - **Fim:** a amarela (com o safety car) dura **no mínimo 30 s** e só termina quando todos os
   carros batidos estão nos boxes (indo pela faixa, parados no box ou levados até ele); aí vem a
-  bandeira verde e o safety car sai. Os consertos seguem independentes da bandeira.
+  bandeira verde e o safety car sai. **Só na última volta** (do líder) ela dura **10 s** e termina
+  mesmo com carro batido ainda indo para o box (se começou antes, contam 10 s a partir da última
+  volta) (`tests/last_lap_yellow_test.gd`). Os consertos seguem independentes da bandeira.
 - **Resultado:** a tela final mostra o detalhe das penalidades de cada jogador (título, segundos,
   motivo e volta).
 - **Pedir passagem:** X (no controle, o botão Share) pisca 4 vezes a luz âmbar nos retrovisores (LED, halo e uma luz
@@ -649,7 +697,7 @@ cada faixa toca duas vezes e passa para a próxima com crossfade de 3 s) ou uma 
 F10 (em qualquer momento), ou o botão **Configurações** no menu inicial, na pausa e na garagem.
 Autoload `Settings` (`scripts/settings/game_settings.gd`); menu em `scripts/settings/settings_menu.gd`.
 Tudo é aplicado na hora e salvo em `user://settings.cfg`
-(`%APPDATA%/Godot/app_userdata/F1 Gatcha/` no Windows).
+(`%APPDATA%/Godot/app_userdata/Speedoru/` no Windows).
 
 - **Controles:** todas as ações remapeáveis, uma tecla de teclado e um botão/eixo de controle por
   ação (clique, aperte a nova; Esc cancela, Backspace apaga). Conflitos aparecem em amarelo. As
@@ -792,21 +840,48 @@ monta a cena certa, e para os clientes no `race_start`).
   nas lajes, casas de máquinas; prédios **sem contorno anime** (rugosidade 0 no shader) e com
   **sombra de contato**: a base das paredes escurece, as paredes descem 4 m abaixo da base (nunca
   flutuam em encosta) e o chão em volta ganha uma faixa de calçada de ladrilho e escurece junto à
-  parede (`bdist`, distância de cada vértice ao prédio); o **Casino** com as torres e cúpulas de cobre; encostas com
-  **jardins em terraços** (muretas de pedra nas curvas de nível); morros dos Alpes Marítimos com
+  parede (`bdist`, distância de cada vértice ao prédio); o **Casino** com as torres e cúpulas de cobre; encostas da
+  cidade sem rampa lisa à vista: as íngremes viram **muro de arrimo** de pedra calcária em fiadas
+  com hera (`FLOOR_WALL` no shader) e as outras **jardins em terraços** (muretas de pedra nas curvas
+  de nível); na entrada do túnel, um **hotel sobre o túnel** (como o Fairmont) acompanhando a pista,
+  a fachada do portal subindo até o terreno de trás, **muros de ala** de pedra dos dois lados da
+  rampa e o terreno em frente aos portais rebaixado (sem cunhas de morro junto à boca do túnel);
+  morros dos Alpes Marítimos com
   cristas e penhascos (ruído "ridged"), **mato mediterrâneo**, rocha nas encostas íngremes e
   milhares de **árvores** (pinheiros, pinheiros-mansos, carvalhos, ciprestes) e o casario de
   Beausoleil além da área dos dados (`build_backdrop`).
-- **Árvores:** as mesmas espécies de Monza (`TrackTrees`, shader das árvores com vento e as cores
-  do ambiente): pinheiro-manso, carvalho, cipreste, arbusto e bétula, com malha simples de longe;
-  e as palmeiras. Nos morros só nos anéis mais perto da cidade; perto da pista (`city_props.gd`),
-  ~200 árvores nos jardins e como árvores de rua a 7–55 m da borda.
+- **Árvores:** as mesmas espécies de Monza (`TrackTrees`), mas de perto com **copas de folhas
+  soltas** (`TrackLeaves.city_tree_mesh`, shader `tree_leafy` com vento e as cores do ambiente):
+  tufos com miolo escuro e folhas em losango deitadas na superfície; **cipreste** em coluna
+  contínua verde-escura afinando em chama, **pinheiro-manso** com tronco inclinado, três galhos e
+  copa em guarda-chuva, carvalho e bétula de copa redonda, arbustos; de longe (além de 190 m), as
+  bolhas simples sem sombra. **Palmeiras** com 12 folhas de nervura em arco caindo para fora e
+  folíolos dos dois lados (versão simples além de 220 m). Nos morros só nos anéis mais perto da cidade; perto da pista (`city_props.gd`),
+  ~200 árvores nos jardins e como árvores de rua a 7–55 m da borda. Nada (árvore ou objeto) fica
+  sobre a pista, o pit lane, os escapes ou o piso dos boxes: `CityProps.clear_of_track` testa a
+  distância à borda + escape e um raio para baixo confere que o chão é o da cidade
+  (`monaco_test` confere todos os pontos).
 - **Junto à pista** (`city_props.gd`, só em lugares livres — chão de calçada/praça, fora dos
   prédios, das ruas, das arquibancadas e do mar, além das barreiras): ~500 objetos de mobiliário
   urbano (bancos, floreiras com flores, frades, lixeiras e, na orla do porto, mesas de café com
   guarda-sóis de três cores). A faixa que a grade marca "sob a pista" além da borda vira calçada;
   ruas da cidade com **meio-fio de pedra**; calçadas e praças com **tampas de bueiro e grelhas**
   (shader, perto); gramados de cidade menos saturados.
+- **Desempenho:** árvores, palmeiras e objetos da cidade em **blocos de 128 m**
+  (`CityProps.add_chunked`), um MultiMesh por bloco e LOD — o Godot mede o alcance de visibilidade
+  até o centro do MultiMesh e recorta (câmera e cascatas de sombra) pela caixa inteira, então um
+  MultiMesh da cidade toda nunca trocava de LOD e ia inteiro para cada cascata (eram ~12 milhões de
+  primitivas por quadro; agora ~2,7 milhões); objetos pequenos sem sombra (só guarda-sóis e
+  floreiras). Na corrida (vale para as duas pistas): loops de som em silêncio **parados** (não
+  pausados — um AudioStreamPlayer3D pausado continua recalculando posição e doppler a cada passo de
+  física) e rivais a mais de 260 m da câmera mudos; marcas de pneu/rastros montados de uma vez num
+  ArrayMesh (sem pontos, nada); efeitos do boost só mexidos quando ligados; tráfego dos bots a
+  60 Hz, intercalado; fantasmas dos boxes só para pares com alguém nos boxes; display do volante a
+  30 Hz e só nas câmeras de bordo; retrovisores fora das câmeras de bordo de vez em quando (um de
+  cada vez) e, abaixo de 90 FPS, revezando; guia de traçado com a altura do asfalto em cache. No
+  máximo **6 passos de física por quadro** (`max_physics_steps_per_frame`): com o processador no
+  limite o jogo desacelera um pouco em vez de afundar em quadros cada vez mais longos (com 20
+  carros caía a ~3 FPS). Corrida de 10 carros em Mônaco: de ~37 para ~66 FPS (RTX 5070).
 - **Navios e balões** (`track_offshore.gd`): navio de cruzeiro, porta-contêineres (pilhas
   coloridas), petroleiro e balsa cruzando ao largo em rotas paralelas à costa (longe da costa de
   verdade dentro da área dos dados), com rastro de espuma; 14 balões de ar quente grandes (o modelo
@@ -841,6 +916,37 @@ monta a cena certa, e para os clientes no `race_start`).
   recorde em `best_lap_monaco` nos contadores. Volta mínima plausível por pista
   (`NetProtocol.MIN_LAP_BY_TRACK`).
 - Dados: © colaboradores do OpenStreetMap, licença ODbL (https://www.openstreetmap.org/copyright).
+
+## Vitrine: balões de personagem, outdoors e murais
+
+`scripts/track/track_showcase.gd` (etapa "vitrine" da geração, nas duas pistas; o servidor pula):
+
+- **Balões de personagem — Psyduck e Hamtaro** (`assets/track/balloons/*.glb`): balões de formato
+  especial com ~40 m (modelo de ~27 m em escala 1,5), cesto de vime, maçarico e cabos. Ficam presos
+  e bem à vista: em Monza, nas duas retas mais longas (`TrackShowcase.straights`), ~300 m à frente
+  de quem entra nela e pouco para o lado de fora, com a base a 34 m (acima das árvores); em Mônaco,
+  procurados ao longo da volta onde há céu aberto, por cima dos telhados e de preferência sobre o
+  porto. Nos dois casos a visada da pista até o balão não pode passar por prédios nem por
+  arquibancadas/boxes (`TrackShowcase.blocked`, filtrando pelos retângulos) e o balão não pode ficar
+  alto demais no quadro. Virados para quem vem, sobem e descem e giram poucos graus; materiais toon.
+- **Modelagem** (`blender/build_balloons.py`, `blender -b --factory-startup -P blender/build_balloons.py
+  [-- --render <pasta>]`): metabolas (o corpo sai liso e "inflado", como um balão), uma família por
+  cor, viradas malha. *Psyduck*: cabeça grande, corpo em pera, as mãos segurando a cabeça (braços em
+  peça à parte, com vinco no ombro), bico creme chato em duas partes, olhinhos brancos com pupila de
+  ponto, três fios de cabelo pretos e pés de pato com dedos. *Hamtaro*: cabeça de chibi com bochechas,
+  testa laranja em arco por cima dos olhos com a faixa branca no meio, laterais/nuca/costas laranja e
+  cara/barriga creme (a malha é cortada nas bordas antes de pintar, para as manchas saírem limpas),
+  orelhas laranja e rosa, olhões pretos com dois brilhos, bochechas rosadas, nariz, boquinha em "w",
+  bigodes e bracinhos para cima. Olhos, nariz e cabelos são presos na superfície por raycast.
+- **Imagens de `assets/outdoors`** (todas as que estiverem na pasta; recorte central 3:2; importadas
+  comprimidas, com mipmaps, até 1024 px), sempre discretas:
+  - **dirigíveis**: um painel curvo (segue o casco) na traseira de alguns deles, nas duas pistas;
+  - **outdoors**: até 4 placas de 6 × 4 m em dois postes, logo atrás da barreira e acima da tela,
+    giradas 40° para quem vem pela reta (só em chão livre: fora de escapes, arquibancadas, boxes e
+    prédios);
+  - **murais**: no alto de paredes de prédios de Mônaco viradas para a pista (a 50–230 m, vistas da
+    pista por cima dos outros prédios) e nas paredes laterais (sem janelas) das casas e nos
+    campanários dos vilarejos ao fundo de Monza.
 
 ## Multiplayer (servidor dedicado + Turso)
 
@@ -906,12 +1012,37 @@ até 10 se a sala usa bots; carros com o visual e a engenharia das contas) e apl
 física (pedais, direção e contadores das ações de toque, que não se perdem); recebe instantâneos
 de todos os carros 30×/s (`NetSnapshot`, 64 bytes por carro) e o estado da prova 5×/s; desenha os
 carros 0,1 s no passado, interpolando (`NetRaceClient`; os carros do cliente são marionetes
-cinemáticas, `F1Car.set_puppet`). Avisos e penalidades chegam só para o piloto envolvido; peças
-arrancadas para todos. Sem pausa online (Esc abre o menu, os pedais soltam). **Votação para
-recomeçar**: no menu (Esc) qualquer jogador vota; a votação fica aberta 30 s (faixa no HUD com os
-votos) e, com a maioria dos humanos ainda na corrida (2 de 2, 2 de 3, 3 de 4…; sozinho, 1), a
-corrida é descartada sem resultado nem prêmio e o servidor larga outra com a mesma sala (os
-clientes recarregam o grid). Fim: quando todos os
+cinemáticas, `F1Car.set_puppet`). Avisos e penalidades chegam só para o piloto envolvido; cada batida
+(ponto, direção, força e a resistência de todas as peças) e as peças arrancadas vão para todos:
+o carro amassa no lugar certo em todas as telas e o diagrama/"DANO %" do HUD mostra o dano
+calculado no servidor (`CarDamage.hit_applied` → evento `hit` → `CarDamage.remote_hit`). Esc abre o menu sem parar o jogo (os pedais soltam). **Votações** (protocolo
+5: `{"cmd": "vote", "kind": "pause" | "resume" | "restart", "yes": bool}`): no menu (Esc)
+qualquer jogador abre uma; a faixa no HUD mostra o tipo, os votos e o tempo, e os outros aceitam
+com **Y / Touchpad** sem abrir o menu. Uma votação por vez, aberta 30 s; passa com a maioria dos
+humanos ainda na corrida (2 de 2, 2 de 3, 3 de 4…; sozinho, 1).
+  - **Pausar:** o servidor congela a física e a cena da corrida (relógio parado para todos, painel
+    "PAUSADO" no HUD). Volta por outra votação (**Voltar**, com contagem de 3 s) ou sozinha depois
+    de 3 min.
+  - **Recomeçar:** a corrida é descartada sem resultado nem prêmio e o servidor larga outra com a
+    mesma sala (os clientes recarregam o grid).
+
+**Modo espectador** (`scripts/camera/spectator.gd`, F6 ou o botão na pausa; online, depois de
+terminar ou abandonar; solo, a qualquer momento, com o piloto automático — um bot difícil, que faz
+o pit obrigatório — dirigindo o seu carro até sair): o HUD do carro some e uma faixa embaixo mostra
+a câmera e as teclas.
+  - **Câmeras fixas** de TV geradas pela pista: uma na largada, alta, olhando o grid, e gruas
+    altas logo atrás da barreira das curvas mais fechadas (no máximo 9, afastadas entre si). Em
+    Mônaco ficam fora dos prédios e só onde enxergam o ápice e os trechos antes e depois dele por
+    cima dos prédios e arquibancadas. Cada uma sabe que trecho da pista enxerga: segue o carro
+    escolhido ali com zoom de TV (o carro fica do mesmo tamanho), um outro carro que esteja
+    passando, ou mostra a curva vazia.
+  - **TV automática:** corta para a câmera que enxerga o carro, a mais perto dele; nenhuma
+    enxerga → helicóptero, alto e atrás do carro.
+  - **Câmera livre:** WASD/setas, Q/E desce/sobe, Shift rápido, botão direito do mouse olha
+    (controle: analógicos, LB/RB desce/sobe).
+  - **Perseguição** de qualquer carro (a câmera normal da corrida).
+  - Teclas: 1–9 câmera fixa · 0 TV automática · F livre · C perseguição · ← → carro · F6 sai. No
+    controle: D-pad ← → carro, ↑ alterna TV/perseguição/livre, Y próxima câmera fixa, B sai. Fim: quando todos os
 humanos terminam/abandonam (ou 150 s depois do primeiro); quem sai vira abandono. O servidor paga e
 registra o resultado de cada um e a sala volta ao lobby.
 
@@ -947,6 +1078,7 @@ godot --path . -s res://tests/capture_ui.gd -- <pasta>       # HUD em cada palet
 godot --headless --path . -s res://tests/settings_test.gd   # configurações: salvar, remapear, gráficos, áudio, músicas
 godot --headless --path . -s res://tests/race_menu_test.gd    # Tab só no treino, horário/ambiente da corrida, música menu x pista
 godot --headless --path . -s res://tests/race_control_test.gd # bandeira amarela, safety car, ida ao box, penalidades
+godot --headless --path . -s res://tests/last_lap_yellow_test.gd # amarela de 10 s só na última volta
 godot --path . -s res://tests/capture_yellow.gd -- <pasta>   # instrução da amarela, safety car
 godot --headless --path . -s res://tests/ui_nav_test.gd     # menus pelo controle: foco, D-pad, A/B, LB/RB
 godot --headless --path . -s res://tests/economy_test.gd    # economia: chances, sorteio, giro, repetidas, loja, estúdio, prêmios
@@ -955,7 +1087,7 @@ godot --path . -s res://tests/capture_settings.gd -- <pasta> # menu de configura
 godot --headless --path . -s res://tests/compile_check.gd   # carrega todos os scripts (erros de compilação)
 godot --headless --path . -s res://tests/ccd_probe.gd       # carro não "para do nada" em zebra/raspão a 320 km/h e não atravessa muros
 godot --headless --path . -s res://tests/highspeed_probe.gd # pneus em alta velocidade: carga, aderência, boost, toque de direção, batente
-godot --headless --path . -s res://tests/net_test.gd        # multiplayer de ponta a ponta, com votação para recomeçar (precisa do libSQL local)
+godot --headless --path . -s res://tests/net_test.gd        # multiplayer de ponta a ponta, com votações de pausa/voltar/recomeçar (precisa do libSQL local)
 godot --headless --path . -s res://tests/puppet_wheel_test.gd # rodas dos carros da rede: altura do servidor, esterço e giro, sem tremer
 godot --headless --path . -s res://tests/updater_test.gd    # atualizador: versões e download/SHA-256 da última release (internet)
 godot --headless --path . -s res://tests/chase_camera_test.gd # câmera de perseguição: frenagem, aceleração, curva, batida
@@ -972,6 +1104,11 @@ godot --headless --path . -s res://tests/yellow_pass_test.gd # sob amarela: joga
 godot --path . -s res://tests/capture_slipstream.gd -- <pasta>  # vento do vácuo e pisca dos retrovisores
 godot --headless --path . -s res://tests/track_bot_probe.gd -- monaco 2 2 [adversários]  # bot sozinho: onde bate/perde tempo
 godot --path . -s res://tests/audio_hum_probe.gd -- <pasta>  # grava o som silenciando um bus de cada vez (zumbidos)
+godot --path . -s res://tests/capture_spectator.gd -- <pasta> [monaco|monza]  # modo espectador: TV automática, câmeras fixas, livre, perseguição
+godot --path . -s res://tests/capture_showcase.gd -- <pasta> [monza|monaco]  # balões de personagem vistos da pista, outdoors, murais e dirigível com imagem
+godot --headless --path . -s res://tests/user_data_migration_test.gd # nome Speedoru e cópia da pasta antiga (F1 Gatcha), sem copiar por cima
+godot --headless --path . -s res://tests/parts_test.gd     # cada variante de peça monta no carro, com dano, DRS e retrovisores, e está numa roleta
+godot --headless --path . -s res://tests/return_pit_test.gd # voltar aos boxes com confirmação, dano replicado na rede, contadores das ações
 godot --headless --path . -s res://tests/offtrack_probe.gd  # fora da pista: velocidade perdida e aderência lateral por piso
 godot --path . -s res://tests/capture_online.gd -- <pasta> <porta> --offline  # telas do multiplayer + corrida online
 ```
@@ -981,5 +1118,5 @@ ghcr.io/tursodatabase/libsql-server`; outra URL com `SPEEDORU_TEST_DB`) e contas
 (`user://test_net_*.cfg`, apagadas no fim). O `capture_online` precisa de um servidor rodando na
 porta indicada.
 
-Resultado de referência: 0–100 km/h em 2,5 s · 0–200 em 4,9 s · 0–300 em 9,9 s · máx. ~335 km/h
-(sem DRS) · 335→0 km/h em 3,3 s / 116 m · 2,2 G lateral a 120 km/h e 3,3 G a 220 km/h.
+Resultado de referência (880 kg): 0–100 km/h em 2,5 s · 0–200 em 5,0 s · 0–300 em 10,6 s · máx.
+~334 km/h (sem DRS) · 334→0 km/h em 3,4 s / 122 m · 2,1 G lateral a 120 km/h e 3,1 G a 220 km/h.

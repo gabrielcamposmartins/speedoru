@@ -32,8 +32,8 @@ const ACHIEVEMENTS := [
 	["online_25", "Rival", "online_races", 25, "Nêmesis", 3],
 	["spins_1", "Primeiro giro", "spins", 1, "Apostador", 1],
 	["spins_50", "Giro solto", "spins", 50, "Rei da roleta", 3],
-	["items_10", "Colecionador", "items", 10, "Colecionador", 2],
-	["items_50", "Garagem cheia", "items", 50, "Curador", 4],
+	["items_10", "Colecionador", "items", 8, "Colecionador", 2],
+	["items_50", "Garagem cheia", "items", 20, "Curador", 4],
 	["earned_100k", "Magnata", "earned", 100000, "Magnata", 4],
 ]
 const GRADE_COLORS := [Color("9aa4b2"), Color("3dfc9a"), Color("2f9bff"), Color("b14dff"), Color("ffb000")]

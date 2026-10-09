@@ -8,9 +8,13 @@ extends Node
 ## saem os instantâneos (30/s), o estado da prova (5/s) e os acontecimentos; no fim, os resultados
 ## voltam ao GameServer, que paga e registra.
 ##
-## Votação para recomeçar: qualquer jogador abre (comando "restart_vote"); com a maioria dos
-## humanos ainda na corrida votando sim em até VOTE_TIME s, a corrida é descartada (sem resultado
-## nem prêmio) e o GameServer larga uma nova com a mesma sala (restart_requested).
+## Votações (comando "vote" {kind, yes}; uma de cada vez; aprovam com a maioria dos humanos ainda
+## na corrida em até VOTE_TIME s):
+## * "restart": a corrida é descartada (sem resultado nem prêmio) e o GameServer larga uma nova
+##   com a mesma sala (restart_requested);
+## * "pause": a física do mundo da sala e a corrida param (os carros congelam onde estão);
+## * "resume" (só pausado): retoma depois de RESUME_DELAY s de contagem. A pausa também acaba
+##   sozinha depois de PAUSE_MAX s.
 
 signal finished(results: Array)
 signal restart_requested
@@ -19,8 +23,12 @@ const LOAD_TIMEOUT := 45.0
 ## Depois que o primeiro humano termina, os outros têm esse tempo (s) para cruzar a linha.
 const FINISH_TIMEOUT := 150.0
 const END_DELAY := 5.0
-## Duração de uma votação para recomeçar (s).
+## Duração de uma votação (s).
 const VOTE_TIME := 30.0
+const VOTE_KINDS := ["restart", "pause", "resume"]
+## Pausa: duração máxima (s) e a contagem antes de retomar (s).
+const PAUSE_MAX := 180.0
+const RESUME_DELAY := 3.0
 
 var server: GameServer
 var room_id := ""
@@ -42,9 +50,14 @@ var _state_acc := 0.0
 var _first_finish := -1.0
 var _end_timer := -1.0
 var _net: Node
-## Votação para recomeçar: contas que votaram sim e até quando ela vale (_t; < 0 = fechada).
+## Votação aberta: tipo, contas que votaram sim e até quando ela vale (_t; < 0 = fechada).
+var _vote_kind := ""
 var _votes := {}
 var _vote_until := -1.0
+## Pausa: se está pausada, desde quando (_t) e quando retoma (_t; < 0 = sem contagem).
+var paused := false
+var _pause_since := 0.0
+var _resume_at := -1.0
 
 
 func start(p_server: GameServer, p_room: String, p_settings: Dictionary, p_players: Array) -> void:
@@ -126,15 +139,15 @@ func command(acc_id: String, cmd: String, data: Dictionary) -> void:
 			if _all_loaded():
 				_go()
 		"go_to_pit":
-			if e and manager.control and manager.control.is_involved(e):
-				manager.control.send_to_pit(e)
+			if e and manager.control:
+				manager.control.return_to_pit(e)
 		"pit_compound":
 			if e:
 				e.pit_compound = clampi(int(data.get("value", 2)), 0, 2) as CarConfig.TyreCompound
 		"quit":
 			player_left(acc_id)
-		"restart_vote":
-			_vote(acc_id, bool(data.get("yes", true)))
+		"vote":
+			_vote(acc_id, str(data.get("kind", "")), bool(data.get("yes", true)))
 
 
 func _all_loaded() -> bool:
@@ -144,16 +157,21 @@ func _all_loaded() -> bool:
 	return true
 
 
-## Voto (sim/não) para recomeçar a corrida; o primeiro "sim" abre a votação.
-func _vote(acc_id: String, yes: bool) -> void:
-	if _phase != "racing" or _left.has(acc_id) or not manager.humans.has(acc_id):
+## Voto (sim/não) numa votação; o primeiro "sim" abre a votação daquele tipo (se não houver outra).
+func _vote(acc_id: String, kind: String, yes: bool) -> void:
+	if _phase != "racing" or _left.has(acc_id) or not manager.humans.has(acc_id) or not kind in VOTE_KINDS:
+		return
+	if (kind == "pause" and (paused or _resume_at >= 0.0)) or (kind == "resume" and (not paused or _resume_at >= 0.0)):
 		return
 	if yes:
 		if _vote_until < 0.0:
+			_vote_kind = kind
 			_votes.clear()
 			_vote_until = _t + VOTE_TIME
+		elif _vote_kind != kind:
+			return  # já há outra votação aberta
 		_votes[acc_id] = true
-	elif _vote_until >= 0.0:
+	elif _vote_until >= 0.0 and _vote_kind == kind:
 		_votes.erase(acc_id)
 	_check_vote()
 
@@ -175,23 +193,54 @@ func _check_vote() -> void:
 			_votes.erase(id)
 	var needed := votes_needed()
 	if _votes.size() >= needed:
-		_vote_until = -1.0
-		_phase = "done"
-		_broadcast_event({"event": "restarting"})
-		restart_requested.emit()
+		var kind := _vote_kind
+		_close_vote()
+		match kind:
+			"restart":
+				_phase = "done"
+				_broadcast_event({"event": "restarting"})
+				restart_requested.emit()
+			"pause":
+				_set_paused(true)
+			"resume":
+				_begin_resume()
 		return
 	var names := []
 	for p in players:
 		if _votes.has(p["id"]):
 			names.append(p["name"])
-	_broadcast_event({"event": "vote", "yes": _votes.size(), "needed": needed, "left": maxf(_vote_until - _t, 0.0),
-		"voters": names, "ids": _votes.keys()})
+	_broadcast_event({"event": "vote", "kind": _vote_kind, "yes": _votes.size(), "needed": needed,
+		"left": maxf(_vote_until - _t, 0.0), "voters": names, "ids": _votes.keys()})
 
 
 func _close_vote() -> void:
+	var kind := _vote_kind
 	_vote_until = -1.0
+	_vote_kind = ""
 	_votes.clear()
-	_broadcast_event({"event": "vote", "yes": 0, "needed": votes_needed(), "left": 0.0, "closed": true})
+	_broadcast_event({"event": "vote", "kind": kind, "yes": 0, "needed": votes_needed(), "left": 0.0, "closed": true})
+
+
+## Pausa ou retoma: a física do mundo da sala (todos os carros, bots e o safety car) e o
+## processamento da corrida (tempo, regras, bots) param juntos.
+func _set_paused(on: bool) -> void:
+	paused = on
+	_resume_at = -1.0
+	_pause_since = _t
+	var world := viewport.find_world_3d()
+	if world:
+		PhysicsServer3D.space_set_active(world.space, not on)
+	var scene := manager.get_parent()
+	if scene:
+		scene.process_mode = Node.PROCESS_MODE_DISABLED if on else Node.PROCESS_MODE_INHERIT
+	_broadcast_event({"event": "paused", "paused": on, "max": PAUSE_MAX})
+
+
+func _begin_resume() -> void:
+	if not paused or _resume_at >= 0.0:
+		return
+	_resume_at = _t + RESUME_DELAY
+	_broadcast_event({"event": "resuming", "in": RESUME_DELAY})
 
 
 ## Saiu da sala ou da corrida: o carro abandona (DNF).
@@ -219,7 +268,14 @@ func _physics_process(delta: float) -> void:
 		_wait += delta
 		if _wait > LOAD_TIMEOUT:
 			_go()
-	_apply_inputs()
+	if paused:
+		# Retomada: votação aprovada (contagem) ou tempo máximo da pausa
+		if _resume_at < 0.0 and _t - _pause_since > PAUSE_MAX:
+			_begin_resume()
+		if _resume_at >= 0.0 and _t >= _resume_at:
+			_set_paused(false)
+	else:
+		_apply_inputs()
 	_snap_acc += delta
 	if _snap_acc >= 1.0 / NetProtocol.SNAPSHOT_HZ and not manager.roster.is_empty():
 		_snap_acc = 0.0
@@ -235,7 +291,8 @@ func _physics_process(delta: float) -> void:
 	if _phase == "racing":
 		if _vote_until >= 0.0 and _t > _vote_until:
 			_close_vote()
-		_check_end(delta)
+		if not paused:
+			_check_end(delta)
 
 
 func _apply_inputs() -> void:

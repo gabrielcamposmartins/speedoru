@@ -21,6 +21,9 @@ var mode := 2
 
 var _path: TrackPath
 var _s := 0.0
+## Altura do asfalto em relação à linha (m), por metro de pista: os raios saem só uma vez por
+## trecho, e não 48 por quadro.
+var _ground_dy := {}
 
 
 func setup(p_car: F1Car, p_line: RacingLine, p_profile: PackedFloat32Array) -> void:
@@ -95,7 +98,7 @@ func _process(_delta: float) -> void:
 			fwd = Vector3.FORWARD
 		fwd = fwd.normalized()
 		var basis := Basis(Vector3.UP.cross(fwd).normalized(), Vector3.UP, fwd)
-		var xf := Transform3D(basis, _ground(p0) + Vector3.UP * LIFT)
+		var xf := Transform3D(basis, _ground_at(s, p0) + Vector3.UP * LIFT)
 		var col := _speed_color(v, ideal)
 		# Some suave perto do carro e no fim da linha
 		var fade := clampf(float(k) / 3.0, 0.0, 1.0) * clampf(float(COUNT - k) / 12.0, 0.0, 1.0)
@@ -108,12 +111,21 @@ func _process(_delta: float) -> void:
 		multimesh.set_instance_color(k, col)
 
 
-## Altura do asfalto naquele ponto (a linha central do traçado não acompanha o relevo da pista).
-func _ground(p: Vector3) -> Vector3:
+## Ponto no asfalto (a linha central do traçado não acompanha o relevo da pista), pelo cache por
+## metro de pista; só guarda o que bateu no cenário (não em outro carro passando por ali).
+func _ground_at(s: float, p: Vector3) -> Vector3:
+	var key := int(fposmod(s, _path.length))
+	if _ground_dy.has(key):
+		return p + Vector3.UP * float(_ground_dy[key])
 	var q := PhysicsRayQueryParameters3D.create(p + Vector3.UP * 4.0, p + Vector3.DOWN * 4.0)
 	q.exclude = [car.get_rid()]
 	var hit := car.get_world_3d().direct_space_state.intersect_ray(q)
-	return hit["position"] if hit.has("position") else p
+	if not hit.has("position"):
+		_ground_dy[key] = 0.0
+		return p
+	if not hit["collider"] is RigidBody3D:
+		_ground_dy[key] = (hit["position"] as Vector3).y - p.y
+	return hit["position"]
 
 
 ## Cor pela diferença entre a velocidade atual e a ideal naquele ponto.

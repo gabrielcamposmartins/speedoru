@@ -123,6 +123,25 @@ func _run() -> void:
 				print("    prédio sobre a pista em s=%.0f: %s" % [p.s_at(i), bld.get("n", "")])
 				break
 	_check(covering == 0, "nenhum prédio sobre a pista fora do túnel")
+	# Nenhuma árvore, palmeira ou objeto da calçada sobre a pista, escapes, faixa/chão dos boxes,
+	# barreiras ou arquibancadas: raio de cima para baixo em cada um tem de bater no chão da cidade
+	await physics_frame
+	var ray_space := track.get_world_3d().direct_space_state
+	var on_track := 0
+	var total := 0
+	for mmi in gen.find_children("*", "MultiMeshInstance3D", true, false):
+		if not mmi.has_meta("points"):
+			continue
+		for pos: Vector3 in (mmi.get_meta("points") as PackedVector3Array):
+			total += 1
+			var hit := ray_space.intersect_ray(PhysicsRayQueryParameters3D.create(pos + Vector3(0, 6, 0), pos + Vector3(0, -4, 0)))
+			if hit.is_empty() or String((hit["collider"] as Node).name) in ["GroundCollision", "Ground"]:
+				continue
+			on_track += 1
+			if on_track <= 5:
+				var pr := p.project(pos, false)
+				print("    %s sobre %s em s=%.0f (lateral %.1f)" % [mmi.name, (hit["collider"] as Node).name, pr.x, pr.y])
+	_check(total > 500 and on_track == 0, "nenhuma árvore nem objeto sobre a pista, escapes, boxes ou barreiras (%d de %d)" % [on_track, total])
 	await _parked_test(500.0, "rampa do Beau Rivage")
 	await _parked_test(1253.0, "grampo do Grand Hotel")
 	DirAccess.remove_absolute(ProjectSettings.globalize_path("user://test_monaco_profile.cfg"))

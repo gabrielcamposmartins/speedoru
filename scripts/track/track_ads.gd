@@ -13,7 +13,7 @@ const SQUARE := 128
 
 ## [texto, fundo, texto, faixa de destaque]
 const BRANDS := [
-	["F1 GATCHA", Color("e8256f"), Color("ffffff"), Color("ffd23f")],
+	["SPEEDORU", Color("e8256f"), Color("ffffff"), Color("ffd23f")],
 	["SAKURA OIL", Color("fff4f8"), Color("e8467c"), Color("e8467c")],
 	["NEKO ENERGY", Color("16161d"), Color("ffe14d"), Color("ffe14d")],
 	["TURBO RAMEN", Color("ffd23f"), Color("d7263d"), Color("d7263d")],

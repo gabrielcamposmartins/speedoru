@@ -20,6 +20,8 @@ extends Node
 
 signal part_damaged(piece: String, health: float)
 signal part_detached(piece: String)
+## Uma batida aplicada (servidor → clientes: amassado, faíscas e a resistência de cada peça).
+signal hit_applied(local: Vector3, dir: Vector3, severity: float)
 
 ## Impulso (N·s) abaixo do qual o contato não causa dano (toques, raspadas leves).
 @export var impulse_threshold := 550.0
@@ -300,8 +302,22 @@ func _physics_process(delta: float) -> void:
 		audio.scrape_level = scrape_level
 
 
+## Batida vinda do servidor (multiplayer): amassa e solta faíscas como a original e copia a
+## resistência das peças calculada lá (as peças arrancadas chegam pelo evento "detach").
+func remote_hit(local: Vector3, dir: Vector3, severity: float, new_health: Dictionary) -> void:
+	if car == null:
+		return
+	_hit(local, dir, severity, car.global_transform * local, car.global_basis * -dir, true)
+	for piece_name in new_health:
+		if health.has(piece_name) and not detached.has(piece_name):
+			health[piece_name] = clampf(float(new_health[piece_name]), 0.0, 1.0)
+			part_damaged.emit(piece_name, health[piece_name])
+	_apply_to_car()
+
+
 ## Impacto no ponto `local` (espaço do carro) empurrando na direção `dir` (para dentro do carro).
-func _hit(local: Vector3, dir: Vector3, severity: float, world_pos: Vector3, normal: Vector3) -> void:
+## `remote`: só o visual (a resistência vem do servidor).
+func _hit(local: Vector3, dir: Vector3, severity: float, world_pos: Vector3, normal: Vector3, remote := false) -> void:
 	_spark_burst(world_pos, normal, int(6 + severity * 40), 12.0 + severity * 20.0)
 	if severity > 0.25:
 		_shard_burst(world_pos, normal, int(4 + severity * 20))
@@ -321,19 +337,22 @@ func _hit(local: Vector3, dir: Vector3, severity: float, world_pos: Vector3, nor
 		var dmg := severity * w * p.fragility
 		if p.copies.size() > 0 and severity * w > 0.02:
 			_dent(p, local, dir, clampf(0.025 + severity * 0.09, 0.0, 0.2) * w, 0.22 + 0.3 * minf(severity, 1.0))
-		if dmg <= 0.0:
+		if dmg <= 0.0 or remote:
 			continue
 		health[piece_name] = maxf(float(health[piece_name]) - dmg, 0.0)
 		part_damaged.emit(piece_name, health[piece_name])
 		if health[piece_name] <= 0.0 and p.detachable:
 			_detach(piece_name, dir * -1.0, severity)
 			any_detached = true
+	if remote:
+		return
 	var dw := clampf(1.0 - _distance_to_aabb(local, ENGINE_ZONE) / 0.8, 0.0, 1.0)
 	if dw > 0.0:
 		health["engine"] = maxf(float(health["engine"]) - severity * dw * 0.35, 0.0)
 	if any_detached and audio:
 		audio.play_shot("crack_%d" % randi_range(1, 2), local, 2.0, randf_range(0.9, 1.1))
 	_apply_to_car()
+	hit_applied.emit(local, dir, severity)
 
 
 ## Empurra os vértices perto do impacto (amassado com queda suave).

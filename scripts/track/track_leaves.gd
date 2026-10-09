@@ -119,6 +119,112 @@ func _add_lod(key: Vector2i, lod: int, count: int, buffer: PackedFloat32Array, m
 	add_child(mmi)
 
 
+## Tufo de folhas: miolo escuro (a copa não fica transparente entre as folhas) e folhas em losango
+## deitadas na superfície de um elipsoide (como escamas, levemente erguidas), com caimento aleatório.
+## `leaf_len` = comprimento da folha; `density` = folhas por m² de superfície.
+static func leaf_clump(mb: MeshBuilder, center: Vector3, radii: Vector3, color: Color, rng: RandomNumberGenerator,
+		leaf_len := 0.34, density := 6.0) -> void:
+	mb.blob(center, radii * 0.84, color.darkened(0.3), 7, 5)
+	# Área aproximada do elipsoide
+	var area := 4.0 * PI * pow((pow(radii.x * radii.y, 1.6) + pow(radii.x * radii.z, 1.6) + pow(radii.y * radii.z, 1.6)) / 3.0, 1.0 / 1.6)
+	var count := int(area * density)
+	for n in count:
+		var d := Vector3(rng.randf_range(-1, 1), rng.randf_range(-0.6, 1), rng.randf_range(-1, 1)).normalized()
+		var pos := center + d * radii * rng.randf_range(0.86, 1.04)
+		var outward := (d / radii).normalized()
+		var normal := (outward + Vector3(rng.randf_range(-0.3, 0.3), rng.randf_range(-0.1, 0.4), rng.randf_range(-0.3, 0.3))).normalized()
+		var t := normal.cross(Vector3.UP if absf(normal.y) < 0.95 else Vector3.RIGHT).normalized()
+		t = t.rotated(normal, rng.randf() * TAU)
+		var b := normal.cross(t)
+		var length := leaf_len * rng.randf_range(0.82, 1.18)
+		var width := length * 0.55
+		var tip := pos + t * length * 0.5
+		var back := pos - t * length * 0.5
+		var l := pos + b * width * 0.5
+		var rr := pos - b * width * 0.5
+		var col := color.lightened(rng.randf_range(-0.12, 0.15))
+		mb.tri_smooth(back, l, tip, outward, outward, outward, col)
+		mb.tri_smooth(back, tip, rr, outward, outward, outward, col)
+
+
+static var _city := {}
+
+
+## Árvores da cidade de Mônaco (perto), com copas de folhas soltas como as folhosas de Monza, por
+## espécie de TrackTrees: carvalho e bétula (copa redonda), arbusto (sem tronco), cipreste italiano
+## (coluna fina em chama), pinheiro (camadas em cone) e pinheiro-manso (copa em guarda-chuva sobre
+## o tronco inclinado). As coníferas usam verde-azulado (o shader as reconhece pela cor).
+static func city_tree_mesh(species: int) -> ArrayMesh:
+	if _city.has(species):
+		return _city[species]
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 900 + species
+	var mb := MeshBuilder.new()
+	var conifer := Color(0.1, 0.27, 0.2)
+	match species:
+		TrackTrees.Species.CYPRESS:
+			# Coluna em chama: tufos altos bem sobrepostos (silhueta contínua) afinando até a ponta
+			mb.cylinder(Transform3D(), 0.2, 0.14, 1.6, TRUNK, 6, false)
+			for k in 6:
+				var t := float(k) / 5.0
+				var r := lerpf(1.05, 0.34, pow(t, 1.4))
+				leaf_clump(mb, Vector3(rng.randf_range(-0.04, 0.04), 2.6 + t * 7.2, rng.randf_range(-0.04, 0.04)),
+					Vector3(r, 1.9 - t * 0.5, r), conifer.lightened(t * 0.05), rng, 0.3, 10.0)
+		TrackTrees.Species.PINE:
+			mb.cylinder(Transform3D(), 0.3, 0.16, 3.2, TRUNK, 6, false)
+			for k in 5:
+				var t := float(k) / 4.0
+				var r := lerpf(2.6, 0.7, t)
+				leaf_clump(mb, Vector3(0, 2.4 + t * 6.4, 0), Vector3(r, lerpf(0.9, 0.8, t), r), conifer.lightened(t * 0.05), rng, 0.26, 6.5)
+		TrackTrees.Species.STONE_PINE:
+			# Tronco inclinado que se abre em três galhos; copa larga e chata (guarda-chuva)
+			mb.cylinder(Transform3D(Basis(Vector3.FORWARD, 0.12)), 0.34, 0.24, 5.0, TRUNK, 7, false)
+			var top := Vector3(-0.6, 4.95, 0.0)
+			for k in 3:
+				var dir := Vector3(cos(k * 2.1 + 0.5), 0.0, sin(k * 2.1 + 0.5))
+				mb.cylinder(Transform3D(Basis(dir.cross(Vector3.UP).normalized(), deg_to_rad(38.0)), top), 0.16, 0.08, 2.8, TRUNK, 5, false)
+			var canopy := Color(0.2, 0.42, 0.32)
+			for k in 6:
+				var a := TAU * k / 6.0 + 0.3
+				leaf_clump(mb, top + Vector3(cos(a) * 2.2, 2.6 + rng.randf_range(-0.2, 0.3), sin(a) * 2.2),
+					Vector3(2.0, 0.85, 2.0), canopy.lightened(rng.randf_range(-0.03, 0.05)), rng, 0.3, 4.5)
+			leaf_clump(mb, top + Vector3(0, 3.1, 0), Vector3(2.3, 0.9, 2.3), canopy.lightened(0.05), rng, 0.3, 4.5)
+		TrackTrees.Species.BUSH:
+			var bush := Color(0.3, 0.56, 0.26)
+			for k in 4:
+				var a := TAU * k / 4.0 + 0.3
+				leaf_clump(mb, Vector3(cos(a) * 0.65, 0.75, sin(a) * 0.65), Vector3(0.9, 0.75, 0.9),
+					bush.lightened(rng.randf_range(-0.04, 0.06)), rng, 0.24, 8.0)
+			leaf_clump(mb, Vector3(0, 1.2, 0), Vector3(0.85, 0.75, 0.85), bush.lightened(0.06), rng, 0.24, 8.0)
+		TrackTrees.Species.BIRCH:
+			var y := 0.0
+			for k in 6:
+				var mark := Color(0.95, 0.94, 0.9) if k % 2 == 0 else Color(0.25, 0.24, 0.24)
+				var hgt := 1.1 if k % 2 == 0 else 0.18
+				mb.cylinder(Transform3D(Basis(), Vector3.UP * y), 0.17 - y * 0.012, 0.17 - (y + hgt) * 0.012, hgt, mark, 7, false)
+				y += hgt
+			var light := Color(0.42, 0.66, 0.28)
+			for c in [[Vector3(0.2, 5.4, 0.1), Vector3(1.6, 1.9, 1.6)], [Vector3(-0.8, 4.4, -0.4), Vector3(1.1, 1.2, 1.1)],
+					[Vector3(0.7, 4.0, 0.7), Vector3(1.0, 1.1, 1.0)]]:
+				leaf_clump(mb, c[0], c[1], light, rng, 0.3, 7.0)
+		_:
+			_city[species] = _leafy_mesh(true)
+			return _city[species]
+	_city[species] = mb.commit()
+	return _city[species]
+
+
+static var _leafy_material: ShaderMaterial
+
+
+## Material das árvores folhosas (folhas soltas dupla face, vento, cor do ambiente).
+static func leafy_material() -> ShaderMaterial:
+	if _leafy_material == null:
+		_leafy_material = ShaderMaterial.new()
+		_leafy_material.shader = load("res://shaders/track/tree_leafy.gdshader")
+	return _leafy_material
+
+
 ## Copa de folhas soltas (perto) ou bolhas simples (longe).
 static func _leafy_mesh(detailed: bool) -> ArrayMesh:
 	var rng := RandomNumberGenerator.new()

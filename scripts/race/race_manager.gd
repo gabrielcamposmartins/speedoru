@@ -90,9 +90,16 @@ var drs_rule := 0
 var quali: Qualifying
 ## Rede (cliente): race_time em que o tempo da classificatória acaba (0 = sem limite).
 var quali_end := 0.0
-## Rede (cliente): votação para recomeçar ({yes, needed, until, voters}; vazio = nenhuma) e o meu voto.
-var restart_vote := {}
-var my_restart_vote := false
+## Rede (cliente): votação aberta ({kind, yes, needed, until, voters}; vazio = nenhuma) e o meu voto.
+var vote_state := {}
+var my_vote := false
+## Rede (cliente): corrida pausada pelo servidor (votação) e quando retoma (race_time; < 0 = sem contagem).
+var net_paused := false
+var net_pause_max := 0.0
+var net_resume_at := -1.0
+var _pause_clock := 0.0
+
+const VOTE_NAMES := {"restart": "RECOMEÇAR A CORRIDA", "pause": "PAUSAR A CORRIDA", "resume": "RETOMAR A CORRIDA"}
 const DRS_GAP := 1.0
 ## Configuração da corrida em rede, definida antes de a cena entrar na árvore. Servidor:
 ## {laps, difficulty, bots, players: [{id, name, profile}]}; cliente: {me, roster, settings}.
@@ -390,6 +397,8 @@ func _spawn_bot(index: int, driver: Array, level: int) -> F1Car:
 	cfg.primary_color = team
 	cfg.secondary_color = Color.WHITE if team.get_luminance() < 0.7 else Color(0.12, 0.12, 0.16)
 	cfg.accent_color = Color.from_hsv(fposmod(team.h + 0.45, 1.0), 0.7, 0.95)
+	# Cada equipe com um esquema de pintura (os dois carros iguais)
+	cfg.paint_scheme = (index / 2 * 5 + 2) % CarConfig.PAINT_SCHEMES.size()
 	cfg.helmet_color = Color.from_hsv(randf(), 0.7, 0.95)
 	cfg.suit_color = team
 	cfg.rim_color = Color(0.12, 0.12, 0.15)
@@ -659,25 +668,39 @@ func _update_ghosts() -> void:
 ## si enquanto um deles está nos boxes (seguem fazendo fila e liberação segura); o jogador colide
 ## com todos normalmente.
 func _update_pit_ghosts() -> void:
-	for i in entries.size():
-		var a := entries[i]
-		if a.is_player or a.car == null:
+	# Saem os pares que já deixaram os boxes e se afastaram
+	for key in _pit_ghosts.keys():
+		var pair: Array = _pit_ghosts[key]
+		var a: RaceEntry = pair[0]
+		var b: RaceEntry = pair[1]
+		if a.car == null or b.car == null or _in_pit_area(a) or _in_pit_area(b):
 			continue
-		for j in range(i + 1, entries.size()):
-			var b := entries[j]
-			if b.is_player or b.car == null:
+		if a.car.global_position.distance_to(b.car.global_position) > 8.0:
+			if not _is_start_ghost(a, b):
+				a.car.remove_collision_exception_with(b.car)
+			_pit_ghosts.erase(key)
+	# Entram os pares de bots com um deles nos boxes, a menos de 40 m
+	var bots: Array[RaceEntry] = []
+	var in_pit: Array[bool] = []
+	for e in entries:
+		if not e.is_player and e.car != null:
+			bots.append(e)
+			in_pit.append(_in_pit_area(e))
+	for i in bots.size():
+		for j in range(i + 1, bots.size()):
+			if not (in_pit[i] or in_pit[j]):
 				continue
-			var key := "%d_%d" % [a.get_instance_id(), b.get_instance_id()]
-			var in_pit := _in_pit_area(a) or _in_pit_area(b)
-			var dist := a.car.global_position.distance_to(b.car.global_position)
-			if in_pit and dist < 40.0:
-				if not _pit_ghosts.has(key):
-					a.car.add_collision_exception_with(b.car)
-					_pit_ghosts[key] = [a, b]
-			elif _pit_ghosts.has(key) and not in_pit and dist > 8.0:
-				if not _is_start_ghost(a, b):
-					a.car.remove_collision_exception_with(b.car)
-				_pit_ghosts.erase(key)
+			var a := bots[i]
+			var b := bots[j]
+			if a.car.global_position.distance_squared_to(b.car.global_position) >= 1600.0:
+				continue
+			# Chave na mesma ordem sempre (a lista de entradas é reordenada pela posição)
+			var ia := a.get_instance_id()
+			var ib := b.get_instance_id()
+			var key := "%d_%d" % [mini(ia, ib), maxi(ia, ib)]
+			if not _pit_ghosts.has(key):
+				a.car.add_collision_exception_with(b.car)
+				_pit_ghosts[key] = [a, b]
 
 
 func _in_pit_area(e: RaceEntry) -> bool:
@@ -836,6 +859,26 @@ func _end_player_pit(e: RaceEntry) -> void:
 	_show_crew(e, false)
 	if control:
 		control.on_pit_done(e)
+
+
+## O jogador pode voltar aos boxes agora? (No cliente a decisão final é do servidor.)
+func can_return_to_pit() -> bool:
+	var e := player_entry
+	if e == null or e.retired or e.finished or e.in_pit_stop or (e.bot != null):
+		return false
+	if net == Net.CLIENT:
+		return state in [State.RACING, State.QUALIFYING, State.PRACTICE] and not net_paused
+	return control != null and control.can_return_to_pit(e)
+
+
+## Confirmado no popup: teletransporte para o box (veja RaceControl.return_to_pit).
+func return_to_pit() -> void:
+	if not can_return_to_pit():
+		return
+	if net == Net.CLIENT:
+		_net_cmd({"cmd": "go_to_pit"})
+	else:
+		control.return_to_pit(player_entry)
 
 
 ## Conserto no box. Na rede os clientes reconstroem o carro também (peças arrancadas voltam).
@@ -1066,11 +1109,9 @@ func final_classification() -> Array[RaceEntry]:
 func _unhandled_input(event: InputEvent) -> void:
 	if net == Net.SERVER:
 		return
-	if event.is_action_pressed("go_to_pit") and control and player_entry and control.is_involved(player_entry):
-		if net == Net.CLIENT:
-			_net_cmd({"cmd": "go_to_pit"})
-		else:
-			control.send_to_pit(player_entry)
+	# Select/K: voltar aos boxes, sempre com confirmação (o HUD pergunta e chama return_to_pit)
+	if event.is_action_pressed("go_to_pit") and can_return_to_pit() and hud:
+		hud.ask_return_to_pit()
 		get_viewport().set_input_as_handled()
 		return
 	if event.is_action_pressed("toggle_racing_line"):
@@ -1095,17 +1136,42 @@ func _unhandled_input(event: InputEvent) -> void:
 			_net_cmd({"cmd": "pit_compound", "value": chosen})
 
 
-## Rede (cliente): vota para recomeçar a corrida (ou retira o voto).
-func vote_restart(yes: bool) -> void:
+## Rede (cliente): vota numa votação ("restart", "pause", "resume"), ou retira o voto.
+func vote(kind: String, yes: bool) -> void:
 	if net != Net.CLIENT:
 		return
-	my_restart_vote = yes
-	_net_cmd({"cmd": "restart_vote", "yes": yes})
+	my_vote = yes
+	_net_cmd({"cmd": "vote", "kind": kind, "yes": yes})
 
 
-## Votação aberta para recomeçar: segundos que faltam (0 = nenhuma).
-func restart_vote_left() -> float:
-	return maxf(float(restart_vote.get("until", 0.0)) - race_time, 0.0) if not restart_vote.is_empty() else 0.0
+## Atalho de voto (sem abrir o menu): sim/retira na votação aberta; pausado e sem votação, abre a de
+## retomar. Devolve se fez algo.
+func vote_hotkey() -> bool:
+	if net != Net.CLIENT or state == State.FINISHED:
+		return false
+	if not vote_state.is_empty() and vote_left() > 0.0:
+		vote(str(vote_state["kind"]), not my_vote)
+		return true
+	if net_paused and net_resume_at < 0.0:
+		vote("resume", true)
+		return true
+	return false
+
+
+## Votação aberta: segundos que faltam (0 = nenhuma). Conta pelo relógio da pausa quando pausado.
+func vote_left() -> float:
+	return maxf(float(vote_state.get("until", 0.0)) - _vote_clock(), 0.0) if not vote_state.is_empty() else 0.0
+
+
+func _vote_clock() -> float:
+	return race_time + _pause_clock
+
+
+## Pausa: segundos até retomar sozinha (ou a contagem final, se já começou).
+func pause_left() -> float:
+	if net_resume_at >= 0.0:
+		return maxf(net_resume_at - _pause_clock, 0.0)
+	return maxf(net_pause_max - _pause_clock, 0.0)
 
 
 func _net_cmd(data: Dictionary) -> void:
@@ -1199,6 +1265,13 @@ func _build_net_grid() -> void:
 		if damage:
 			damage.part_detached.connect(func(piece: String) -> void:
 				net_event.emit({"event": "detach", "idx": e.index, "piece": piece}))
+			# Cada batida vai para todos: amassado no lugar certo e o dano no HUD de quem bateu
+			damage.hit_applied.connect(func(local: Vector3, dir: Vector3, severity: float) -> void:
+				var h := {}
+				for piece in damage.health:
+					h[piece] = snappedf(float(damage.health[piece]), 0.01)
+				net_event.emit({"event": "hit", "idx": e.index, "l": [local.x, local.y, local.z],
+					"d": [dir.x, dir.y, dir.z], "s": snappedf(severity, 0.001), "h": h}))
 	for a in entries:
 		for b in entries:
 			if a.is_player or b.is_player or a.get_instance_id() >= b.get_instance_id():
@@ -1411,7 +1484,9 @@ func _start_net_client() -> void:
 
 
 func _client_physics(delta: float) -> void:
-	if state == State.RACING or state == State.FINISHED:
+	if net_paused:
+		_pause_clock += delta
+	elif state == State.RACING or state == State.FINISHED:
 		race_time += delta
 	# Vácuo só para o visual (a física é do servidor)
 	Slipstream.update_all(_cars(), delta)
@@ -1518,6 +1593,15 @@ func apply_net_event(d: Dictionary) -> void:
 				var damage := roster[idx].car.get_node_or_null("Damage") as CarDamage
 				if damage:
 					damage.detach_piece(str(d.get("piece", "")))
+		"hit":
+			var hi := int(d.get("idx", -1))
+			var l: Array = d.get("l", [0, 0, 0])
+			var dv: Array = d.get("d", [0, 0, 1])
+			if hi >= 0 and hi < roster.size() and l.size() == 3 and dv.size() == 3:
+				var hd := roster[hi].car.get_node_or_null("Damage") as CarDamage
+				if hd:
+					hd.remote_hit(Vector3(l[0], l[1], l[2]), Vector3(dv[0], dv[1], dv[2]), float(d.get("s", 0.0)),
+						d.get("h", {}))
 		"repair":
 			var ri := int(d.get("idx", -1))
 			if ri >= 0 and ri < roster.size():
@@ -1533,20 +1617,31 @@ func apply_net_event(d: Dictionary) -> void:
 					"seconds": float(d.get("seconds", 10.0))}
 		"vote":
 			if bool(d.get("closed", false)):
-				restart_vote = {}
-				my_restart_vote = false
+				vote_state = {}
+				my_vote = false
 			else:
-				restart_vote = {"yes": int(d.get("yes", 0)), "needed": int(d.get("needed", 1)),
-					"until": race_time + float(d.get("left", 0.0)), "voters": d.get("voters", [])}
+				var opening := vote_state.is_empty()
+				vote_state = {"kind": str(d.get("kind", "restart")), "yes": int(d.get("yes", 0)), "needed": int(d.get("needed", 1)),
+					"until": _vote_clock() + float(d.get("left", 0.0)), "voters": d.get("voters", [])}
 				var n := get_node_or_null("/root/Net")
 				if n:
-					my_restart_vote = str(n.account.get("id", "")) in (d.get("ids", []) as Array)
-				if not my_restart_vote and player_entry:
-					_notify(player_entry, "VOTAÇÃO: RECOMEÇAR A CORRIDA", "%d/%d votos · abra o menu (Esc) para votar" % [
-						restart_vote["yes"], restart_vote["needed"]], false)
+					my_vote = str(n.account.get("id", "")) in (d.get("ids", []) as Array)
+				if opening and not my_vote and player_entry:
+					_notify(player_entry, "VOTAÇÃO: %s" % VOTE_NAMES.get(vote_state["kind"], ""), "%d/%d votos · %s vota sim" % [
+						vote_state["yes"], vote_state["needed"], RaceControl.key_label("vote_yes")], false)
+		"paused":
+			net_paused = bool(d.get("paused", false))
+			net_pause_max = float(d.get("max", 180.0))
+			net_resume_at = -1.0
+			_pause_clock = 0.0
+			if player_entry:
+				_notify(player_entry, "CORRIDA PAUSADA" if net_paused else "CORRIDA RETOMADA",
+					"Votação aprovada · %s vota para retomar" % RaceControl.key_label("vote_yes") if net_paused else "Valendo!", false)
+		"resuming":
+			net_resume_at = _pause_clock + float(d.get("in", 3.0))
 		"restarting":
-			restart_vote = {}
-			my_restart_vote = false
+			vote_state = {}
+			my_vote = false
 			if player_entry:
 				_notify(player_entry, "RECOMEÇANDO A CORRIDA", "Votação aprovada · carregando o grid de novo", false)
 		"give_back_end":

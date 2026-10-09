@@ -94,6 +94,13 @@ func reaction_time() -> float:
 	return randf_range(r.x, r.y)
 
 
+## Tráfego recalculado a cada TRAFFIC_EVERY passos de física (a 120 Hz, 60 vezes por segundo),
+## intercalado entre os bots; nos outros passos vale o último resultado.
+const TRAFFIC_EVERY := 2
+var _traffic_cache := Vector2(0.0, INF)
+var _traffic_phase := randi() % TRAFFIC_EVERY
+
+
 func _physics_process(delta: float) -> void:
 	if car == null or entry.retired:
 		return
@@ -169,8 +176,11 @@ func _physics_process(delta: float) -> void:
 		target_lateral = lerpf(target_lateral, _pit_lateral, _rejoin)
 	# --- Tráfego: ultrapassar, seguir ou desviar (também indo para o box, antes da entrada)
 	if mode == Mode.RACE or (mode == Mode.PIT_IN and not entry.in_pit):
-		_offset_target = 0.0
-		var traffic := _traffic(s, v, entry.lateral)
+		# Sob amarela, a cada passo (a regra de não ultrapassar é justa)
+		if (Engine.get_physics_frames() + _traffic_phase) % TRAFFIC_EVERY == 0 or _traffic_cache.y == INF or yellow:
+			_offset_target = 0.0
+			_traffic_cache = _traffic(s, v, entry.lateral)
+		var traffic := _traffic_cache
 		_offset_target = traffic.x
 		speed_target = minf(speed_target, traffic.y)
 		# Desvia mais rápido com alguém lado a lado

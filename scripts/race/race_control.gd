@@ -12,6 +12,8 @@ extends Node
 ##   segue a volta normalmente).
 ## * O safety car (e a bandeira amarela) dura no mínimo 30 s e só sai quando todos os carros
 ##   batidos já estão nos boxes (indo pela faixa, parados no box ou levados até ele).
+##   Só na última volta (do líder) é diferente: a amarela dura 10 s e termina mesmo com carro batido
+##   ainda indo para o box (se ela começou antes, contam 10 s a partir da última volta).
 ## * Sob amarela, para quem não está envolvido (fica a cargo do jogador; quem não segue é punido):
 ##   - não ultrapassar (a não ser quem está nos boxes ou envolvido) → o jogador tem 12 s para
 ##     devolver a posição; senão +10 s (bots: +10 s na hora);
@@ -26,6 +28,8 @@ const DEFAULT_LAP := 110.0
 const REPAIR_TIME := 6.0
 ## Duração mínima da bandeira amarela / safety car (s).
 const MIN_YELLOW := 30.0
+## Duração da amarela na última volta (s): sai depois disso, mesmo com carro batido na pista.
+const LAST_LAP_YELLOW := 10.0
 ## Ultrapassagem sob amarela sem devolver a posição.
 const YELLOW_PASS_PENALTY := 10.0
 
@@ -39,6 +43,8 @@ var involved := {}
 var mirror := false
 
 var _yellow_time := 0.0
+## Tempo de amarela já passado na última volta do líder.
+var _last_lap_time := 0.0
 var _mirror_min_left := 0.0
 var _sc_target := 0.0
 ## Progresso em que o safety car termina a volta (onde entrou + uma volta).
@@ -84,6 +90,7 @@ func report_crash(e: RaceEntry) -> void:
 func _start_yellow() -> void:
 	yellow = true
 	_yellow_time = 0.0
+	_last_lap_time = 0.0
 	_flagged.clear()
 	_order.clear()
 	var leader := _leader()
@@ -127,6 +134,36 @@ func send_to_pit(e: RaceEntry) -> void:
 	if not involved.has(e) or involved[e]["in_box"]:
 		return
 	involved[e]["in_box"] = true
+	_teleport_to_box(e)
+	if e.bot:
+		e.bot.force_pit_stop(REPAIR_TIME)
+	else:
+		manager.begin_player_pit(e, REPAIR_TIME)
+
+
+## O jogador pode voltar aos boxes agora (Select/K, depois da confirmação)? Na pista, sem estar
+## parado no box, nem fora da prova.
+func can_return_to_pit(e: RaceEntry) -> bool:
+	if e == null or e.bot or e.retired or e.finished or e.in_pit_stop:
+		return false
+	if involved.has(e):
+		return not involved[e]["in_box"]
+	return manager.state in [RaceManager.State.RACING, RaceManager.State.QUALIFYING, RaceManager.State.PRACTICE]
+
+
+## Volta aos boxes a pedido do jogador: batido, é o mesmo caminho da batida; senão teletransporte
+## para o box (a volta em andamento recomeça) e um pit stop normal (com conserto se houver dano).
+func return_to_pit(e: RaceEntry) -> void:
+	if not can_return_to_pit(e):
+		return
+	if involved.has(e):
+		send_to_pit(e)
+		return
+	_teleport_to_box(e)
+	manager.begin_player_pit(e, 0.0)
+
+
+func _teleport_to_box(e: RaceEntry) -> void:
 	var car := e.car
 	var box := manager.track.get_pit_box_transform(e.garage)
 	car.global_transform = box
@@ -149,10 +186,6 @@ func send_to_pit(e: RaceEntry) -> void:
 	var index := int(floor((e.progress + length) / RaceManager.CHECKPOINT))
 	if index < e.checkpoint_times.size():
 		e.checkpoint_times.resize(maxi(index + 1, 0))
-	if e.bot:
-		e.bot.force_pit_stop(REPAIR_TIME)
-	else:
-		manager.begin_player_pit(e, REPAIR_TIME)
 
 
 ## Fim de um pit stop (chamado pelo RaceManager): se era um envolvido, sai da lista.
@@ -192,8 +225,14 @@ func physics_update(delta: float) -> void:
 	var leader := _leader()
 	if safety_car and leader:
 		safety_car.advance(delta, leader.progress)
+	# Última volta: só 10 s, mesmo com carro batido ainda indo para o box
+	if last_lap():
+		_last_lap_time += delta
+		if _last_lap_time >= LAST_LAP_YELLOW:
+			_end_yellow()
+			return
 	# No mínimo 30 s, e até os carros batidos estarem nos boxes
-	if _yellow_time >= MIN_YELLOW and _wrecks_cleared():
+	elif _yellow_time >= MIN_YELLOW and _wrecks_cleared():
 		_end_yellow()
 		return
 	_check_rules(delta)
@@ -208,9 +247,25 @@ func _wrecks_cleared() -> bool:
 	return true
 
 
-## Segundos que faltam do mínimo da amarela (no cliente, o que veio do servidor).
+## Segundos que faltam do mínimo da amarela (no cliente, o que veio do servidor). Na última volta,
+## o que falta dos 10 s (a amarela termina então).
 func yellow_min_left() -> float:
-	return maxf(MIN_YELLOW - _yellow_time, 0.0) if not mirror else _mirror_min_left
+	if mirror:
+		return _mirror_min_left
+	if last_lap():
+		return maxf(LAST_LAP_YELLOW - _last_lap_time, 0.0)
+	return maxf(MIN_YELLOW - _yellow_time, 0.0)
+
+
+## O líder (de quem ainda corre) está na última volta da corrida.
+func last_lap() -> bool:
+	if manager.state != RaceManager.State.RACING:
+		return false
+	var best := 0
+	for e in manager.entries:
+		if not e.retired:
+			best = maxi(best, e.laps_completed())
+	return best >= manager.laps - 1
 
 
 func _subject(e: RaceEntry) -> bool:
@@ -282,7 +337,7 @@ func instruction_for(e: RaceEntry) -> Array:
 		return []
 	if involved.has(e) and not involved[e]["in_box"] and not e.in_pit_stop:
 		var t: float = involved[e]["time_left"]
-		return ["BATIDA", "Pressione %s para ir aos boxes ou vá sozinho %d:%02d" % [
+		return ["BATIDA", "Pressione %s para voltar aos boxes ou vá sozinho %d:%02d" % [
 			key_label("go_to_pit"), int(t) / 60, int(t) % 60], true]
 	if involved.has(e):
 		return ["BOXES", "Consertando o carro…", false]
@@ -300,6 +355,8 @@ func sc_left_text() -> String:
 	var left := yellow_min_left()
 	if left > 0.0:
 		return " · safety car sai em %d s" % ceili(left)
+	if not mirror and last_lap():
+		return ""
 	var waiting := 0
 	for e in involved:
 		if not (involved[e]["in_box"] or e.in_pit or e.in_pit_stop):

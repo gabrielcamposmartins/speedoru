@@ -2,6 +2,7 @@ class_name SteeringDisplay
 extends Control
 ## Face do volante (desenhada num SubViewport e aplicada sobre o volante 3D):
 ## luzes de troca de marcha, marcha, velocidade, balanço de freio, DRS, TC, composto e botões.
+## Redesenhada pelo CarOnboard (só quando aparece na câmera, e a no máximo 30 Hz).
 
 const LED_COUNT := 15
 const GREEN := Color("3dff6e")
@@ -12,10 +13,6 @@ const YELLOW := Color("ffd21f")
 const DIM := Color(1, 1, 1, 0.12)
 
 var car: F1Car
-
-
-func _process(_delta: float) -> void:
-	queue_redraw()
 
 
 func _draw() -> void:

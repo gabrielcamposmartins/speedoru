@@ -5,7 +5,8 @@ extends MeshInstance3D
 ##    até sumir por idade (`lifetime`) ou excesso (`max_points`). A malha só é refeita quando muda.
 ##  * BILLBOARD: fita virada para a câmera (rastro de luz), refeita todo quadro.
 ## Cada `stop()` encerra o traço atual; o próximo `add_point()` começa outro (sem ligar os dois).
-## Fica em coordenadas de mundo (top_level).
+## Fica em coordenadas de mundo (top_level). A malha é um ArrayMesh montado de uma vez com arrays
+## compactos (dois vértices por ponto); sem pontos, não faz nada.
 
 enum Mode { GROUND, BILLBOARD }
 
@@ -23,7 +24,9 @@ var taper := false
 var _points: Array = []  # [posição, normal, lateral, tempo, novo traço?]
 var _time := 0.0
 var _dirty := false
-var _mesh := ImmediateMesh.new()
+var _mesh := ArrayMesh.new()
+## Marcas no chão: refaz para o desbotamento a cada tantos quadros.
+const FADE_FRAMES := 45
 var _break := true
 
 
@@ -58,56 +61,69 @@ func clear() -> void:
 
 func _process(delta: float) -> void:
 	_time += delta
+	if _points.is_empty():
+		if _dirty:
+			_mesh.clear_surfaces()
+			_dirty = false
+		return
 	var removed := false
 	while not _points.is_empty() and _time - float(_points[0][3]) > lifetime:
 		_points.pop_front()
 		removed = true
 	# Marcas no chão: só refaz quando muda ou de tempos em tempos para o desbotamento
-	if mode == Mode.BILLBOARD or _dirty or removed or (Engine.get_process_frames() % 20 == 0 and not _points.is_empty()):
+	if mode == Mode.BILLBOARD or _dirty or removed or (Engine.get_process_frames() + get_instance_id()) % FADE_FRAMES == 0:
 		_rebuild()
 		_dirty = false
 
 
 func _rebuild() -> void:
 	_mesh.clear_surfaces()
-	if _points.size() < 2:
+	var n := _points.size()
+	if n < 2:
 		return
 	var cam := get_viewport().get_camera_3d()
 	var cam_pos := cam.global_position if cam else Vector3.ZERO
-	var verts: Array = []
-	var n := _points.size()
-	for k in range(1, n):
-		var b: Array = _points[k]
-		if b[4]:
-			continue  # começo de um traço novo: não liga ao anterior
-		var a: Array = _points[k - 1]
-		var pa: Vector3 = a[0]
-		var pb: Vector3 = b[0]
-		var sa: Vector3 = a[2]
-		var sb: Vector3 = b[2]
+	var verts := PackedVector3Array()
+	var normals := PackedVector3Array()
+	var colors := PackedColorArray()
+	var uvs := PackedVector2Array()
+	var index := PackedInt32Array()
+	verts.resize(n * 2)
+	normals.resize(n * 2)
+	colors.resize(n * 2)
+	uvs.resize(n * 2)
+	for k in n:
+		var p: Array = _points[k]
+		var pos: Vector3 = p[0]
+		var side: Vector3 = p[2]
 		if mode == Mode.BILLBOARD:
-			var dir := (pb - pa).normalized()
-			sa = dir.cross(cam_pos - pa).normalized()
-			sb = dir.cross(cam_pos - pb).normalized()
-		var ca := _color_at(float(a[3]), k - 1)
-		var cb := _color_at(float(b[3]), k)
-		var wa := width * ((0.25 + 0.75 * float(k - 1) / n) if taper else 1.0)
-		var wb := width * ((0.25 + 0.75 * float(k) / n) if taper else 1.0)
-		var a0 := pa - sa * wa * 0.5
-		var a1 := pa + sa * wa * 0.5
-		var b0 := pb - sb * wb * 0.5
-		var b1 := pb + sb * wb * 0.5
-		verts.append_array([[a0, ca, 0.0, a[1]], [b0, cb, 0.0, b[1]], [b1, cb, 1.0, b[1]],
-			[a0, ca, 0.0, a[1]], [b1, cb, 1.0, b[1]], [a1, ca, 1.0, a[1]]])
-	if verts.is_empty():
+			# Fita virada para a câmera, na direção do traço naquele ponto
+			var dir := ((_points[mini(k + 1, n - 1)][0] as Vector3) - (_points[maxi(k - 1, 0)][0] as Vector3)).normalized()
+			side = dir.cross(cam_pos - pos).normalized()
+		var w := width * ((0.25 + 0.75 * float(k) / n) if taper else 1.0) * 0.5
+		var c := _color_at(float(p[3]), k)
+		verts[k * 2] = pos - side * w
+		verts[k * 2 + 1] = pos + side * w
+		normals[k * 2] = p[1]
+		normals[k * 2 + 1] = p[1]
+		colors[k * 2] = c
+		colors[k * 2 + 1] = c
+		uvs[k * 2] = Vector2(0.0, 0.0)
+		uvs[k * 2 + 1] = Vector2(1.0, 0.0)
+		# Liga ao ponto anterior, a não ser no começo de um traço novo
+		if k > 0 and not p[4]:
+			var a := (k - 1) * 2
+			index.append_array([a, a + 2, a + 3, a, a + 3, a + 1])
+	if index.is_empty():
 		return
-	_mesh.surface_begin(Mesh.PRIMITIVE_TRIANGLES)
-	for v in verts:
-		_mesh.surface_set_color(v[1])
-		_mesh.surface_set_uv(Vector2(v[2], 0.0))
-		_mesh.surface_set_normal(v[3])
-		_mesh.surface_add_vertex(v[0])
-	_mesh.surface_end()
+	var arrays := []
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX] = verts
+	arrays[Mesh.ARRAY_NORMAL] = normals
+	arrays[Mesh.ARRAY_COLOR] = colors
+	arrays[Mesh.ARRAY_TEX_UV] = uvs
+	arrays[Mesh.ARRAY_INDEX] = index
+	_mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
 
 
 func _color_at(born: float, index: int) -> Color:

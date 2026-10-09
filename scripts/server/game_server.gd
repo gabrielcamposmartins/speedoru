@@ -291,7 +291,7 @@ func _hello(peer: int, data: Dictionary) -> void:
 func _account_payload(s: Dictionary) -> Dictionary:
 	var acc: Dictionary = s["account"]
 	var counters: Dictionary = acc["counters"].duplicate()
-	counters["items"] = s["profile"].owned.size()
+	counters["items"] = ShopCatalog.count_collectible(s["profile"].owned.keys())
 	var prog := Progression.level_progress(counters)
 	return {
 		"id": acc["id"], "name": acc["name"], "code": NetProtocol.format_code(acc["friend_code"]),
@@ -327,7 +327,7 @@ func _set_title(peer: int, data: Dictionary) -> void:
 	var s := _session(peer)
 	var title := str(data.get("title", ""))
 	var counters: Dictionary = s["account"]["counters"].duplicate()
-	counters["items"] = s["profile"].owned.size()
+	counters["items"] = ShopCatalog.count_collectible(s["profile"].owned.keys())
 	# O servidor recusa um título que as conquistas da conta não sustentam
 	if title != "" and not title in Progression.unlocked_titles(counters):
 		_error(peer, data, "Você ainda não conquistou esse título.")
@@ -383,7 +383,7 @@ func _solo_result(peer: int, data: Dictionary) -> void:
 	if best > 0.0 and best < min_lap:
 		problems.append("volta impossível")
 	var cc := counters.duplicate()
-	cc["items"] = s["profile"].owned.size()
+	cc["items"] = ShopCatalog.count_collectible(s["profile"].owned.keys())
 	if not Progression.tier_unlocked(difficulty, Progression.level_of(cc)):
 		problems.append("dificuldade bloqueada para o seu nível")
 	if not problems.is_empty():
@@ -1026,7 +1026,7 @@ func _profile_of(peer: int, data: Dictionary) -> void:
 		_error(peer, data, "Perfil não encontrado.")
 		return
 	var counters: Dictionary = acc["counters"].duplicate()
-	counters["items"] = (acc["profile"].get("owned", []) as Array).size()
+	counters["items"] = ShopCatalog.count_collectible(acc["profile"].get("owned", []) as Array)
 	var history: Array = await store.recent_matches(id, NetProtocol.TRAITS_WINDOW)
 	var prog := Progression.level_progress(counters)
 	var payload := {

@@ -13,6 +13,21 @@ const COMPOUND_COLORS := [
 ## Multiplicador do atrito dos pneus (wheel_friction_slip) por composto.
 const COMPOUND_GRIP := [1.06, 1.0, 0.95, 0.85, 0.78]
 const PAINT_FINISHES := ["Brilhante", "Metálico", "Perolado", "Acetinado", "Fosco", "Cromado"]
+## Esquemas de pintura: como as 3 cores se dividem pela carroceria (shader car_paint). [nome, explicação]
+const PAINT_SCHEMES := [
+	["Clássico", "As cores nas peças como o carro foi desenhado."],
+	["Dois tons", "Cor 1 em cima, cor 2 embaixo e um filete da cor 3 na divisão."],
+	["Faixas de corrida", "Duas faixas largas da cor 2 de ponta a ponta, contornadas na cor 3."],
+	["Diagonal", "Frente na cor 1 e traseira na cor 2, cortadas na diagonal por uma faixa da cor 3."],
+	["Flechas", "Chevrons da cor 2 apontando para a frente, com borda da cor 3."],
+	["Degradê", "A cor 1 vira a cor 2 da frente para trás; a base do carro na cor 3."],
+	["Metades", "Lado esquerdo na cor 1, direito na cor 2 e uma faixa central da cor 3."],
+	["Relâmpago", "Divisão em zigue-zague pela lateral, com filete da cor 3."],
+	["Ondas", "A cor 2 sobe em onda pela lateral, com uma segunda onda fina da cor 3."],
+	["Camuflagem", "Manchas nas três cores pelo carro inteiro."],
+	["Pontas", "Corpo na cor 1; bico, asa dianteira e asa traseira na cor 2, divididos pela cor 3."],
+	["Faixa lateral", "Uma faixa larga da cor 2 nas laterais, com filetes da cor 3."],
+]
 const RIM_FINISHES := ["Polido", "Cromado", "Acetinado", "Fosco"]
 
 @export var car_name := "Protótipo":
@@ -64,6 +79,12 @@ const RIM_FINISHES := ["Polido", "Cromado", "Acetinado", "Fosco"]
 @export var boost_color := Color("38f2ff"):
 	set(value):
 		boost_color = value
+		emit_changed()
+
+## Esquema de divisão das 3 cores (ver PAINT_SCHEMES).
+@export var paint_scheme := 0:
+	set(value):
+		paint_scheme = value
 		emit_changed()
 
 ## Acabamento da pintura (ver PAINT_FINISHES) e das rodas (RIM_FINISHES).

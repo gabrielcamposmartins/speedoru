@@ -1,5 +1,5 @@
 """
-Gerador procedural do carro de Fórmula 1 do F1 Gatcha (escala real, metros).
+Gerador procedural do carro de Fórmula 1 do Speedoru (escala real, metros).
 
 Uso (a partir da raiz do projeto):
     blender -b -P blender/build_f1_car.py              # gera .glb + .blend + renders
@@ -430,6 +430,133 @@ def lathe(profile, segments=48, a0=0.0, a1=2 * math.pi):
     return skin(rings, cap0=not full, cap1=not full, wrap=full)
 
 
+def blade(th0, th1, r0, r1, a0, a1, w):
+    """Pá de roda no plano YZ: barra de (r0, th0) até (r1, th1), entre a0 e a1 no eixo X."""
+    pa = Vector((0, r0 * math.cos(th0), r0 * math.sin(th0)))
+    pb = Vector((0, r1 * math.cos(th1), r1 * math.sin(th1)))
+    d = (pb - pa).normalized()
+    perp = Vector((0, -d.z, d.y))
+    verts = []
+    for a in (a0, a1):
+        for c in (pa, pb):
+            for sgn in (-1, 1):
+                verts.append(Vector((a, 0, 0)) + c + perp * (sgn * w / 2))
+    faces = [[0, 1, 3, 2], [4, 6, 7, 5], [0, 4, 5, 1], [2, 3, 7, 6], [0, 2, 6, 4], [1, 5, 7, 3]]
+    return verts, faces
+
+
+BOX_FACES = [[0, 1, 3, 2], [4, 6, 7, 5], [0, 4, 5, 1], [2, 3, 7, 6], [0, 2, 6, 4], [1, 5, 7, 3]]
+
+
+def V3(x, s, z):
+    """Direção em coordenadas de carro -> Blender."""
+    return Vector((x, -s, z))
+
+
+def obox(c, u, v, hu, hv, hn):
+    """Caixa orientada: centro c (x, s, z de carro), eixos u e v (direções de carro), n = u x v."""
+    C = P(*c)
+    U = V3(*u).normalized()
+    Vv = V3(*v).normalized()
+    N = U.cross(Vv).normalized()
+    Vv = N.cross(U).normalized()
+    verts = [C + U * (du * hu) + Vv * (dv * hv) + N * (dn * hn)
+             for dn in (-1, 1) for dv in (-1, 1) for du in (-1, 1)]
+    return verts, BOX_FACES
+
+
+def cone(p1, p2, r1, r2=0.002, sides=8):
+    """Cone (chifre, espinho, garra) de p1 (base) até p2 (ponta)."""
+    a, b = P(*p1), P(*p2)
+    d = (b - a).normalized()
+    ref = Vector((0, 0, 1)) if abs(d.z) < 0.9 else Vector((1, 0, 0))
+    u = d.cross(ref).normalized()
+    w = u.cross(d).normalized()
+    rings = []
+    for c, r in ((a, r1), (b, r2)):
+        rings.append([c + u * (r * math.cos(2 * math.pi * i / sides)) + w * (r * math.sin(2 * math.pi * i / sides))
+                      for i in range(sides)])
+    return skin(rings)
+
+
+def thick_patch(grid, th):
+    """Membrana com espessura: grade de pontos (x, s, z de carro) [linhas][colunas]; a face de baixo
+    fica `th` abaixo."""
+    rows, cols = len(grid), len(grid[0])
+    top = [P(*pt) for r in grid for pt in r]
+    bot = [v - Vector((0, 0, th)) for v in top]
+    n = len(top)
+    verts = top + bot
+    faces = []
+    for i in range(rows - 1):
+        for j in range(cols - 1):
+            a = i * cols + j
+            faces.append([a, a + 1, a + cols + 1, a + cols])
+            faces.append([n + a + cols, n + a + cols + 1, n + a + 1, n + a])
+    border = ([(0, j) for j in range(cols)] + [(i, cols - 1) for i in range(1, rows)]
+              + [(rows - 1, j) for j in range(cols - 2, -1, -1)] + [(i, 0) for i in range(rows - 2, 0, -1)])
+    idx = [i * cols + j for i, j in border]
+    for k in range(len(idx)):
+        a, b = idx[k], idx[(k + 1) % len(idx)]
+        faces.append([a, b, n + b, n + a])
+    return verts, faces
+
+
+def bezier(p0, p1, p2, t):
+    return tuple((1 - t) ** 2 * a + 2 * (1 - t) * t * b + t * t * c for a, b, c in zip(p0, p1, p2))
+
+
+def sec_at(secs, s):
+    """Seção interpolada (linear) de um loft na posição s (seções da frente para trás)."""
+    for a, b in zip(secs, secs[1:]):
+        if b["s"] <= s <= a["s"]:
+            t = (a["s"] - s) / max(a["s"] - b["s"], 1e-6)
+            return {k: a[k] + (b[k] - a[k]) * t for k in SEC_KEYS}
+    return None
+
+
+def loft_top(secs, x, s):
+    """Altura do topo de um loft de superelipses no ponto (x, s), ou None fora dele."""
+    d = sec_at(secs, s)
+    if d is None:
+        return None
+    t = (x - d["cx"]) / max(d["hw"], 1e-6)
+    if abs(t) >= 0.98:
+        return None
+    zm = (d["zb"] + d["zt"]) * 0.5
+    e = d["nt"]
+    return zm + (d["zt"] - zm) * (1.0 - abs(t) ** e) ** (1.0 / e)
+
+
+def add_scales(b, zfn, xs, ss, size, mats, mirror=False, lift=0.35):
+    """Escamas em losango, sobrepostas como telhas (a borda de trás levanta), sobre a superfície z(x, s)."""
+    for row, s0 in enumerate(ss):
+        for col, x0 in enumerate(xs):
+            x = x0 + (size * 0.5 if row % 2 else 0.0)
+            z = zfn(x, s0)
+            if z is None:
+                continue
+            zs = zfn(x, s0 + 0.01)
+            zx = zfn(x + 0.01, s0)
+            dzds = ((zs - z) / 0.01) if zs is not None else 0.0
+            dzdx = ((zx - z) / 0.01) if zx is not None else 0.0
+            u = Vector((1.0, 0.0, dzdx)).normalized()
+            v = Vector((0.0, 1.0, dzds - lift)).normalized()
+            du = (u + v).normalized()
+            dv = (v - u).normalized()
+            b.add(obox((x, s0, z + 0.006), tuple(du), tuple(dv), size * 0.42, size * 0.42, 0.004),
+                  mats[(row + col) % len(mats)], mirror=mirror)
+
+
+def lerp_profile(points, s):
+    """Interpola linearmente z num perfil [(s, z), ...] ordenado da frente para trás."""
+    for (s0, z0), (s1, z1) in zip(points, points[1:]):
+        if s1 <= s <= s0:
+            t = (s0 - s) / max(s0 - s1, 1e-6)
+            return z0 + (z1 - z0) * t
+    return points[0][1] if s > points[0][0] else points[-1][1]
+
+
 def radial_box(theta, r0, r1, a0, a1, w0, w1):
     """Caixa radial (raio de roda) no plano YZ, entre os raios r0 e r1."""
     d = Vector((0, math.cos(theta), math.sin(theta)))
@@ -553,7 +680,79 @@ def build_chassis(col):
 
 def build_nose(col, variant):
     b = Builder("Nose_" + variant)
-    if variant == "pointed":
+    if variant == "duckbill":
+        # Bico de pato: ponta larga e chata, rente à asa, com duas "narinas" de refrigeração
+        secs = [S(2.87, 0.15, 0.10, 0.15, nt=3.5, nb=3.5),
+                S(2.78, 0.165, 0.10, 0.19, nt=3.5, nb=3.5),
+                S(2.50, 0.16, 0.12, 0.28, nt=3.0, nb=3.5),
+                S(2.20, 0.165, 0.15, 0.39, nt=2.8, nb=3.5),
+                S(1.90, 0.185, 0.19, 0.50, nt=2.6, nb=3.0),
+                S(1.58, 0.205, 0.23, 0.565, nt=2.6, nb=3.0)]
+        b.add(box(0.07, 2.60, 0.262, 0.028, 0.05, 0.012), "Interior", mirror=True)
+    elif variant == "shark":
+        # Tubarão: agulha longa e baixa com canards (barbatanas) dos dois lados
+        secs = [S(3.05, 0.018, 0.15, 0.175, nt=2.0, nb=2.0),
+                S(2.90, 0.05, 0.13, 0.23, nt=2.2, nb=2.4),
+                S(2.55, 0.095, 0.13, 0.33, nt=2.3, nb=2.8),
+                S(2.20, 0.135, 0.15, 0.42, nt=2.5, nb=3.0),
+                S(1.90, 0.18, 0.19, 0.50, nt=2.6, nb=3.0),
+                S(1.58, 0.205, 0.23, 0.565, nt=2.6, nb=3.0)]
+        b.add(slab([(0.11, 2.32), (0.31, 2.17), (0.32, 2.13), (0.11, 2.10)], 0.352, 0.366), "Livery_Accent", mirror=True)
+        b.add(slab([(0.14, 2.00), (0.27, 1.90), (0.28, 1.87), (0.14, 1.84)], 0.402, 0.414), "Livery_Accent", mirror=True)
+    elif variant == "hammer":
+        # Tubarão-martelo: bico curto que termina numa barra larga com "olhos" nas pontas
+        secs = [S(2.80, 0.07, 0.11, 0.20, nt=2.4, nb=2.6),
+                S(2.62, 0.115, 0.11, 0.27, nt=2.5, nb=3.0),
+                S(2.30, 0.15, 0.14, 0.38, nt=2.6, nb=3.2),
+                S(1.90, 0.185, 0.19, 0.50, nt=2.6, nb=3.0),
+                S(1.58, 0.205, 0.23, 0.565, nt=2.6, nb=3.0)]
+        b.add(ellipsoid(0.0, 2.80, 0.155, 0.36, 0.075, 0.045, n=24, rows=10), "Livery_Accent")
+        b.add(ellipsoid(0.345, 2.80, 0.155, 0.032, 0.04, 0.032, n=12, rows=6), "Interior", mirror=True)
+    elif variant == "dragon_snout":
+        # Focinho de dragão: escamas no topo, chifres, narinas e dentes na ponta
+        secs = [S(2.84, 0.06, 0.11, 0.21, nt=2.2, nb=2.6),
+                S(2.72, 0.11, 0.11, 0.27, nt=2.4, nb=3.0),
+                S(2.45, 0.145, 0.12, 0.35, nt=2.6, nb=3.4),
+                S(2.15, 0.17, 0.15, 0.44, nt=2.6, nb=3.4),
+                S(1.90, 0.19, 0.19, 0.51, nt=2.6, nb=3.0),
+                S(1.58, 0.205, 0.23, 0.565, nt=2.6, nb=3.0)]
+        add_scales(b, lambda x, s0: loft_top(secs, x, s0), [-0.10, -0.03, 0.04, 0.11],
+                   [2.55, 2.45, 2.35, 2.25, 2.15, 2.05, 1.95, 1.85, 1.75], 0.075,
+                   ["Livery_Primary", "Livery_Secondary"])
+        b.add(cone((0.10, 1.92, 0.49), (0.19, 1.62, 0.70), 0.035), "Livery_Accent", mirror=True)
+        b.add(box(0.045, 2.74, 0.255, 0.02, 0.03, 0.012), "Interior", mirror=True)
+        for k in range(3):
+            b.add(cone((0.035 + 0.025 * k, 2.78 - 0.04 * k, 0.12), (0.037 + 0.025 * k, 2.79 - 0.04 * k, 0.085),
+                       0.011, sides=6), "Metal", mirror=True)
+    elif variant == "drill":
+        # Broca: cone liso com uma rosca em espiral até a ponta
+        secs = [S(3.00, 0.012, 0.165, 0.18, nt=2.0, nb=2.0),
+                S(2.80, 0.06, 0.13, 0.24, nt=2.0, nb=2.0),
+                S(2.50, 0.11, 0.12, 0.33, nt=2.1, nb=2.2),
+                S(2.15, 0.15, 0.15, 0.43, nt=2.3, nb=2.6),
+                S(1.90, 0.18, 0.19, 0.50, nt=2.6, nb=3.0),
+                S(1.58, 0.205, 0.23, 0.565, nt=2.6, nb=3.0)]
+        helix = []
+        for i in range(81):
+            t = i / 80
+            s0 = 2.0 + 0.95 * t
+            d = sec_at(secs, s0)
+            zm = (d["zb"] + d["zt"]) * 0.5
+            th = t * 2 * math.pi * 5
+            helix.append((d["hw"] * math.cos(th) * 1.02, s0, zm + (d["zt"] - zm) * math.sin(th) * 1.02))
+        b.add(tube(helix, 0.011, sides=6, sub=1), "Livery_Accent")
+    elif variant == "tusks":
+        # Presas: bico padrão com duas presas curvas saindo dos lados
+        secs = [S(2.81, 0.04, 0.12, 0.19, nt=2.0, nb=2.2),
+                S(2.72, 0.095, 0.11, 0.25, nt=2.3, nb=3.0),
+                S(2.45, 0.135, 0.12, 0.33, nt=2.5, nb=3.5),
+                S(2.15, 0.16, 0.15, 0.42, nt=2.6, nb=3.5),
+                S(1.90, 0.185, 0.19, 0.50, nt=2.6, nb=3.0),
+                S(1.58, 0.205, 0.23, 0.565, nt=2.6, nb=3.0)]
+        b.add(tube([(0.14, 2.05, 0.32), (0.22, 2.40, 0.25), (0.27, 2.75, 0.27), (0.24, 2.98, 0.35)], 0.024,
+                   sides=10, sub=5), "Livery_Secondary", mirror=True)
+        b.add(cone((0.24, 2.98, 0.35), (0.19, 3.08, 0.45), 0.024), "Livery_Secondary", mirror=True)
+    elif variant == "pointed":
         secs = [S(2.92, 0.025, 0.125, 0.17, nt=2.0, nb=2.0),
                 S(2.80, 0.065, 0.115, 0.23, nt=2.2, nb=2.5),
                 S(2.50, 0.11, 0.12, 0.32, nt=2.4, nb=3.0),
@@ -580,11 +779,47 @@ def front_wing_elements(variant):
             W(0.60, 2.81, 0.075, 0.40, 5, t=0.07, m=0.05),
             W(0.90, 2.72, 0.070, 0.34, 7, t=0.07, m=0.05),
             W(0.97, 2.69, 0.070, 0.32, 7, t=0.07, m=0.05)]
+    if variant == "gull":
+        # Gaivota: o plano principal sobe em arco no meio (por baixo do bico)
+        main = [W(0.00, 2.88, 0.170, 0.42, 0, t=0.07, m=0.04),
+                W(0.18, 2.87, 0.150, 0.43, 2, t=0.07, m=0.04),
+                W(0.40, 2.85, 0.100, 0.43, 4, t=0.07, m=0.05),
+                W(0.65, 2.80, 0.075, 0.40, 6, t=0.07, m=0.05),
+                W(0.90, 2.72, 0.070, 0.34, 8, t=0.07, m=0.05),
+                W(0.97, 2.69, 0.070, 0.32, 8, t=0.07, m=0.05)]
+    if variant == "delta":
+        # Delta: bordo de ataque bem varrido para trás, corda grande no meio
+        main = [W(0.00, 2.92, 0.090, 0.50, 3, t=0.07, m=0.04),
+                W(0.40, 2.80, 0.085, 0.42, 5, t=0.07, m=0.05),
+                W(0.75, 2.62, 0.080, 0.32, 7, t=0.07, m=0.05),
+                W(0.97, 2.48, 0.080, 0.24, 8, t=0.07, m=0.05)]
     if variant == "lowdf":
         main = [dict(st, a=st["a"] - 2) for st in main]
         flaps = [
             [W(0.16, 2.48, 0.110, 0.13, 10), W(0.5, 2.47, 0.118, 0.14, 13), W(0.97, 2.44, 0.135, 0.15, 15)],
             [W(0.20, 2.37, 0.140, 0.11, 18), W(0.5, 2.35, 0.150, 0.12, 22), W(0.97, 2.32, 0.175, 0.13, 25)],
+        ]
+    elif variant == "biplane":
+        # Biplano: um flap embaixo; o segundo plano inteiro fica em cima (build_front_wing)
+        flaps = [
+            [W(0.16, 2.48, 0.115, 0.13, 14), W(0.5, 2.47, 0.125, 0.15, 18), W(0.97, 2.47, 0.150, 0.17, 22)],
+        ]
+    elif variant == "delta":
+        flaps = [
+            [W(0.16, 2.46, 0.115, 0.13, 14), W(0.5, 2.36, 0.130, 0.13, 18), W(0.90, 2.33, 0.150, 0.12, 22)],
+            [W(0.20, 2.35, 0.155, 0.11, 26), W(0.5, 2.26, 0.175, 0.11, 30), W(0.85, 2.24, 0.200, 0.10, 34)],
+        ]
+    elif variant == "bat":
+        flaps = [
+            [W(0.16, 2.48, 0.115, 0.13, 14), W(0.5, 2.47, 0.125, 0.15, 18), W(0.97, 2.47, 0.150, 0.17, 22)],
+            [W(0.20, 2.37, 0.155, 0.12, 26), W(0.5, 2.35, 0.175, 0.13, 30), W(0.97, 2.36, 0.210, 0.15, 34)],
+        ]
+    elif variant == "gull":
+        # Pontas dos flaps viradas para cima
+        flaps = [
+            [W(0.16, 2.48, 0.115, 0.13, 14), W(0.6, 2.47, 0.130, 0.15, 18), W(0.97, 2.47, 0.185, 0.17, 24)],
+            [W(0.20, 2.37, 0.155, 0.12, 26), W(0.6, 2.35, 0.185, 0.13, 30), W(0.97, 2.36, 0.255, 0.15, 38)],
+            [W(0.24, 2.27, 0.220, 0.10, 38), W(0.6, 2.26, 0.255, 0.11, 44), W(0.97, 2.27, 0.340, 0.12, 52)],
         ]
     else:
         flaps = [
@@ -603,13 +838,49 @@ def build_front_wing(col, variant):
     b = Builder("FrontWing_" + variant)
     for stations, symmetric, mat in front_wing_elements(variant):
         b.add(wing(stations, n=10, sub=3, symmetric=symmetric), paint_wing(mat), mirror=not symmetric)
+    if variant == "biplane":
+        # Plano de cima (biplano), montantes e placas laterais altas que seguram os dois
+        upper = [W(0.0, 2.74, 0.300, 0.20, 4, t=0.08, m=0.04), W(0.5, 2.74, 0.300, 0.20, 5, t=0.08, m=0.04),
+                 W(0.97, 2.72, 0.310, 0.19, 6, t=0.08, m=0.04)]
+        b.add(wing(upper, n=10, sub=3, symmetric=True), paint_wing("Livery_Secondary"))
+        for x in (0.30, 0.62):
+            b.add(rod((x, 2.64, 0.10), (x, 2.63, 0.30), 0.012, sides=8, flat=0.4), "Carbon", mirror=True)
     if variant == "lowdf":
         endplate = [(2.71, 0.05), (2.72, 0.12), (2.50, 0.18), (2.30, 0.24), (2.20, 0.25),
                     (2.20, 0.18), (2.35, 0.12), (2.45, 0.05)]
+    elif variant == "biplane":
+        endplate = [(2.75, 0.05), (2.77, 0.33), (2.50, 0.345), (2.30, 0.34), (2.20, 0.34),
+                    (2.19, 0.27), (2.30, 0.18), (2.45, 0.05)]
+    elif variant == "gull":
+        endplate = [(2.71, 0.05), (2.74, 0.15), (2.58, 0.27), (2.40, 0.37), (2.22, 0.41),
+                    (2.18, 0.33), (2.30, 0.18), (2.45, 0.05)]
+    elif variant == "bat":
+        # Morcego: placa grande recortada com três pontas, como a ponta de uma asa de morcego
+        endplate = [(2.75, 0.05), (2.80, 0.16), (2.64, 0.24), (2.72, 0.38), (2.50, 0.30), (2.52, 0.46),
+                    (2.32, 0.34), (2.26, 0.47), (2.16, 0.30), (2.30, 0.15), (2.45, 0.05)]
+        for tip in ((2.72, 0.38), (2.52, 0.46), (2.26, 0.47)):
+            b.add(tube([(0.975, 2.45, 0.10), (0.975, (2.45 + tip[0]) / 2 + 0.03, (0.10 + tip[1]) / 2 + 0.03),
+                        (0.975, tip[0], tip[1])], 0.009, sides=6, sub=3), "Carbon", mirror=True)
+    elif variant == "delta":
+        endplate = [(2.50, 0.05), (2.48, 0.15), (2.30, 0.22), (2.20, 0.22), (2.22, 0.12), (2.35, 0.05)]
+    elif variant == "ring":
+        # Anel: no lugar da placa lateral, um aro que abraça as pontas dos elementos
+        loop = [(0.975, 2.47 + 0.24 * math.cos(2 * math.pi * i / 20), 0.21 + 0.17 * math.sin(2 * math.pi * i / 20))
+                for i in range(21)]
+        b.add(tube(loop, 0.02, sides=10, sub=3), "Livery_Accent", mirror=True)
+        endplate = [(2.71, 0.05), (2.70, 0.09), (2.30, 0.09), (2.30, 0.05)]
     else:
         endplate = [(2.71, 0.05), (2.73, 0.12), (2.55, 0.20), (2.36, 0.30), (2.20, 0.34),
                     (2.19, 0.27), (2.30, 0.18), (2.45, 0.05)]
     b.add(plate(endplate, 0.975, 0.012), "Livery_Primary", mirror=True)
+    if variant == "scales":
+        # Escamas no plano principal (de ponta a ponta)
+        def top(x, s0):
+            if not (2.44 <= s0 <= 2.84) or abs(x) > 0.92:
+                return None
+            return 0.085 + (2.86 - s0) * math.sin(math.radians(4)) + 0.022
+        add_scales(b, top, [-0.84 + 0.12 * k for k in range(15)], [2.80, 2.72, 2.64, 2.56, 2.48], 0.11,
+                   ["Livery_Primary", "Livery_Accent", "Livery_Secondary"], lift=0.15)
     # Pequeno "footplate" na base da placa lateral
     b.add(slab([(0.93, 2.70), (0.98, 2.70), (0.98, 2.40), (0.93, 2.45)], 0.045, 0.055), "Carbon", mirror=True)
     return [b.build(col)]
@@ -623,7 +894,17 @@ def build_engine_cover(col, variant):
               S(-0.60, 0.15, 0.55, 0.965, nt=2.4, nb=2.4),
               S(-1.00, 0.13, 0.50, 0.83, nt=2.4, nb=2.4),
               S(-1.40, 0.08, 0.45, 0.66, nt=2.4, nb=2.4)]
-    b.add(loft(airbox, n=36, sub=4), lambda c: "Interior" if c.tag == "cap0" else paint_body(c))
+    if variant == "twin_airbox":
+        # Duas entradas de ar lado a lado, que se juntam na cobertura
+        twin = [S(-0.30, 0.065, 0.70, 0.93, cx=0.085, nt=2.0, nb=2.0),
+                S(-0.34, 0.075, 0.66, 0.95, cx=0.085, nt=2.2, nb=2.2),
+                S(-0.60, 0.085, 0.55, 0.945, cx=0.08, nt=2.4, nb=2.4),
+                S(-1.00, 0.09, 0.50, 0.82, cx=0.05, nt=2.4, nb=2.4),
+                S(-1.40, 0.07, 0.45, 0.66, cx=0.02, nt=2.4, nb=2.4)]
+        b.add(loft(twin, n=32, sub=4), lambda c: "Interior" if c.tag == "cap0" else paint_body(c), mirror=True)
+        b.add(slab([(-0.07, -0.40), (0.07, -0.40), (0.07, -0.95), (-0.07, -0.95)], 0.80, 0.86), "Carbon")
+    else:
+        b.add(loft(airbox, n=36, sub=4), lambda c: "Interior" if c.tag == "cap0" else paint_body(c))
     cover = [S(-0.50, 0.37, 0.10, 0.72, nt=2.6, nb=6.0),
              S(-0.80, 0.33, 0.10, 0.74, nt=2.6, nb=6.0),
              S(-1.15, 0.26, 0.10, 0.68, nt=2.6, nb=6.0),
@@ -632,6 +913,27 @@ def build_engine_cover(col, variant):
              S(-2.10, 0.10, 0.18, 0.42, nt=2.6, nb=3.0),
              S(-2.25, 0.06, 0.24, 0.36, nt=2.4, nb=2.4)]
     b.add(loft(cover, n=44, sub=4), paint_body)
+    if variant == "horns":
+        # Chifres curvos dos dois lados da entrada de ar
+        b.add(tube([(0.11, -0.52, 0.90), (0.21, -0.66, 1.00), (0.27, -0.90, 1.08)], 0.034, sides=10, sub=5),
+              "Livery_Secondary", mirror=True)
+        b.add(cone((0.27, -0.90, 1.08), (0.25, -1.16, 1.15), 0.034), "Livery_Secondary", mirror=True)
+    elif variant == "scales":
+        def top(x, s0):
+            zs = [z for z in (loft_top(cover, x, s0), loft_top(airbox, x, s0)) if z is not None]
+            return max(zs) if zs else None
+        add_scales(b, top, [-0.24, -0.16, -0.08, 0.0, 0.08, 0.16, 0.24],
+                   [-0.70 - 0.09 * k for k in range(16)], 0.085, ["Livery_Primary", "Livery_Accent"])
+    elif variant == "exhaust":
+        # Escapamentos aparentes que sobem atrás, com as bocas em brasa, e aletas de calor
+        for x in (0.07, 0.15):
+            b.add(tube([(x, -1.85, 0.33), (x + 0.02, -2.15, 0.40), (x + 0.03, -2.40, 0.52)], 0.028, sides=12, sub=4),
+                  "Metal", mirror=True)
+            b.add(box(x + 0.03, -2.42, 0.53, 0.022, 0.012, 0.022), "Light_Red", mirror=True)
+        for k in range(4):
+            s0 = -1.20 - 0.14 * k
+            z0 = loft_top(cover, 0.18, s0) or 0.5
+            b.add(obox((0.21, s0, z0 - 0.02), (0, 1, 0), (0.4, 0, 1), 0.05, 0.05, 0.004), "Carbon", mirror=True)
     # Estrutura de impacto traseira + luz de chuva
     crash = [S(-2.15, 0.07, 0.20, 0.34, nt=2.5, nb=2.5),
              S(-2.35, 0.06, 0.21, 0.31, nt=2.5, nb=2.5),
@@ -641,13 +943,50 @@ def build_engine_cover(col, variant):
     # T-cam (câmera de TV sobre o airbox)
     b.add(box(0.0, -0.66, 0.985, 0.055, 0.07, 0.02), "Livery_Accent")
     b.add(rod((0.0, -0.66, 0.96), (0.0, -0.66, 0.975), 0.012, sides=8), "Carbon")
-    if variant == "sharkfin":
+    if variant in ("sharkfin", "twing"):
         fin = [(-0.75, 0.94), (-1.95, 0.80), (-2.02, 0.44), (-1.50, 0.54), (-1.0, 0.78)]
         b.add(plate(fin, 0.0, 0.010), lambda c: "Livery_Accent" if c.z > 0.70 else "Livery_Primary")
+    if variant == "twing":
+        # Asa em T no alto da barbatana, com plaquinhas nas pontas
+        tw = [W(x, -1.74, 0.825, 0.16, 8, t=0.10, m=0.05) for x in (0.0, 0.18, 0.30)]
+        b.add(wing(tw, n=8, sub=2, symmetric=True), paint_wing("Livery_Accent"))
+        tw2 = [W(x, -1.86, 0.875, 0.10, 22, t=0.10, m=0.05) for x in (0.0, 0.30)]
+        b.add(wing(tw2, n=8, sub=1, symmetric=True), paint_wing("Livery_Primary"))
+        b.add(plate([(-1.71, 0.79), (-1.71, 0.90), (-1.97, 0.90), (-1.97, 0.79)], 0.30, 0.008), "Carbon", mirror=True)
+    if variant == "spine":
+        # Espinha de dragão: barbatanas em dente de serra pela crista da cobertura
+        top = [(-0.60, 0.965), (-1.00, 0.83), (-1.40, 0.66), (-1.50, 0.58), (-1.85, 0.47), (-2.10, 0.42),
+               (-2.25, 0.36)]
+        for s0, h in ((-0.98, 0.15), (-1.22, 0.135), (-1.46, 0.12), (-1.70, 0.10), (-1.94, 0.08)):
+            z0 = lerp_profile(top, s0)
+            s1 = s0 - 0.19
+            z1 = lerp_profile(top, s1)
+            b.add(plate([(s0, z0 - 0.03), (s1, z1 - 0.03), (s0 - 0.05, z0 + h)], 0.0, 0.012),
+                  "Livery_Accent")
     return [b.build(col)]
 
 
 def sidepod_sections(variant):
+    if variant == "bulge":
+        # Musculoso: mais largo e alto, com um "ombro" arredondado
+        return [S(0.34, 0.17, 0.50, 0.70, cx=0.57, nt=2.6, nb=3.0),
+                S(0.22, 0.23, 0.32, 0.74, cx=0.58, nt=2.6, nb=3.0),
+                S(0.02, 0.26, 0.12, 0.75, cx=0.57, nt=2.6, nb=4.0),
+                S(-0.25, 0.27, 0.09, 0.71, cx=0.54, nt=2.4, nb=5.0),
+                S(-0.60, 0.24, 0.08, 0.60, cx=0.48, nt=2.3, nb=5.0),
+                S(-0.95, 0.18, 0.08, 0.46, cx=0.39, nt=2.3, nb=5.0),
+                S(-1.30, 0.11, 0.08, 0.33, cx=0.28, nt=2.4, nb=4.0),
+                S(-1.60, 0.06, 0.08, 0.25, cx=0.20, nt=2.4, nb=3.0)]
+    if variant == "jet":
+        # Turbina: boca redonda na frente, depois o downwash
+        return [S(0.40, 0.165, 0.305, 0.635, cx=0.56, nt=2.0, nb=2.0),
+                S(0.30, 0.18, 0.27, 0.66, cx=0.56, nt=2.1, nb=2.1),
+                S(0.12, 0.21, 0.14, 0.68, cx=0.55, nt=2.8, nb=4.0),
+                S(-0.10, 0.23, 0.10, 0.66, cx=0.52, nt=2.8, nb=5.0),
+                S(-0.50, 0.22, 0.08, 0.56, cx=0.47, nt=2.4, nb=5.0),
+                S(-0.90, 0.17, 0.08, 0.44, cx=0.38, nt=2.4, nb=5.0),
+                S(-1.30, 0.11, 0.08, 0.33, cx=0.28, nt=2.4, nb=4.0),
+                S(-1.60, 0.06, 0.08, 0.25, cx=0.20, nt=2.4, nb=3.0)]
     if variant == "slim":
         return [S(0.32, 0.10, 0.50, 0.70, cx=0.50, nt=3.0, nb=3.0),
                 S(0.22, 0.12, 0.30, 0.70, cx=0.49, nt=3.0, nb=3.0),
@@ -669,6 +1008,56 @@ def sidepod_sections(variant):
 def build_sidepods(col, variant):
     b = Builder("Sidepods_" + variant)
     b.add(loft(sidepod_sections(variant), n=40, sub=4), paint_sidepod, mirror=True)
+    if variant == "gills":
+        # Guelras: aletas de refrigeração atravessadas no topo do sidepod
+        top = [(0.08, 0.68), (-0.10, 0.66), (-0.50, 0.56)]
+        cxs = [(0.08, 0.55), (-0.10, 0.52), (-0.50, 0.47)]
+        for k in range(6):
+            s0 = -0.02 - 0.08 * k
+            b.add(box(lerp_profile(cxs, s0), s0, lerp_profile(top, s0) + 0.012, 0.12, 0.009, 0.034),
+                  "Carbon" if k % 2 == 0 else "Livery_Accent", mirror=True)
+    elif variant == "scales":
+        secs = sidepod_sections("downwash")
+        add_scales(b, lambda x, s0: loft_top(secs, x, s0), [0.38, 0.46, 0.54, 0.62, 0.70],
+                   [0.20 - 0.085 * k for k in range(16)], 0.08, ["Livery_Primary", "Livery_Accent", "Livery_Secondary"],
+                   mirror=True)
+    elif variant == "vents":
+        # Persianas: três frestas compridas na lateral, inclinadas para fora
+        secs = sidepod_sections("downwash")
+        for z0, s_a, s_b in ((0.30, 0.10, -0.85), (0.38, 0.12, -0.70), (0.46, 0.12, -0.55)):
+            for k in range(6):
+                s0 = s_a + (s_b - s_a) * (k + 0.5) / 6
+                d = sec_at(secs, s0)
+                zm = (d["zb"] + d["zt"]) * 0.5
+                half = (d["zt"] - zm) if z0 >= zm else (zm - d["zb"])
+                t = min(abs(z0 - zm) / max(half, 1e-3), 0.95)
+                e = d["nt"] if z0 >= zm else d["nb"]
+                x = d["cx"] + d["hw"] * (1 - t ** e) ** (1 / e)
+                b.add(obox((x + 0.004, s0, z0), (0, 1, 0), (0.7, 0, -1), abs(s_b - s_a) / 12 - 0.004, 0.022, 0.004),
+                      "Livery_Accent" if z0 > 0.40 else "Carbon", mirror=True)
+    elif variant == "bulge":
+        b.add(tube([(0.74, 0.20, 0.62), (0.80, -0.10, 0.60), (0.73, -0.60, 0.50), (0.58, -1.00, 0.38)], 0.02,
+                   sides=8, sub=4), "Livery_Accent", mirror=True)
+    elif variant == "periscope":
+        # Periscópio: torre de captação alta sobre o sidepod
+        tower = [S(0.06, 0.05, 0.62, 0.98, cx=0.50, nt=3.0, nb=3.0),
+                 S(-0.04, 0.06, 0.60, 1.00, cx=0.50, nt=3.0, nb=3.0),
+                 S(-0.30, 0.045, 0.55, 0.84, cx=0.48, nt=2.6, nb=3.0),
+                 S(-0.50, 0.02, 0.52, 0.62, cx=0.46, nt=2.4, nb=2.4)]
+        b.add(loft(tower, n=24, sub=3), lambda c: "Interior" if c.tag == "cap0" else
+              ("Livery_Accent" if c.z > 0.9 else "Livery_Primary"), mirror=True)
+    elif variant == "jet":
+        # Anel na boca, cone central e as pás da hélice
+        cx, cz, r = 0.56, 0.47, 0.168
+        loop = [(cx + r * math.cos(2 * math.pi * i / 16), 0.405, cz + r * math.sin(2 * math.pi * i / 16))
+                for i in range(17)]
+        b.add(tube(loop, 0.016, sides=8, sub=3), "Livery_Accent", mirror=True)
+        b.add(ellipsoid(cx, 0.43, cz, 0.042, 0.05, 0.042, n=16, rows=8), "Metal", mirror=True)
+        for k in range(7):
+            a = 2 * math.pi * k / 7
+            b.add(rod((cx + 0.03 * math.cos(a), 0.408, cz + 0.03 * math.sin(a)),
+                      (cx + 0.15 * math.cos(a + 0.35), 0.408, cz + 0.15 * math.sin(a + 0.35)),
+                      0.018, sides=6, flat=0.25), "Carbon", mirror=True)
     return [b.build(col)]
 
 
@@ -697,8 +1086,39 @@ def build_floor(col):
     return [b.build(col)]
 
 
-def build_halo(col):
-    b = Builder("Halo")
+def build_halo(col, variant="standard"):
+    b = Builder("Halo_" + variant if variant != "standard" else "Halo")
+    if variant == "crown":
+        # Coroa: espinhos em cima do arco
+        for x, s0, z in ((0.0, 0.26, 0.875), (0.13, 0.22, 0.872), (0.25, 0.15, 0.86), (0.34, 0.03, 0.845)):
+            b.add(cone((x, s0, z + 0.015), (x * 1.15, s0, z + 0.10 - 0.03 * (x / 0.34)), 0.016, sides=6),
+                  "Livery_Accent", mirror=x > 0)
+    elif variant == "airfoil":
+        # Asa sobre o halo, presa por dois suportes
+        b.add(wing([W(x, 0.30, 0.935, 0.12, 4, t=0.10, m=0.05) for x in (0.0, 0.18, 0.30)], n=8, sub=2, symmetric=True),
+              paint_wing("Livery_Accent"))
+        b.add(rod((0.16, 0.23, 0.875), (0.16, 0.25, 0.935), 0.008, sides=6), "Carbon", mirror=True)
+    elif variant == "ribbed":
+        # Costelas: anéis em volta do tubo do halo
+        loop = [(0.36, -0.40, 0.60), (0.39, -0.30, 0.75), (0.37, -0.08, 0.83), (0.25, 0.15, 0.86),
+                (0.0, 0.26, 0.875), (-0.25, 0.15, 0.86), (-0.37, -0.08, 0.83), (-0.39, -0.30, 0.75),
+                (-0.36, -0.40, 0.60)]
+        pts = [Vector(pt) for pt in loop]
+        for i in range(1, len(pts) - 1):
+            a, c = pts[i - 1], pts[i + 1]
+            t = (c - a).normalized() * 0.012
+            p0 = pts[i]
+            b.add(tube([tuple(p0 - t), tuple(p0 + t)], 0.034, sides=12, sub=1), "Livery_Accent")
+    elif variant == "horned":
+        b.add(tube([(0.38, -0.28, 0.76), (0.44, -0.42, 0.88), (0.42, -0.56, 0.99)], 0.026, sides=10, sub=4),
+              "Livery_Secondary", mirror=True)
+        b.add(cone((0.42, -0.56, 0.99), (0.36, -0.72, 1.07), 0.026), "Livery_Secondary", mirror=True)
+    if variant == "winged":
+        # Aletas nas laterais, carenagem no pilar central e uma crista em cima
+        b.add(slab([(0.38, -0.08), (0.53, -0.20), (0.53, -0.27), (0.39, -0.31)], 0.772, 0.786), "Livery_Primary",
+              mirror=True)
+        b.add(plate([(0.27, 0.865), (0.47, 0.66), (0.43, 0.64), (0.25, 0.83)], 0.0, 0.034), "Livery_Primary")
+        b.add(plate([(0.05, 0.893), (0.24, 0.883), (0.15, 0.95)], 0.0, 0.010), "Livery_Accent")
     loop = [(0.36, -0.40, 0.60), (0.39, -0.30, 0.75), (0.37, -0.08, 0.83), (0.25, 0.15, 0.86),
             (0.0, 0.26, 0.875), (-0.25, 0.15, 0.86), (-0.37, -0.08, 0.83), (-0.39, -0.30, 0.75),
             (-0.36, -0.40, 0.60)]
@@ -714,13 +1134,40 @@ MIRROR_GLASS_S = 0.424
 MIRROR_Z = 0.7475
 
 
-def build_mirrors(col):
+def build_mirrors(col, variant="standard"):
     """Carcaças + "vidros" separados (MirrorGlassL/R, origem no centro). No Godot o vidro recebe a
     imagem de uma câmera traseira (retrovisor funcional)."""
-    b = Builder("Mirrors")
+    b = Builder("Mirrors" if variant == "standard" else "Mirrors_" + variant)
     housing = [S(0.485, 0.012, 0.735, 0.755, cx=MIRROR_X, nt=3, nb=3),
                S(0.470, 0.075, 0.72, 0.775, cx=MIRROR_X, nt=4, nb=4),
                S(0.425, 0.085, 0.715, 0.78, cx=MIRROR_X, nt=4, nb=4)]
+    if variant == "eye":
+        # Olho: carcaça redonda com uma "sobrancelha" na cor de destaque
+        housing = [S(0.50, 0.02, 0.742, 0.748, cx=MIRROR_X, nt=2, nb=2),
+                   S(0.48, 0.08, 0.705, 0.79, cx=MIRROR_X, nt=2, nb=2),
+                   S(0.425, 0.09, 0.70, 0.795, cx=MIRROR_X, nt=2.4, nb=2.4)]
+        b.add(tube([(MIRROR_X - 0.09, 0.44, 0.79), (MIRROR_X, 0.45, 0.82), (MIRROR_X + 0.09, 0.44, 0.80)], 0.009,
+                   sides=6, sub=4), "Livery_Accent", mirror=True)
+    elif variant == "fin":
+        b.add(plate([(0.47, 0.775), (0.43, 0.78), (0.40, 0.90), (0.46, 0.88)], MIRROR_X, 0.008), "Livery_Accent",
+              mirror=True)
+    elif variant == "spiked":
+        for dz, dx in ((0.02, 0.0), (-0.015, 0.03), (0.0, -0.03)):
+            b.add(cone((MIRROR_X + 0.06 + dx * 0.3, 0.45, 0.75 + dz), (MIRROR_X + 0.15 + dx, 0.47, 0.75 + dz * 2.5),
+                       0.012, sides=6), "Livery_Accent", mirror=True)
+    elif variant == "winglet":
+        b.add(wing([W(x, 0.48, 0.745, 0.07, 2, t=0.1, m=0.05) for x in (MIRROR_X + 0.08, MIRROR_X + 0.20)],
+                   n=8, sub=1), paint_wing("Livery_Accent"), mirror=True)
+        b.add(plate([(0.49, 0.72), (0.40, 0.72), (0.40, 0.78), (0.49, 0.78)], MIRROR_X + 0.20, 0.006), "Carbon",
+              mirror=True)
+    if variant == "bullet":
+        # Bala: carenagem pontuda para a frente (o vidro continua no mesmo lugar) e uma aleta
+        housing = [S(0.66, 0.006, 0.745, 0.75, cx=MIRROR_X, nt=2, nb=2),
+                   S(0.58, 0.045, 0.73, 0.765, cx=MIRROR_X, nt=2.4, nb=2.4),
+                   S(0.50, 0.075, 0.72, 0.775, cx=MIRROR_X, nt=3.5, nb=3.5),
+                   S(0.425, 0.085, 0.715, 0.78, cx=MIRROR_X, nt=4, nb=4)]
+        b.add(plate([(0.60, 0.76), (0.45, 0.775), (0.44, 0.80), (0.52, 0.80)], MIRROR_X, 0.008), "Livery_Accent",
+              mirror=True)
     b.add(loft(housing, n=24, sub=2),
           lambda c: "Carbon" if c.tag == "cap1" else "Livery_Primary", mirror=True)
     b.add(rod((0.44, 0.45, 0.725), (0.33, 0.44, 0.63), 0.011, sides=8, flat=0.5), "Carbon", mirror=True)
@@ -760,10 +1207,14 @@ def rear_wing_params(variant):
         return dict(main_c=0.26, main_a=6, main_z=0.76, flap_c=0.16, flap_a=20, spoon=0.0)
     if variant == "highdf":
         return dict(main_c=0.33, main_a=14, main_z=0.74, flap_c=0.28, flap_a=42, spoon=0.04)
+    if variant == "twin":
+        return dict(main_c=0.30, main_a=14, main_z=0.72, flap_c=0.26, flap_a=40, spoon=0.02)
     return dict(main_c=0.30, main_a=10, main_z=0.75, flap_c=0.22, flap_a=32, spoon=0.02)
 
 
 def build_rear_wing(col, variant):
+    if variant in CREATIVE_REAR:
+        return build_rear_wing_creative(col, variant)
     p = rear_wing_params(variant)
     b = Builder("RearWing_" + variant)
     span = [0.0, 0.25, 0.42, 0.49]
@@ -773,6 +1224,12 @@ def build_rear_wing(col, variant):
     # Placas laterais (endplates) com luz de chuva LED
     endplate = [(-2.27, 0.58), (-2.29, 0.90), (-2.36, 0.985), (-2.80, 0.99), (-2.84, 0.80),
                 (-2.78, 0.62), (-2.56, 0.55)]
+    if variant == "twin":
+        endplate = [(-2.27, 0.58), (-2.29, 1.10), (-2.36, 1.17), (-2.80, 1.18), (-2.86, 0.80),
+                    (-2.78, 0.62), (-2.56, 0.55)]
+        # Segundo plano inteiro no alto das placas
+        upper = [W(x, -2.40, 1.07, 0.24, 9, t=0.11, m=0.06) for x in span]
+        b.add(wing(upper, n=10, sub=3, symmetric=True), paint_wing("Livery_Secondary"))
     b.add(plate(endplate, 0.50, 0.012), "Livery_Primary", mirror=True)
     b.add(plate([(-2.19, 0.27), (-2.27, 0.60), (-2.40, 0.58), (-2.52, 0.27)], 0.495, 0.010), "Carbon", mirror=True)
     b.add(box(0.50, -2.85, 0.80, 0.004, 0.006, 0.12), "Light_Red", mirror=True)
@@ -796,6 +1253,189 @@ def build_rear_wing(col, variant):
     fb.add(wing(flap, n=10, sub=3, symmetric=True), paint_wing("Livery_Accent"))
     flap_obj = fb.build(col, origin=P(0.0, pivot_s, pivot_z))
     return [wing_obj, flap_obj]
+
+
+# --- Asas traseiras de formato livre -------------------------------------------
+# Largas até a largura da asa dianteira (±0,98 m), sem placas laterais; cada uma ainda tem um flap
+# de DRS (objeto DRSFlap_<variante>, pivô no bordo de fuga) para o Godot animar.
+CREATIVE_REAR = ("dragon", "butterfly", "phoenix", "omega", "blade")
+
+
+def rear_support(b, top_z):
+    """Pilar central (pescoço de cisne) da estrutura de impacto até a asa, e uma beam wing baixa."""
+    b.add(plate([(-2.22, 0.27), (-2.42, 0.27), (-2.52, top_z), (-2.34, top_z)], 0.0, 0.022), "Carbon")
+    beam = [W(x, -2.20, 0.30, 0.18, 8, t=0.10, m=0.05) for x in (0.0, 0.42)]
+    b.add(wing(beam, n=8, sub=1, symmetric=True), "Carbon")
+
+
+def spine_body(b, secs, spikes, mat="Livery_Primary"):
+    """Corpo central (loft ao longo do carro) com espinhos em cima."""
+    b.add(loft(secs, n=20, sub=3), mat)
+    for s0 in spikes:
+        z = loft_top(secs, 0.0, s0)
+        if z is not None:
+            b.add(cone((0.0, s0, z - 0.01), (0.0, s0 - 0.05, z + 0.07), 0.022, sides=6), "Livery_Accent")
+
+
+def drs_flap(col, variant, stations, mat="Livery_Accent"):
+    pivot_s, pivot_z = wing_te(stations[0])
+    fb = Builder("DRSFlap_" + variant)
+    fb.add(wing(stations, n=10, sub=2, symmetric=True), paint_wing(mat))
+    return fb.build(col, origin=P(0.0, pivot_s, pivot_z))
+
+
+def build_rear_wing_creative(col, variant):
+    b = Builder("RearWing_" + variant)
+    if variant == "dragon":
+        # Asa de dragão: ossos saindo de um "pulso" central, membranas entre eles com a borda de trás
+        # recortada (cede entre as pontas), garras nas pontas e corpo central com escamas e espinhos.
+        R = (0.05, -2.33, 0.93)
+        bones = [((0.45, -2.22, 1.08), (0.98, -2.42, 1.10)),
+                 ((0.45, -2.42, 1.05), (0.93, -2.80, 1.02)),
+                 ((0.38, -2.58, 1.01), (0.72, -3.00, 0.96)),
+                 ((0.22, -2.66, 0.96), (0.42, -3.05, 0.91)),
+                 ((0.08, -2.62, 0.92), (0.12, -2.95, 0.89))]
+
+        def bone(k, t):
+            return Vector(bezier(R, bones[k][0], bones[k][1], t))
+
+        rv = Vector(R)
+        for k in range(len(bones) - 1):
+            grid = []
+            for i in range(10):
+                t = 0.04 + 0.96 * i / 9
+                a, c = bone(k, t), bone(k + 1, t)
+                row = []
+                for j in range(7):
+                    u = j / 6
+                    pt = a.lerp(c, u)
+                    sag = math.sin(math.pi * u) * t * t
+                    pt = pt + (rv - pt) * (0.32 * sag)
+                    pt.z -= 0.035 * sag
+                    row.append(tuple(pt))
+                grid.append(row)
+            b.add(thick_patch(grid, 0.006), paint_wing("Livery_Secondary", "Livery_Primary"), mirror=True)
+        for k in range(len(bones)):
+            pts = [tuple(bone(k, t)) for t in (0.0, 0.25, 0.5, 0.75, 1.0)]
+            b.add(tube(pts, 0.021 if k == 0 else 0.013, sides=8, sub=3), "Livery_Primary", mirror=True)
+            tip = bone(k, 1.0)
+            d = (tip - bone(k, 0.9)).normalized()
+            b.add(cone(tuple(tip), tuple(tip + d * 0.10 + Vector((0, 0, 0.015))), 0.016, sides=6), "Livery_Accent",
+                  mirror=True)
+        # Garra do "polegar" no osso da frente
+        th = bone(0, 0.42)
+        b.add(cone(tuple(th), tuple(th + Vector((0.02, 0.07, 0.07))), 0.02, sides=6), "Livery_Accent", mirror=True)
+        spine = [S(-2.22, 0.055, 0.86, 0.97, nt=2.2, nb=2.2), S(-2.40, 0.075, 0.85, 0.99, nt=2.4, nb=2.2),
+                 S(-2.68, 0.05, 0.86, 0.955, nt=2.2, nb=2.2), S(-2.98, 0.012, 0.885, 0.90, nt=2.0, nb=2.0)]
+        add_scales(b, lambda x, s0: loft_top(spine, x, s0), [-0.035, 0.035], [-2.26 - 0.06 * k for k in range(9)],
+                   0.05, ["Livery_Primary", "Livery_Accent"])
+        spine_body(b, spine, [-2.30, -2.50, -2.70])
+        rear_support(b, 0.88)
+        flap = [W(x, -2.60, 1.00, 0.13, 28, t=0.10, m=0.05) for x in (0.0, 0.10, 0.16)]
+    elif variant == "butterfly":
+        # Borboleta: asa da frente grande e redonda, asa de trás menor, nervuras, "olhos" e antenas
+        def lobe(c, rx, rs, z0, rise, a0, a1):
+            grid = []
+            for i in range(8):
+                r = 0.06 + 0.94 * i / 7
+                row = []
+                for j in range(13):
+                    a = math.radians(a0 + (a1 - a0) * j / 12)
+                    k = 1.0 + 0.07 * math.sin(3.0 * a)
+                    row.append((c[0] + math.cos(a) * rx * r * k, c[1] + math.sin(a) * rs * r * k, z0 + rise * r * r))
+                grid.append(row)
+            return grid
+
+        fore = (0.04, -2.40, 0.95, 0.94, 0.42, 0.12)
+        hind = (0.04, -2.56, 0.80, 0.70, 0.46, 0.07)
+        b.add(thick_patch(lobe((fore[0], fore[1]), fore[3], fore[4], fore[2], fore[5], -70, 60), 0.007),
+              paint_wing("Livery_Primary"), mirror=True)
+        b.add(thick_patch(lobe((hind[0], hind[1]), hind[3], hind[4], hind[2], hind[5], -105, -15), 0.007),
+              paint_wing("Livery_Accent"), mirror=True)
+        for c, rx, rs, z0, rise, angs in ((fore[:2], 0.94, 0.42, 0.95, 0.12, (-45, -15, 15, 40)),
+                                         (hind[:2], 0.70, 0.46, 0.80, 0.07, (-80, -55, -30))):
+            for a in angs:
+                ar = math.radians(a)
+                pts = [(c[0] + math.cos(ar) * rx * r, c[1] + math.sin(ar) * rs * r, z0 + rise * r * r + 0.004)
+                       for r in (0.1, 0.4, 0.7, 0.92)]
+                b.add(tube(pts, 0.006, sides=5, sub=3), "Livery_Secondary", mirror=True)
+        er = 0.62
+        ex, es, ez = 0.04 + math.cos(math.radians(5)) * 0.94 * er, -2.40 + math.sin(math.radians(5)) * 0.42 * er, \
+            0.95 + 0.12 * er * er
+        b.add(ellipsoid(ex, es, ez + 0.002, 0.10, 0.075, 0.006, n=16, rows=6), "Livery_Secondary", mirror=True)
+        b.add(ellipsoid(ex, es, ez + 0.006, 0.05, 0.04, 0.005, n=12, rows=4), "Interior", mirror=True)
+        body = [S(-2.18, 0.035, 0.90, 0.97), S(-2.40, 0.05, 0.88, 0.98), S(-2.70, 0.04, 0.80, 0.94),
+                S(-2.95, 0.012, 0.82, 0.86, nt=2.0, nb=2.0)]
+        b.add(loft(body, n=16, sub=3), "Carbon")
+        b.add(tube([(0.02, -2.20, 0.96), (0.06, -2.08, 1.05), (0.12, -2.00, 1.12)], 0.006, sides=5, sub=3), "Carbon",
+              mirror=True)
+        b.add(ellipsoid(0.12, -2.00, 1.12, 0.018, 0.018, 0.018, n=8, rows=4), "Livery_Accent", mirror=True)
+        rear_support(b, 0.88)
+        flap = [W(x, -2.64, 1.00, 0.12, 26, t=0.10, m=0.05) for x in (0.0, 0.10, 0.14)]
+    elif variant == "phoenix":
+        # Fênix: penas em leque, mais longas na frente, com as pontas curvando para cima, nas três cores
+        root = Vector((0.06, -2.40, 0.90))
+        for k in range(8):
+            t_k = k / 7
+            ang = math.radians(6 + 72 * t_k)
+            length = 0.98 - 0.36 * t_k
+            width = 0.12 - 0.04 * t_k
+            curl = 0.17 - 0.08 * t_k
+            d = Vector((math.cos(ang), -math.sin(ang), 0.0))
+            side = Vector((math.sin(ang), math.cos(ang), 0.0))
+            grid = []
+            for i in range(10):
+                t = i / 9
+                w = width * math.sin(math.pi * (0.12 + 0.86 * t)) * (1.0 - 0.25 * t) + 0.004
+                center = root + d * (length * t) + Vector((0, 0, curl * t * t + 0.02 * k / 7 * t))
+                row = []
+                for j in range(3):
+                    off = (j - 1) * w * 0.5
+                    row.append(tuple(center + side * off + Vector((0, 0, 0.008 if j == 1 else 0.0)) + Vector((0, 0, 0.004 * k))))
+                grid.append(row)
+            mat = ["Livery_Accent", "Livery_Primary", "Livery_Secondary"][k % 3]
+            b.add(thick_patch(grid, 0.006), mat, mirror=True)
+        # Penas da cauda, para trás e para cima
+        for k, (x, ln) in enumerate(((0.025, 0.55), (0.09, 0.48))):
+            grid = []
+            for i in range(8):
+                t = i / 7
+                w = 0.07 * math.sin(math.pi * (0.12 + 0.86 * t)) + 0.004
+                c = Vector((x, -2.45 - ln * t, 0.92 + 0.22 * t * t))
+                grid.append([tuple(c + Vector((dx * w, 0, 0))) for dx in (-0.5, 0.0, 0.5)])
+            b.add(thick_patch(grid, 0.006), "Livery_Accent" if k == 0 else "Livery_Primary", mirror=True)
+        main = [W(x, -2.30, 0.78, 0.22, 10, t=0.12, m=0.06) for x in (0.0, 0.3, 0.45)]
+        b.add(wing(main, n=10, sub=2, symmetric=True), "Carbon")
+        spine = [S(-2.24, 0.05, 0.84, 0.94), S(-2.40, 0.065, 0.83, 0.96), S(-2.62, 0.035, 0.85, 0.93),
+                 S(-2.80, 0.01, 0.87, 0.89, nt=2.0, nb=2.0)]
+        spine_body(b, spine, [-2.32, -2.48])
+        rear_support(b, 0.86)
+        flap = [W(x, -2.58, 0.98, 0.12, 26, t=0.10, m=0.05) for x in (0.0, 0.08, 0.12)]
+    elif variant == "omega":
+        # Ômega: um arco largo; o plano desce nas pontas até perto do chão, por fora das rodas
+        arch = [(0.0, 1.00), (0.40, 0.99), (0.65, 0.95), (0.80, 0.88), (0.90, 0.76), (0.95, 0.62), (0.97, 0.47)]
+        main = [W(x, -2.36 - 0.06 * x, z, 0.30, 10, t=0.12, m=0.06) for x, z in arch]
+        b.add(wing(main, n=12, sub=3, symmetric=True), paint_wing("Livery_Primary", "Livery_Secondary"))
+        inner = [W(x, -2.30 - 0.06 * x, z - 0.12, 0.16, 6, t=0.10, m=0.05) for x, z in arch[:5]]
+        b.add(wing(inner, n=8, sub=2, symmetric=True), paint_wing("Livery_Accent", "Carbon"))
+        b.add(slab([(0.93, -2.36), (1.0, -2.36), (1.0, -2.74), (0.93, -2.74)], 0.43, 0.46), "Carbon", mirror=True)
+        rear_support(b, 0.99)
+        fs = -2.36 - 0.30 * math.cos(math.radians(10)) + 0.07
+        fz = 1.00 + 0.30 * math.sin(math.radians(10)) + 0.035
+        flap = [W(x, fs, fz - 0.03 * (x / 0.5) ** 2, 0.20, 30, t=0.11, m=0.06) for x in (0.0, 0.3, 0.5)]
+    else:  # blade
+        # Lâmina: um só plano em delta, muito varrido, pontas finas com aletinhas e uma quilha central
+        main = [W(0.0, -2.18, 0.86, 0.75, 7, t=0.06, m=0.04), W(0.5, -2.40, 0.89, 0.45, 7, t=0.06, m=0.04),
+                W(0.85, -2.62, 0.93, 0.22, 7, t=0.06, m=0.04), W(0.98, -2.78, 0.96, 0.07, 6, t=0.06, m=0.04)]
+        b.add(wing(main, n=12, sub=4, symmetric=True), paint_wing("Livery_Primary"))
+        le = [(st["x"], st["s"] + 0.005, st["z"] + 0.012) for st in main]
+        b.add(tube(le, 0.008, sides=6, sub=4), "Livery_Accent", mirror=True)
+        b.add(plate([(-2.70, 0.96), (-2.84, 0.96), (-2.87, 1.08), (-2.76, 1.03)], 0.975, 0.008), "Livery_Accent",
+              mirror=True)
+        b.add(plate([(-2.30, 0.90), (-2.92, 0.90), (-2.96, 1.10), (-2.55, 0.98)], 0.0, 0.012), "Livery_Secondary")
+        rear_support(b, 0.86)
+        flap = [W(x, -2.95, 0.87, 0.12, 22, t=0.10, m=0.05) for x in (0.0, 0.18, 0.30)]
+    return [b.build(col), drs_flap(col, variant, flap)]
 
 
 STEERING_PIVOT = (0.0, 0.36, 0.585)
@@ -1295,7 +1935,61 @@ def build_rim(col, variant, axle):
     hw = w / 2
     b = Builder("Rim_%s_%s" % (variant, axle))
     rim_common(b, hw)
-    if variant == "spoked":
+    if variant == "turbine":
+        # Turbina: 14 pás curvas e um anel na cor de destaque
+        for i in range(14):
+            th = 2 * math.pi * i / 14
+            b.add(blade(th, th + math.radians(28), 0.06, 0.205, hw - 0.055, hw - 0.04, 0.016),
+                  "Rim" if i % 2 else "Livery_Accent")
+        b.add(lathe([(hw - 0.06, 0.03), (hw - 0.02, 0.03), (hw - 0.02, 0.062), (hw - 0.06, 0.062)],
+                    segments=24), "Rim")
+        b.add(lathe([(hw - 0.13, 0.07), (hw - 0.10, 0.07), (hw - 0.10, 0.17), (hw - 0.13, 0.17)],
+                    segments=32), "Carbon")
+    elif variant == "mesh":
+        # Colmeia: pás cruzadas nos dois sentidos formando uma malha
+        for i in range(9):
+            th = 2 * math.pi * i / 9
+            for sgn, mat in ((1, "Rim"), (-1, "Livery_Accent")):
+                b.add(blade(th, th + sgn * 0.75, 0.06, 0.205, hw - 0.055 - (0.006 if sgn < 0 else 0), hw - 0.042,
+                            0.011), mat)
+        b.add(lathe([(hw - 0.13, 0.07), (hw - 0.10, 0.07), (hw - 0.10, 0.17), (hw - 0.13, 0.17)],
+                    segments=32), "Carbon")
+    elif variant == "yspoke":
+        # Raios em Y: seis raios que se abrem em dois perto do aro
+        for i in range(6):
+            th = 2 * math.pi * i / 6
+            b.add(radial_box(th, 0.05, 0.13, hw - 0.058, hw - 0.036, 0.03, 0.026), "Rim")
+            for sgn in (-1, 1):
+                b.add(blade(th, th + sgn * 0.2, 0.125, 0.205, hw - 0.058, hw - 0.036, 0.02), "Rim")
+            b.add(radial_box(th, 0.07, 0.12, hw - 0.035, hw - 0.031, 0.008, 0.008), "Livery_Accent")
+        b.add(lathe([(hw - 0.13, 0.07), (hw - 0.10, 0.07), (hw - 0.10, 0.17), (hw - 0.13, 0.17)],
+                    segments=32), "Carbon")
+    elif variant == "disc":
+        # Disco: calota lisa inteira com anel e cinco furos
+        b.add(lathe([(hw - 0.040, 0.002), (hw - 0.028, 0.002), (hw - 0.028, 0.207), (hw - 0.040, 0.207)],
+                    segments=48), "Rim")
+        b.add(lathe([(hw - 0.029, 0.15), (hw - 0.024, 0.15), (hw - 0.024, 0.175), (hw - 0.029, 0.175)],
+                    segments=48), "Livery_Accent")
+        for k in range(5):
+            th = 2 * math.pi * k / 5
+            b.add(radial_box(th, 0.085, 0.12, hw - 0.029, hw - 0.025, 0.03, 0.03), "Interior")
+    elif variant == "shuriken":
+        # Shuriken: quatro lâminas curvas grandes
+        for i in range(4):
+            th = 2 * math.pi * i / 4
+            b.add(blade(th, th + 0.9, 0.05, 0.205, hw - 0.058, hw - 0.036, 0.05), "Livery_Accent")
+            b.add(blade(th + 0.45, th + 1.2, 0.05, 0.19, hw - 0.06, hw - 0.045, 0.02), "Rim")
+        b.add(lathe([(hw - 0.13, 0.07), (hw - 0.10, 0.07), (hw - 0.10, 0.17), (hw - 0.13, 0.17)],
+                    segments=32), "Carbon")
+    elif variant == "star":
+        # Estrela: 5 raios largos em cunha
+        for i in range(5):
+            th = 2 * math.pi * i / 5
+            b.add(radial_box(th, 0.05, 0.205, hw - 0.06, hw - 0.035, 0.035, 0.13), "Rim")
+            b.add(radial_box(th, 0.07, 0.19, hw - 0.034, hw - 0.03, 0.012, 0.05), "Livery_Accent")
+        b.add(lathe([(hw - 0.13, 0.07), (hw - 0.10, 0.07), (hw - 0.10, 0.17), (hw - 0.13, 0.17)],
+                    segments=32), "Carbon")
+    elif variant == "spoked":
         for i in range(10):
             th = 2 * math.pi * i / 10
             b.add(radial_box(th, 0.055, 0.208, hw - 0.06, hw - 0.04, 0.030, 0.018),
@@ -1326,18 +2020,21 @@ def build_rim(col, variant, axle):
 PART_BUILDERS = {
     # slot: {variante: função}
     "chassis": {"standard": build_chassis},
-    "nose": {"standard": lambda c: build_nose(c, "standard"), "pointed": lambda c: build_nose(c, "pointed")},
-    "front_wing": {"standard": lambda c: build_front_wing(c, "standard"),
-                   "lowdf": lambda c: build_front_wing(c, "lowdf")},
-    "rear_wing": {"standard": lambda c: build_rear_wing(c, "standard"),
-                  "lowdf": lambda c: build_rear_wing(c, "lowdf"),
-                  "highdf": lambda c: build_rear_wing(c, "highdf")},
-    "sidepods": {"downwash": lambda c: build_sidepods(c, "downwash"), "slim": lambda c: build_sidepods(c, "slim")},
-    "engine_cover": {"standard": lambda c: build_engine_cover(c, "standard"),
-                     "sharkfin": lambda c: build_engine_cover(c, "sharkfin")},
+    "nose": {v: (lambda c, v=v: build_nose(c, v)) for v in (
+        "standard", "pointed", "duckbill", "shark", "hammer", "dragon_snout", "drill", "tusks")},
+    "front_wing": {v: (lambda c, v=v: build_front_wing(c, v)) for v in (
+        "standard", "lowdf", "gull", "biplane", "bat", "ring", "delta", "scales")},
+    "rear_wing": {v: (lambda c, v=v: build_rear_wing(c, v)) for v in (
+        "standard", "lowdf", "highdf", "dragon", "twin", "butterfly", "phoenix", "omega", "blade")},
+    "sidepods": {v: (lambda c, v=v: build_sidepods(c, v)) for v in (
+        "downwash", "slim", "gills", "jet", "scales", "vents", "bulge", "periscope")},
+    "engine_cover": {v: (lambda c, v=v: build_engine_cover(c, v)) for v in (
+        "standard", "sharkfin", "spine", "twing", "horns", "scales", "twin_airbox", "exhaust")},
     "floor": {"standard": build_floor},
-    "halo": {"standard": build_halo},
-    "mirrors": {"standard": build_mirrors},
+    "halo": {v: (lambda c, v=v: build_halo(c, v)) for v in (
+        "standard", "winged", "crown", "airfoil", "ribbed", "horned")},
+    "mirrors": {v: (lambda c, v=v: build_mirrors(c, v)) for v in (
+        "standard", "bullet", "eye", "fin", "spiked", "winglet")},
     "suspension_front": {"standard": build_suspension_front},
     "suspension_rear": {"standard": build_suspension_rear},
     "cockpit": {"standard": build_cockpit},
@@ -1345,11 +2042,12 @@ PART_BUILDERS = {
 }
 WHEEL_BUILDERS = {
     "tyre": {"slick": lambda c, axle: build_tyre(c, axle)},
-    "rim": {"covered": lambda c, axle: build_rim(c, "covered", axle),
-            "spoked": lambda c, axle: build_rim(c, "spoked", axle)},
+    "rim": {v: (lambda c, axle, v=v: build_rim(c, v, axle)) for v in (
+        "covered", "spoked", "turbine", "star", "mesh", "yspoke", "disc", "shuriken")},
 }
 DEFAULT_VARIANTS = {"nose": "standard", "front_wing": "standard", "rear_wing": "standard",
-                    "sidepods": "downwash", "engine_cover": "standard", "tyre": "slick", "rim": "covered"}
+                    "sidepods": "downwash", "engine_cover": "standard", "tyre": "slick", "rim": "covered",
+                    "halo": "standard", "mirrors": "standard"}
 
 
 def reset_scene():

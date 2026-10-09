@@ -78,6 +78,16 @@ static func build(track: RaceTrack, s0: float, s1: float, parent: Node3D) -> voi
 	mi.mesh = walls.commit(null, TrackMaterials.building("tunnel", false, {"panel_size": 0.6, "ground_dirt": 0.5}))
 	lamps.commit(mi.mesh as ArrayMesh, TrackMaterials.lamp(2.5))
 	root.add_child(mi)
+	if track.city:
+		# Muros de ala nas duas bocas (pedra com hera, o shader do chão da cidade)
+		var wing := MeshBuilder.new()
+		_wing_walls(track, wing, s0, 1.0)
+		_wing_walls(track, wing, s1, -1.0)
+		if not wing.is_empty():
+			var wmi := MeshInstance3D.new()
+			wmi.name = "WingWalls"
+			wmi.mesh = wing.commit(null, TrackCity.ground_material())
+			root.add_child(wmi)
 	if RaceTrack.server_mode:
 		return
 	# Luzes de sódio (sem sombra) e penumbra
@@ -113,6 +123,49 @@ static func build(track: RaceTrack, s0: float, s1: float, parent: Node3D) -> voi
 		probe.global_transform = Transform3D(f.basis, f.origin + f.basis.y * (HEIGHT * 0.5))
 
 
+## Comprimento dos muros de ala na aproximação de cada boca (m).
+const WING_LENGTH := 60.0
+
+
+## Muros de ala na aproximação de uma boca (dir = +1 na entrada, -1 na saída): muro de arrimo logo
+## atrás da barreira, dos dois lados, da altura do barranco atrás dele (até o topo do portal), com
+## capa. Seguram o terreno que sobe da pista até a laje (sem rampas pontudas ao lado do portal).
+static func _wing_walls(track: RaceTrack, mb: MeshBuilder, s_portal: float, dir: float) -> void:
+	var p := track.path
+	var city := track.city
+	var wall := Color(TrackCity.lin(TrackCity.RETAINING), TrackCity.FLOOR_WALL)
+	var cap := Color(TrackCity.lin(Color(0.8, 0.76, 0.68)), TrackCity.FLOOR_SIDEWALK)
+	var step := 3.0
+	var n := int(WING_LENGTH / step)
+	for side: int in [1, -1]:
+		var si := RaceTrack._si(side)
+		var prev_base := Vector3.INF
+		var prev_top := Vector3.INF
+		for k in n + 1:
+			# Da boca para fora (k = 0 na boca)
+			var s := s_portal - dir * k * step
+			var i := p.index_at(s)
+			var lat: float = side * (p.half_width(i, side) + track.barrier[si][i] + 0.4)
+			var road := p.frame_at(s, 0.0, 0.0).origin
+			# O barranco mais alto numa faixa de 1 a 12 m atrás do muro (do lado do mar ele é uma
+			# crista estreita: logo atrás o chão cai)
+			var ground := -INF
+			for extra: float in [1.0, 3.0, 5.0, 8.0, 12.0]:
+				var q := p.frame_at(s, lat + side * extra, 0.0).origin
+				ground = maxf(ground, city.height_at(q.x, q.z))
+			var hgt := clampf(ground - road.y + 0.4, 0.0, HEIGHT + SLAB + 2.5)
+			var base := p.frame_at(s, lat, -0.5).origin
+			var top := Vector3(base.x, road.y + hgt, base.z)
+			if prev_base != Vector3.INF and (hgt > 0.6 or prev_top.y - prev_base.y > 1.1):
+				var out := -p.lefts[i] * side
+				mb.quad(prev_base, base, top, prev_top, wall, out)
+				# Capa do muro (0,7 m para trás)
+				var back := p.lefts[i] * side * 0.7
+				mb.quad(prev_top, top, top + back, prev_top + back, cap, Vector3.UP)
+			prev_base = base
+			prev_top = top
+
+
 ## Portal numa boca do túnel: pilares dos dois lados e a viga sobre a abertura, até o terreno.
 ## dir = +1 na entrada (a fachada olha para trás), -1 na saída.
 static func _portal(track: RaceTrack, mb: MeshBuilder, s: float, dir: float) -> void:
@@ -125,16 +178,32 @@ static func _portal(track: RaceTrack, mb: MeshBuilder, s: float, dir: float) -> 
 	var outer := 16.0
 	var depth := 1.2
 	var top := HEIGHT + SLAB + 2.5
+	# Em circuito de rua o chão sobre a laje pode ficar mais alto que o portal: pilares e viga sobem
+	# até ele (a boca vira uma frente contínua, sem o barranco aparecendo por cima)
+	var pillar := HEIGHT + 1.0
+	if track.city:
+		var behind := 0.0
+		for ds: float in [1.0, 4.0, 8.0, 12.0, 16.0]:
+			for side: int in [1, -1]:
+				var inner0: float = inner_l if side > 0 else inner_r
+				for extra: float in [0.0, 4.0, 8.0, 12.0, outer]:
+					var q := p.frame_at(s + dir * ds, side * (inner0 + extra), 0.0).origin
+					behind = maxf(behind, track.city.height_at(q.x, q.z) - f.origin.y)
+		top = clampf(maxf(top, behind + 0.4), top, 18.0)
+		pillar = maxf(pillar, minf(behind + 0.4, 18.0))
 	var back := f.basis.z * (-dir * depth * 0.5)
 	# Viga (com friso) e pilares
 	var lintel_w := inner_l + inner_r + 2.0 * outer
 	var center_lat := (inner_l - inner_r) * 0.5
 	mb.box(Transform3D(f.basis, f.origin + f.basis.x * center_lat + Vector3.UP * (HEIGHT + (top - HEIGHT) * 0.5) + back),
 		Vector3(lintel_w, top - HEIGHT, depth), PORTAL)
+	# Friso escuro no alto da viga (dá escala à frente alta)
+	mb.box(Transform3D(f.basis, f.origin + f.basis.x * center_lat + Vector3.UP * (top - 0.3) + back - f.basis.z * dir * 0.1),
+		Vector3(lintel_w, 0.6, depth + 0.2), TILE_LOW)
 	mb.box(Transform3D(f.basis, f.origin + f.basis.x * center_lat + Vector3.UP * (HEIGHT + 0.25) + back - f.basis.z * dir * 0.35),
 		Vector3(inner_l + inner_r, 0.5, 0.3), TILE_LOW)
 	for side: int in [1, -1]:
 		var inner := inner_l if side > 0 else inner_r
 		var lat := side * (inner + outer * 0.5)
-		mb.box(Transform3D(f.basis, f.origin + f.basis.x * lat + Vector3.UP * (HEIGHT * 0.5 - 0.5) + back),
-			Vector3(outer, HEIGHT + 1.0, depth), PORTAL)
+		mb.box(Transform3D(f.basis, f.origin + f.basis.x * lat + Vector3.UP * (pillar * 0.5 - 1.0) + back),
+			Vector3(outer, pillar + 1.0, depth), PORTAL)

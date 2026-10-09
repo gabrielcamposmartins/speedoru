@@ -105,7 +105,7 @@ func _view_blimps(track: RaceTrack, city: TrackCity) -> void:
 		var fwd := Vector2(t.x, -t.z).normalized()
 		var node := MeshInstance3D.new()
 		node.name = "ViewBlimp%d" % k
-		node.mesh = TrackScenery.blimp_mesh(spec[2], spec[3])
+		node.mesh = TrackScenery.blimp_mesh(spec[2], spec[3], k / 2 if k % 2 == 0 else -1)
 		# Baixos sobre a pista: a sombra (70 m) escureceria prédios inteiros e pareceria defeito
 		node.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		add_child(node)
@@ -195,7 +195,7 @@ func _setup(city: TrackCity, track_center: Vector2) -> void:
 		var spec: Array = BLIMPS[k]
 		var node := MeshInstance3D.new()
 		node.name = "Blimp%d" % k
-		node.mesh = TrackScenery.blimp_mesh(spec[0], spec[1])
+		node.mesh = TrackScenery.blimp_mesh(spec[0], spec[1], 7 + k)
 		add_child(node)
 		_blimps.append([node, track_center + to_sea * float(spec[5]), along, to_sea, Vector2(spec[3], spec[4]), float(spec[6]),
 			rng.randf() * TAU, float(spec[2])])

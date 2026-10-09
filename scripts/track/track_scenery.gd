@@ -10,11 +10,16 @@ const ROOF := Color(0.78, 0.36, 0.24)
 const WINDOW := Color(0.25, 0.32, 0.45)
 const ROCK := Color(0.66, 0.58, 0.52)
 
+## Paredes livres dos vilarejos viradas para o circuito, para os murais (TrackShowcase):
+## [centro, normal, tamanho]. Os campanários primeiro.
+static var mural_walls: Array = []
+
 
 static func build(track: RaceTrack, terrain: TrackTerrain, parent: Node3D) -> void:
 	var root := Node3D.new()
 	root.name = "Scenery"
 	parent.add_child(root)
+	mural_walls.clear()
 	var rng := RandomNumberGenerator.new()
 	rng.seed = track.tree_seed + 77
 	_rocks(terrain, rng, root)
@@ -51,7 +56,8 @@ static func build(track: RaceTrack, terrain: TrackTerrain, parent: Node3D) -> vo
 			var lesmo := track.path.position_at(2600.0)
 			c3 = Vector3(lesmo.x, height, lesmo.z)
 		var radii: Vector2 = b[3]
-		_blimp(root, animator, "Blimp%d" % k, b[0], b[1], c3, radii * terrain.track_radius, b[4], b[5])
+		_blimp(root, animator, "Blimp%d" % k, b[0], b[1], c3, radii * terrain.track_radius, b[4], b[5],
+			k if k % 2 == 0 else -1)
 	# Dirigíveis baixos: órbitas curtas sobre trechos da pista e passagens retas cruzando o circuito
 	var low := [
 		[Color(0.95, 0.25, 0.3), 6, 55.0, 1200.0, Vector2(160, 110), 9.0],
@@ -62,7 +68,8 @@ static func build(track: RaceTrack, terrain: TrackTerrain, parent: Node3D) -> vo
 	for k in low.size():
 		var b: Array = low[k]
 		var at := track.path.position_at(b[3])
-		_blimp(root, animator, "LowBlimp%d" % k, b[0], b[1], Vector3(at.x, b[2], at.z), b[4], absf(b[5]), signf(b[5]))
+		_blimp(root, animator, "LowBlimp%d" % k, b[0], b[1], Vector3(at.x, b[2], at.z), b[4], absf(b[5]), signf(b[5]),
+			6 + k if k % 2 == 1 else -1)
 	var passes := [
 		[Color(0.15, 0.8, 0.6), 8, 45.0, 0.0, 0.3],
 		[Color(0.9, 0.4, 0.9), 12, 65.0, 2400.0, 1.9],
@@ -75,7 +82,7 @@ static func build(track: RaceTrack, terrain: TrackTerrain, parent: Node3D) -> vo
 		var dir := Vector3(cos(heading), 0.0, sin(heading))
 		var reach := terrain.track_radius + 1400.0
 		var center := Vector3(at.x, b[2], at.z)
-		var node := _blimp(root, animator, "PassBlimp%d" % k, b[0], b[1], center, Vector2.ONE, 0.0, 1.0)
+		var node := _blimp(root, animator, "PassBlimp%d" % k, b[0], b[1], center, Vector2.ONE, 0.0, 1.0, 9 if k == 0 else -1)
 		animator.remove_blimp(node)
 		animator.add_blimp_pass(node, center - dir * reach, center + dir * reach, 16.0, rng.randf() * 2.0)
 	TrackLife.build(track, terrain, root, animator)
@@ -179,14 +186,18 @@ static func _villages(terrain: TrackTerrain, rng: RandomNumberGenerator, root: N
 			centers.append(c)
 	var mb := MeshBuilder.new()
 	var glass := MeshBuilder.new()
+	var house_walls := []
 	for c in centers:
 		var houses := rng.randi_range(14, 24)
 		for k in houses:
 			var p := c + Vector2(rng.randf_range(-70, 70), rng.randf_range(-70, 70))
 			if terrain.slope_at(p.x, p.y) > 0.25:
 				continue
-			_house(mb, glass, terrain, p, rng)
-		_bell_tower(mb, glass, terrain, c + Vector2(rng.randf_range(-20, 20), rng.randf_range(-20, 20)))
+			var wall: Array = _house(mb, glass, terrain, p, rng, terrain.center)
+			if not wall.is_empty():
+				house_walls.append(wall)
+		_bell_tower(mb, glass, terrain, c + Vector2(rng.randf_range(-20, 20), rng.randf_range(-20, 20)), terrain.center)
+	mural_walls.append_array(house_walls)
 	if mb.is_empty():
 		return
 	var mi := MeshInstance3D.new()
@@ -196,7 +207,9 @@ static func _villages(terrain: TrackTerrain, rng: RandomNumberGenerator, root: N
 	root.add_child(mi)
 
 
-static func _house(mb: MeshBuilder, glass: MeshBuilder, terrain: TrackTerrain, p: Vector2, rng: RandomNumberGenerator) -> void:
+## Devolve a parede lateral (sem janelas) virada para `center`, se houver: [centro, normal, tamanho].
+static func _house(mb: MeshBuilder, glass: MeshBuilder, terrain: TrackTerrain, p: Vector2, rng: RandomNumberGenerator,
+		center := Vector2.ZERO) -> Array:
 	var w := rng.randf_range(6.0, 10.0)
 	var d := rng.randf_range(6.0, 9.0)
 	var h := rng.randf_range(5.0, 9.0)
@@ -230,11 +243,28 @@ static func _house(mb: MeshBuilder, glass: MeshBuilder, terrain: TrackTerrain, p
 	mb.quad(top + b, top + c, top + r1, top + r0, roof.darkened(0.08), (basis * Vector3(1, 1.5, 0)).normalized())
 	mb.tri(top + a, top + b, top + r0, wall, basis * Vector3(0, 0, -1))
 	mb.tri(top + e, top + c, top + r1, wall, basis * Vector3(0, 0, 1))
+	# Parede lateral (as janelas ficam nas outras duas) virada para o circuito
+	var to_center := Vector3(center.x - p.x, 0.0, center.y - p.y).normalized()
+	var side := basis * Vector3.RIGHT
+	var facing := side.dot(to_center)
+	if absf(facing) < 0.6:
+		return []
+	var n := side * signf(facing)
+	var mw := d * 0.75
+	var mh := minf(mw / 1.5, h * 0.8)
+	mw = mh * 1.5
+	return [base + n * (w * 0.5 + 0.06) + Vector3.UP * (3.0 + h * 0.5), n, Vector2(mw, mh)]
 
 
-static func _bell_tower(mb: MeshBuilder, glass: MeshBuilder, terrain: TrackTerrain, p: Vector2) -> void:
+static func _bell_tower(mb: MeshBuilder, glass: MeshBuilder, terrain: TrackTerrain, p: Vector2, center := Vector2.ZERO) -> void:
 	var ground := terrain.height_at(p.x, p.y) - 3.0
 	var base := Vector3(p.x, ground, p.y)
+	# Mural na face do campanário virada para o circuito, abaixo do sino
+	var to_center := Vector3(center.x - p.x, 0.0, center.y - p.y).normalized()
+	var faces := [Vector3.RIGHT, Vector3.LEFT, Vector3.FORWARD, Vector3.BACK]
+	faces.sort_custom(func(x: Vector3, y: Vector3) -> bool: return x.dot(to_center) > y.dot(to_center))
+	var n: Vector3 = faces[0]
+	mural_walls.append([base + n * 2.56 + Vector3.UP * 18.0, n, Vector2(3.6, 2.4)])
 	mb.box(Transform3D(Basis(), base + Vector3.UP * 14.0), Vector3(5.0, 28.0, 5.0), Color(0.93, 0.85, 0.72))
 	mb.box(Transform3D(Basis(), base + Vector3.UP * 26.5), Vector3(5.4, 3.0, 5.4), Color(0.85, 0.7, 0.55))
 	for side in 4:
@@ -325,10 +355,10 @@ static func _balloons(terrain: TrackTerrain, rng: RandomNumberGenerator, root: N
 
 
 static func _blimp(root: Node3D, animator: SceneryAnimator, node_name: String, band: Color,
-		ad: int, center: Vector3, radii: Vector2, speed: float, direction: float) -> Node3D:
+		ad: int, center: Vector3, radii: Vector2, speed: float, direction: float, image := -1) -> Node3D:
 	var node := MeshInstance3D.new()
 	node.name = node_name
-	node.mesh = blimp_mesh(band, ad)
+	node.mesh = blimp_mesh(band, ad, image)
 	root.add_child(node)
 	animator.add_blimp(node, center, radii, speed * direction)
 	return node
@@ -336,7 +366,9 @@ static func _blimp(root: Node3D, animator: SceneryAnimator, node_name: String, b
 
 ## Dirigível (proa para +Z, ~70 m): envelope branco com faixa e lemes na cor `band`, gôndola e o
 ## anúncio `ad` (atlas do TrackAds) nos dois lados.
-static func blimp_mesh(band: Color, ad: int) -> ArrayMesh:
+## Dirigível (casco 8 x 8 x 32 m de raio, frente em +Z) com a faixa e o anúncio dos dois lados; com
+## `image` >= 0, também um painel curvo com uma imagem de assets/outdoors na traseira do casco.
+static func blimp_mesh(band: Color, ad: int, image := -1) -> ArrayMesh:
 	var mb := MeshBuilder.new()
 	mb.blob(Vector3.ZERO, Vector3(8.0, 8.0, 32.0), Color(0.94, 0.95, 0.98), 16, 10, 0.25)
 	mb.blob(Vector3(0, 0, 0), Vector3(8.1, 1.4, 22.0), band, 16, 6)
@@ -356,7 +388,43 @@ static func blimp_mesh(band: Color, ad: int) -> ArrayMesh:
 			Vector2(uv.position.x, uv.end.y), Vector2(uv.end.x, uv.end.y), Vector2(uv.end.x, uv.position.y), uv.position)
 	var mesh := mb.commit(null, TrackMaterials.structure())
 	ads.commit(mesh, TrackMaterials.ads())
+	if image >= 0 and TrackShowcase.image_count() > 0:
+		_blimp_picture(image).commit(mesh, TrackShowcase.image_material(image))
 	return mesh
+
+
+## Painel 3:2 colado no casco (segue a curva do elipsoide), dos dois lados, perto da cauda.
+static func _blimp_picture(image: int) -> MeshBuilder:
+	var pic := MeshBuilder.new()
+	var uv := TrackShowcase.image_uv(image)
+	var radii := Vector3(8.0, 8.0, 32.0)
+	var zc := -17.5
+	var hz := 4.2
+	var hy := 2.8
+	var nu := 8
+	var nv := 6
+	for side: float in [-1.0, 1.0]:
+		var pt := func(u: float, v: float) -> Vector3:
+			var z := zc - side * (2.0 * u - 1.0) * hz
+			var y := (2.0 * v - 1.0) * hy
+			var x := radii.x * sqrt(maxf(1.0 - pow(y / radii.y, 2.0) - pow(z / radii.z, 2.0), 0.0)) + 0.08
+			return Vector3(side * x, y, z)
+		for iu in nu:
+			for iv in nv:
+				var u0 := float(iu) / nu
+				var u1 := float(iu + 1) / nu
+				var v0 := float(iv) / nv
+				var v1 := float(iv + 1) / nv
+				var a: Vector3 = pt.call(u0, v0)
+				var b: Vector3 = pt.call(u1, v0)
+				var c: Vector3 = pt.call(u1, v1)
+				var d: Vector3 = pt.call(u0, v1)
+				var mid := (a + c) * 0.5
+				var n := Vector3(mid.x / (radii.x * radii.x), mid.y / (radii.y * radii.y), mid.z / (radii.z * radii.z)).normalized()
+				var uvp := func(u: float, v: float) -> Vector2:
+					return Vector2(uv.position.x + u * uv.size.x, uv.end.y - v * uv.size.y)
+				pic.quad(a, b, c, d, Color.WHITE, n, uvp.call(u0, v0), uvp.call(u1, v0), uvp.call(u1, v1), uvp.call(u0, v1))
+	return pic
 
 
 # ---------------------------------------------------------------------------

@@ -69,6 +69,75 @@ func _index() -> void:
 		_stands.append(poly)
 
 
+## Lado (m) dos blocos de instâncias de add_chunked.
+const CHUNK := 128.0
+## Árvores da cidade: folhas soltas até esta distância (m), bolhas simples depois.
+const TREE_LOD := 190.0
+
+
+## Cria os MultiMesh de uma lista de instâncias divididos em blocos de CHUNK m, um por bloco e por
+## LOD. O Godot mede o visibility range até o centro de cada MultiMesh e recorta (câmera e cascatas
+## de sombra) pela caixa dele inteira: um MultiMesh só para a cidade toda nunca trocaria de LOD e
+## iria inteiro para cada cascata de sombra. `lods` = lista de [malha, material, início, fim,
+## sombra] (início/fim do visibility range; 0 = sem limite). `data` = INSTANCE_CUSTOM (ou vazio).
+## Devolve os MultiMeshInstance3D criados.
+static func add_chunked(root: Node3D, prefix: String, xfs: Array, data: Array, lods: Array) -> Array[MultiMeshInstance3D]:
+	var chunks := {}
+	for i in xfs.size():
+		var o: Vector3 = (xfs[i] as Transform3D).origin
+		var key := Vector2i(floori(o.x / CHUNK), floori(o.z / CHUNK))
+		if not chunks.has(key):
+			chunks[key] = [[] as Array[Transform3D], [] as Array[Color]]
+		chunks[key][0].append(xfs[i])
+		chunks[key][1].append(data[i] if not data.is_empty() else Color())
+	var out: Array[MultiMeshInstance3D] = []
+	for key: Vector2i in chunks:
+		var part: Array[Transform3D] = chunks[key][0]
+		var buffer := PackedFloat32Array()
+		if not data.is_empty():
+			buffer = Grandstands.pack_buffer(part, chunks[key][1])
+		for l in lods.size():
+			var lod: Array = lods[l]
+			var mm := MultiMesh.new()
+			mm.transform_format = MultiMesh.TRANSFORM_3D
+			mm.use_custom_data = not data.is_empty()
+			mm.mesh = lod[0]
+			mm.instance_count = part.size()
+			if data.is_empty():
+				for i in part.size():
+					mm.set_instance_transform(i, part[i])
+			else:
+				mm.buffer = buffer
+			var mmi := MultiMeshInstance3D.new()
+			mmi.name = "%s_%d_%d%s" % [prefix, key.x, key.y, "" if l == 0 else "_lod%d" % l]
+			mmi.multimesh = mm
+			if lod[1] != null:
+				mmi.material_override = lod[1]
+			# Só o primeiro LOD guarda as posições (os testes contam cada instância uma vez)
+			if l == 0:
+				mmi.set_meta("points", origins(part))
+			if float(lod[2]) > 0.0:
+				mmi.visibility_range_begin = lod[2]
+				mmi.visibility_range_begin_margin = 25.0
+			if float(lod[3]) > 0.0:
+				mmi.visibility_range_end = lod[3]
+				mmi.visibility_range_end_margin = 25.0
+			if not lod[4]:
+				mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			root.add_child(mmi)
+			out.append(mmi)
+	return out
+
+
+## Posições das instâncias (metadado "points" dos MultiMesh, para os testes: sem janela o
+## renderizador é vazio e não devolve as transformações).
+static func origins(xfs: Array) -> PackedVector3Array:
+	var out := PackedVector3Array()
+	for xf: Transform3D in xfs:
+		out.append(xf.origin)
+	return out
+
+
 static func _add(grid: Dictionary, rect: Rect2, item: Array) -> void:
 	for gx in range(floori(rect.position.x / GRID), floori(rect.end.x / GRID) + 1):
 		for gy in range(floori(rect.position.y / GRID), floori(rect.end.y / GRID) + 1):
@@ -92,7 +161,42 @@ func _ground(d: Vector2) -> int:
 	return city.cls[i]
 
 
+## O ponto (mundo) fica fora da pista e de tudo o que é dela, em qualquer trecho do circuito (em
+## Mônaco vários trechos correm lado a lado): atrás da barreira, além da faixa dos boxes e longe
+## das garagens. `margin` = folga extra (m), por exemplo o raio da copa.
+static func clear_of_track(track: RaceTrack, pos: Vector3, margin: float) -> bool:
+	var p := track.path
+	var pr := p.project(pos, false)
+	if pr.y == INF:
+		return true  # longe de qualquer trecho
+	var i := p.index_at(pr.x)
+	var side := 1 if pr.y >= 0.0 else -1
+	var need := p.half_width(i, side) + track.outer_distance(i, side) + 0.5
+	var lay := track.layout
+	if lay.has_pit and side == lay.pit_side:
+		if track.pit_width[i] > 0.0:
+			need = maxf(need, p.half_width(i, side) + track.pit_width[i] + 3.0)
+		var ds := fposmod(pr.x - lay.garage_center_s + p.length * 0.5, p.length) - p.length * 0.5
+		if absf(ds) < lay.pit_building_length * 0.5 + 20.0:
+			need = maxf(need, p.half_width(i, side) + RaceTrack.PIT_WALL_STRIP + lay.pit_lane_width + PitComplex.DEPTH + 4.0)
+	return absf(pr.y) > need + margin
+
+
+## Raio de cima para baixo no ponto: o primeiro piso tem de ser o chão da cidade (não pista, escape,
+## faixa ou chão dos boxes, barreira, muro, arquibancada). Sem nada embaixo também vale.
+func _on_city_ground(d: Vector2) -> bool:
+	var space := track.get_world_3d().direct_space_state if track.is_inside_tree() else null
+	if space == null:
+		return true
+	var h := city.height_at(d.x, -d.y)
+	var q := PhysicsRayQueryParameters3D.create(Vector3(d.x, h + 8.0, -d.y), Vector3(d.x, h - 4.0, -d.y))
+	var hit := space.intersect_ray(q)
+	return hit.is_empty() or String((hit["collider"] as Node).name) == "GroundCollision"
+
+
 func _free(d: Vector2, radius: float) -> bool:
+	if not clear_of_track(track, Vector3(d.x, 0.0, -d.y), radius) or not _on_city_ground(d):
+		return false
 	var key := Vector2i(floori(d.x / GRID), floori(d.y / GRID))
 	for item in _buildings.get(key, []):
 		if (item[1] as Rect2).has_point(d) and (Geometry2D.is_point_in_polygon(d, item[0]) or _near_poly(d, item[0], radius + 0.8)):
@@ -178,19 +282,9 @@ func _furniture(root: Node3D) -> void:
 		var xfs: Array[Transform3D] = lists[k]
 		if xfs.is_empty():
 			continue
-		var mm := MultiMesh.new()
-		mm.transform_format = MultiMesh.TRANSFORM_3D
-		mm.mesh = _mesh(k)
-		mm.instance_count = xfs.size()
-		for i in xfs.size():
-			mm.set_instance_transform(i, xfs[i])
-		var mmi := MultiMeshInstance3D.new()
-		mmi.name = "Props_%s" % Kind.keys()[k]
-		mmi.multimesh = mm
-		mmi.material_override = mat
-		mmi.visibility_range_end = 260.0
-		mmi.visibility_range_end_margin = 20.0
-		root.add_child(mmi)
+		# Coisas pequenas: só até 220 m, e só os guarda-sóis fazem sombra que se nota
+		var shadow: bool = k in [Kind.CAFE_RED, Kind.CAFE_GREEN, Kind.CAFE_BLUE, Kind.PLANTER]
+		add_chunked(root, "Props_%s" % Kind.keys()[k], xfs, [], [[_mesh(k), mat, 0.0, 220.0, shadow]])
 
 
 ## Modelos (frente para -Z, que fica virada para a pista).
@@ -276,17 +370,14 @@ func _trees(root: Node3D) -> void:
 		by_species[species][0].append(Transform3D(basis, Vector3(pos.x, city.height_at(pos.x, pos.z) - 0.2, pos.z)))
 		by_species[species][1].append(Color(rng.randf(), rng.randf(), rng.randf(), 0.0))
 		_mark(d)
+	add_trees(root, "TracksideTrees", by_species)
+
+
+## Árvores da cidade por espécie (espécie -> [transformações, INSTANCE_CUSTOM]): folhas soltas
+## (TrackLeaves.city_tree_mesh) até TREE_LOD m, bolhas simples sem sombra depois.
+static func add_trees(root: Node3D, prefix: String, by_species: Dictionary) -> void:
 	TrackTrees.ensure_meshes()
-	var mat := TrackMaterials.tree()
-	for species in by_species:
-		var mm := MultiMesh.new()
-		mm.transform_format = MultiMesh.TRANSFORM_3D
-		mm.use_custom_data = true
-		mm.mesh = TrackTrees.mesh(species, true)
-		mm.instance_count = (by_species[species][0] as Array).size()
-		mm.buffer = Grandstands.pack_buffer(by_species[species][0], by_species[species][1])
-		var mmi := MultiMeshInstance3D.new()
-		mmi.name = "TracksideTrees_%d" % species
-		mmi.multimesh = mm
-		mmi.material_override = mat
-		root.add_child(mmi)
+	for species: int in by_species:
+		add_chunked(root, "%s_%d" % [prefix, species], by_species[species][0], by_species[species][1], [
+			[TrackLeaves.city_tree_mesh(species), TrackLeaves.leafy_material(), 0.0, TREE_LOD, true],
+			[TrackTrees.mesh(species, false), TrackMaterials.tree(), TREE_LOD, 0.0, false]])

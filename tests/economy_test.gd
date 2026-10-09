@@ -54,8 +54,29 @@ func _run() -> void:
 				all_variants = false
 				print("    variante sem roleta: ", slot, "/", v)
 	_check(all_variants, "toda variante não padrão cai em alguma roleta")
-	_check(is_equal_approx(1.0 / ShopCatalog.chance_of("livery_aurora"), 160.0), "um lendário específico: 160 giros em média")
-	_check(ShopCatalog.refund_of("livery_aurora") == roundi(ShopCatalog.table_price("livery_aurora") * 0.3), "repetida devolve 30% do preço de tabela")
+	var only_parts_decals := true
+	for id in ShopCatalog.ITEMS:
+		if not ShopCatalog.ITEMS[id]["type"] in ["part", "decal", "boost", "neon"]:
+			only_parts_decals = false
+		if ShopCatalog.ITEMS[id]["type"] in ["boost", "neon"] and not Color.html_is_valid(str(ShopCatalog.ITEMS[id].get("color", ""))):
+			only_parts_decals = false
+		if ShopCatalog.ITEMS[id]["type"] == "decal" and not CarDecals.is_preset(ShopCatalog.decal_of(id)):
+			only_parts_decals = false
+			print("    decalque inexistente: ", id)
+	_check(only_parts_decals, "roletas só com peças, decalques, boost e neon (que existem)")
+	var legendaries := ShopCatalog.drops("neon", ShopCatalog.Rarity.LEGENDARY).size()
+	_check(is_equal_approx(1.0 / ShopCatalog.chance_of("decal_sakura"), 40.0 * legendaries),
+		"um lendário da roleta Neon: %d giros em média" % (40 * legendaries))
+	# Toda peça do catálogo tem o modelo exportado (peças e rodas)
+	var models_ok := true
+	for slot in CarPartCatalog.all_slots():
+		for v in CarPartCatalog.variants(slot):
+			var path := CarPartCatalog.wheel_part_path(slot, v, "front") if CarPartCatalog.is_wheel_slot(slot) 				else CarPartCatalog.part_path(slot, v)
+			if not ResourceLoader.exists(path):
+				models_ok = false
+				print("    sem modelo: ", path)
+	_check(models_ok, "toda variante do catálogo tem modelo")
+	_check(ShopCatalog.refund_of("decal_sakura") == roundi(ShopCatalog.table_price("decal_sakura") * 0.3), "repetida devolve 30% do preço de tabela")
 
 	# --- Sorteio: distribuição dos degraus com números uniformes
 	var counts := [0, 0, 0, 0, 0]
@@ -81,7 +102,7 @@ func _run() -> void:
 	_check(profile.owns(res["item"]) and not res["dup"], "primeira peça é nova e entra na coleção")
 	# Repetida: já possui a peça sorteada
 	var before := profile.credits
-	profile.owned["livery_glacial"] = true
+	profile.owned["decal_asas"] = true
 	var dup_seen := false
 	for k in 400:
 		if profile.credits < ShopCatalog.TICKET_PRICE:
@@ -98,31 +119,66 @@ func _run() -> void:
 
 	# --- Estúdio
 	profile.reset_profile()
-	profile.equip_color("primary", Color("00e5c0"))
-	_check(profile.equipped["primary"] == "d81e2c", "cor de pintura não possuída é recusada")
-	profile.owned["livery_aurora"] = true
-	profile.equip_color("primary", Color("00e5c0"))
-	_check(profile.equipped["primary"] == "00e5c0", "cor de pintura possuída é aceita")
-	profile.equip_color("secondary", Color("d81e2c"))
-	_check(profile.equipped["livery"] == "", "mistura vira combinação própria")
+	profile.equip_color("primary", Color("123456"))
+	_check(profile.equipped["primary"] == "123456", "cor livre: qualquer cor no carro")
+	profile.equip_color("helmet", Color("abcdef"))
+	_check(profile.equipped["helmet"] == "abcdef", "cor livre: qualquer cor no capacete")
+	_check(profile.equipped["livery"] == "", "cores próprias = combinação própria")
+	profile.equip_livery("livery_aurora")
+	_check(profile.equipped["primary"] == "00e5c0" and profile.equipped["livery"] == "livery_aurora", "pintura pronta grátis aplica as 3 cores")
+	profile.set_decal("sidepods", "sakura")
+	_check(not profile.equipped["decals"].has("sidepods"), "decalque não possuído é recusado")
+	profile.set_decal("sidepods", "estrela")
+	_check(profile.equipped["decals"].get("sidepods", {}).get("id", "") == "estrela", "decalque grátis é aceito")
+	profile.owned["decal_sakura"] = true
+	profile.set_decal("nose", "sakura")
+	_check(profile.equipped["decals"].get("nose", {}).get("id", "") == "sakura", "decalque ganho é aceito")
+	profile.owned.erase("decal_sakura")
+	profile.clamp_equipped()
+	_check(not profile.equipped["decals"].has("nose"), "trava: decalque perdido sai do carro")
 	profile.equip_part("rear_wing", "lowdf")
 	_check(not profile.equipped["parts"].has("rear_wing"), "peça não possuída é recusada")
 	profile.owned["part_rear_wing_lowdf"] = true
 	profile.equip_part("rear_wing", "lowdf")
 	_check(profile.equipped["parts"].get("rear_wing", "") == "lowdf", "peça possuída é montada")
+	# Boost e neon: só as cores ganhas
+	_check(not profile.has_neon() and profile.equipped["neon"] == "" and not profile.equipped["neon_on"], "conta nova sem neon")
 	profile.set_neon(true)
-	_check(not profile.equipped["neon_on"], "neon só com uma peça de neon")
+	_check(not profile.equipped["neon_on"], "sem cor de neon ganha o neon não liga")
+	profile.equip_color("boost", Color("123456"))
+	_check(profile.equipped["boost"] == "38f2ff", "boost: cor não ganha é recusada (fica o ciano grátis)")
+	profile.owned["boost_ruby"] = true
+	profile.equip_color("boost", Color("ff1744"))
+	_check(profile.equipped["boost"] == "ff1744", "boost: cor ganha é aceita")
 	profile.owned["neon_cyan"] = true
+	profile.equip_color("neon", Color("abcdef"))
+	_check(profile.equipped["neon"] != "abcdef", "neon: cor não ganha é recusada")
+	profile.equip_color("neon", Color("00e5ff"))
 	profile.set_neon(true)
-	_check(profile.equipped["neon_on"] and profile.equipped["neon"] == "00e5ff", "neon ligado com a cor ganha")
-	# Trava: perder a peça devolve o gratuito
-	profile.owned.erase("livery_aurora")
+	_check(profile.equipped["neon_on"] and profile.equipped["neon"] == "00e5ff", "neon ganho liga na cor dele")
+	profile.owned.erase("boost_ruby")
 	profile.clamp_equipped()
-	_check(profile.equipped["primary"] == "d81e2c", "trava: cor sem a pintura volta para o gratuito")
+	_check(profile.equipped["boost"] == "38f2ff", "trava: boost perdido volta para o grátis")
+	# Esquema de pintura: grátis, qualquer um da lista; fora da lista volta para o clássico
+	profile.set_finish("paint_scheme", 4)
+	_check(profile.equipped["paint_scheme"] == 4, "esquema de pintura escolhido")
+	profile.equipped["paint_scheme"] = 99
+	profile.clamp_equipped()
+	_check(profile.equipped["paint_scheme"] == CarConfig.PAINT_SCHEMES.size() - 1, "trava: esquema fora da lista")
+	profile.set_finish("paint_scheme", 4)
+	var w_side := CarLivery.scheme_weights(1, Vector3(0.6, 0.2, 0.0))
+	var w_top := CarLivery.scheme_weights(1, Vector3(0.6, 0.6, 0.0))
+	_check(w_side.x == 1.0 and w_top.x == 0.0, "dois tons: cor 2 embaixo, cor 1 em cima")
+	profile.equipped["primary"] = "não é cor"
+	profile.clamp_equipped()
+	_check(profile.equipped["primary"] == "d81e2c", "trava: cor inválida volta para a padrão")
 	var cfg := CarConfig.new()
 	profile.apply_to_config(cfg)
 	_check(cfg.get_part("rear_wing") == "lowdf" and cfg.neon_enabled and cfg.neon_color.to_html(false) == "00e5ff",
 		"aplica peças, neon e cores na configuração do carro")
+	_check(cfg.paint_scheme == 4, "aplica o esquema de pintura na configuração do carro")
+	var saved := PlayerProfile.sanitize_equipped({"paint_scheme": 7})
+	_check(saved["paint_scheme"] == 7, "esquema passa pela validação do servidor")
 
 	# --- Engenharia (comportamento do carro)
 	var car := (load("res://scenes/car/f1_car.tscn") as PackedScene).instantiate() as F1Car

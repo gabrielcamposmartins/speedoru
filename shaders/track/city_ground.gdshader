@@ -5,6 +5,7 @@
 //   >= 0.27 jardim / grama: cor de grama do ambiente (globais do terreno), tufos e flores; nas
 //           encostas, terraços com muretas de pedra seguindo as curvas de nível;
 //   >= 0.2  mato mediterrâneo (morros): manchas de verde escuro, oliva e rocha aparecendo;
+//   >= 0.14 muro de arrimo: pedra calcária em fiadas desencontradas com hera em manchas;
 //   >= 0.06 encosta: rocha com estratos;
 //   <  0.06 sob a pista: asfalto escuro.
 // Os desenhos finos somem com a distância (sem serrilhado); o tom de cada peça varia um pouco.
@@ -99,6 +100,23 @@ void fragment() {
 		float bare = smoothstep(0.62, 0.75, tc_fbm(xz / 30.0 + 9.0)) + smoothstep(0.25, 0.5, 1.0 - world_n.y);
 		scrub = mix(scrub, vec3(0.45, 0.42, 0.36), clamp(bare, 0.0, 1.0) * 0.8);
 		c = mix(c, scrub * (0.85 + 0.3 * tc_noise(xz / 9.0)), 0.9);
+		rough = 1.0;
+	} else if (a >= 0.14) {
+		// Muro de arrimo: blocos de pedra de 1,1 x 0,45 m em fiadas desencontradas (pela altura), com
+		// argamassa, e hera descendo em manchas (verde do ambiente)
+		vec2 wp = vec2(world_pos.x + world_pos.z, world_pos.y) / vec2(1.1, 0.45);
+		wp.x += 0.5 * mod(floor(wp.y), 2.0);
+		vec2 id = floor(wp);
+		float h = tc_hash(id + 23.0);
+		c *= mix(1.0, 0.86 + 0.24 * h, 0.5 + 0.5 * fine);
+		c *= 1.0 - joints(fract(wp), vec2(0.035, 0.07), fwidth(wp)) * 0.32 * (0.4 + 0.6 * fine);
+		// Escorridos verticais
+		c *= 0.92 + 0.1 * tc_noise(vec2((world_pos.x + world_pos.z) * 0.7, world_pos.y * 0.08));
+		float ivy_mask = tc_fbm(vec2(world_pos.x + world_pos.z, world_pos.y * 1.6) / 9.0 + 3.0);
+		float ivy = smoothstep(0.5, 0.58, ivy_mask);
+		vec3 g = tc_grass_color(xz * 2.1) * 0.62;
+		g *= 0.75 + 0.45 * tc_noise(vec2(world_pos.x + world_pos.z, world_pos.y) * 3.0);
+		c = mix(c, g, ivy * 0.92);
 		rough = 1.0;
 	} else if (a >= 0.06) {
 		// Rocha da encosta: estratos e manchas

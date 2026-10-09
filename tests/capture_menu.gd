@@ -30,10 +30,10 @@ func _run() -> void:
 	PlayerProfile.save_path = "user://test_capture_profile.cfg"
 	profile.reset_profile()
 	profile.credits = 48750
-	for id in ["livery_aurora", "livery_glacial", "livery_ember", "helmet_gold", "neon_cyan", "part_rear_wing_lowdf",
-			"rim_silver", "boost_ruby", "suit_night_sky", "livery_mint"]:
+	for id in ["part_rear_wing_lowdf", "part_nose_pointed", "decal_cometa", "decal_raio", "decal_chamas", "neon_cyan", "boost_ruby"]:
 		profile.owned[id] = true
 	profile.equip_livery("livery_aurora")
+	profile.equip_color("helmet", Color("ffd23f"))
 	var scene := (load("res://scenes/menu/main_menu.tscn") as PackedScene).instantiate()
 	root.add_child(scene)
 	current_scene = scene
@@ -87,14 +87,10 @@ func _run() -> void:
 	gallery._select("part_rear_wing_highdf")
 	await create_timer(1.6).timeout
 	await _snap("menu_gallery_part")
-	gallery.type = "helmet"
-	gallery._select("helmet_gold")
+	gallery.type = "decal"
+	gallery._select("decal_sakura")
 	await create_timer(1.6).timeout
-	await _snap("menu_gallery_helmet")
-	gallery.type = "livery"
-	gallery._select("livery_crimson_dragon")
-	await create_timer(1.2).timeout
-	await _snap("menu_gallery_livery")
+	await _snap("menu_gallery_decal")
 	ui.garage_tab = 2
 	ui.show_screen("garage")
 	await _frames(20)

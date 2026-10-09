@@ -181,6 +181,9 @@ func set_mode(new_mode: Mode) -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	# Controlada por fora (apresentação, espectador em TV/livre): não troca de câmera
+	if cinematic:
+		return
 	if event.is_action_pressed("camera_next"):
 		var current: Mode = _mode_before_orbit if mode == Mode.ORBIT else mode
 		set_mode(CYCLE[(CYCLE.find(current) + 1) % CYCLE.size()])

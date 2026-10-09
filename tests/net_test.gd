@@ -151,12 +151,15 @@ func _run() -> void:
 
 	# --- Carro do aparelho: o servidor aceita até item que a conta não tem (PENDENTE: validar posse)
 	var eq: Dictionary = (a.account["profile"]["equipped"] as Dictionary).duplicate(true)
-	eq["livery"] = "livery_aurora"
+	eq["primary"] = "123456"
+	eq["decals"] = {"sidepods": {"id": "sakura", "color": "ff0000", "scale": 1.2, "rot": 0.0, "x": 0.3, "y": 0.0}}
 	eq["setup"] = {"downforce_area": 4.6}
 	a.send_to_server("equip", {"equipped": eq})
-	ok = await _wait_for(func() -> bool: return str(a.account["profile"]["equipped"].get("livery", "")) == "livery_aurora", 5.0)
-	_check(ok and float(a.account["profile"]["equipped"]["setup"].get("downforce_area", 0.0)) == 4.6,
-		"servidor aceita o carro do aparelho (pintura não comprada e engenharia)")
+	ok = await _wait_for(func() -> bool:
+		return str((a.account["profile"]["equipped"].get("decals", {}) as Dictionary).get("sidepods", {}).get("id", "")) == "sakura", 5.0)
+	_check(ok and float(a.account["profile"]["equipped"]["setup"].get("downforce_area", 0.0)) == 4.6
+		and str(a.account["profile"]["equipped"]["primary"]) == "123456",
+		"servidor aceita o carro do aparelho (cor livre, decalque não ganho e engenharia)")
 
 	# --- Corrida no servidor
 	r = await a.request("room_start")
@@ -170,8 +173,9 @@ func _run() -> void:
 		_check(int(rs["settings"].get("drs", 0)) == 1, "regra do DRS da sala (até 1 s) chega à corrida")
 		_check(str(rs["settings"].get("track", "")) == "monaco", "pista da sala (Mônaco) chega à corrida")
 		var mine: Array = roster.filter(func(d: Dictionary) -> bool: return d["id"] == a_id)
-		_check(not mine.is_empty() and str(mine[0]["profile"]["equipped"]["livery"]) == "livery_aurora",
-			"o carro do grid usa o visual do jogador")
+		_check(not mine.is_empty() and str(mine[0]["profile"]["equipped"]["primary"]) == "123456"
+			and str(mine[0]["profile"]["equipped"]["decals"]["sidepods"]["id"]) == "sakura",
+			"o carro do grid usa o visual do jogador (cor e decalque)")
 		var my_idx := -1
 		for d in roster:
 			if d["id"] == a_id:
@@ -205,8 +209,34 @@ func _run() -> void:
 		_check(moved > 15.0, "o carro de A andou com as entradas pela rede (%.0f m, %.0f km/h)" % [moved, (end_snap["vel"] as Vector3).length() * 3.6])
 		_check(snaps["B"].size() > 50, "B recebe os instantâneos (%d)" % snaps["B"].size())
 
+		# --- Votação para pausar: os dois votam, os carros congelam; votação para retomar com contagem
+		a.send_to_server("race_cmd", {"cmd": "vote", "kind": "pause", "yes": true})
+		b.send_to_server("race_cmd", {"cmd": "vote", "kind": "pause", "yes": true})
+		ok = await _wait_for(func() -> bool:
+			return states["A"].any(func(s: Dictionary) -> bool: return s.get("event", "") == "paused" and bool(s.get("paused", false))), 5.0)
+		_check(ok, "votação aprovada: corrida pausada")
+		await _wait(0.5)
+		var p0: Vector3 = snaps["A"][-1]["cars"][my_idx]["pos"]
+		for i in 60:
+			var d := PackedFloat32Array([i, 1.0, 0.0, 0.0, 0.0, 0])
+			d.append_array(PackedFloat32Array(counts))
+			a.inp.rpc_id(1, d)
+			await create_timer(1.0 / 60.0).timeout
+		var p1: Vector3 = snaps["A"][-1]["cars"][my_idx]["pos"]
+		_check(p0.distance_to(p1) < 0.05, "pausado: o carro não anda mesmo acelerando (%.3f m)" % p0.distance_to(p1))
+		states["A"].clear()
+		a.send_to_server("race_cmd", {"cmd": "vote", "kind": "resume", "yes": true})
+		b.send_to_server("race_cmd", {"cmd": "vote", "kind": "resume", "yes": true})
+		ok = await _wait_for(func() -> bool:
+			return states["A"].any(func(s: Dictionary) -> bool: return s.get("event", "") == "resuming"), 5.0)
+		_check(ok, "votação para retomar aprovada: contagem")
+		ok = await _wait_for(func() -> bool:
+			return states["A"].any(func(s: Dictionary) -> bool: return s.get("event", "") == "paused" and not bool(s.get("paused", true))), 8.0)
+		_check(ok, "corrida retomada depois da contagem")
+
 		# --- Votação para recomeçar: A abre (1/2), B vota e a corrida recomeça do grid
-		a.send_to_server("race_cmd", {"cmd": "restart_vote", "yes": true})
+		states["B"].clear()
+		a.send_to_server("race_cmd", {"cmd": "vote", "kind": "restart", "yes": true})
 		ok = await _wait_for(func() -> bool:
 			return states["B"].any(func(s: Dictionary) -> bool: return s.get("event", "") == "vote" and int(s.get("yes", 0)) == 1), 5.0)
 		_check(ok, "votação aberta chega a B (1/2)")
@@ -214,7 +244,7 @@ func _run() -> void:
 		_check(not vote_ev.is_empty() and int(vote_ev[-1]["needed"]) == 2 and a_id in (vote_ev[-1]["ids"] as Array),
 			"maioria de 2 humanos = 2 votos; A conta como sim")
 		var starts_before: int = inbox["A"].filter(func(m: Array) -> bool: return m[0] == "race_start").size()
-		b.send_to_server("race_cmd", {"cmd": "restart_vote", "yes": true})
+		b.send_to_server("race_cmd", {"cmd": "vote", "kind": "restart", "yes": true})
 		ok = await _wait_for(func() -> bool:
 			return states["A"].any(func(s: Dictionary) -> bool: return s.get("event", "") == "restarting"), 5.0)
 		_check(ok, "votação aprovada: aviso de recomeço")

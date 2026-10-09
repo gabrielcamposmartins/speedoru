@@ -14,8 +14,14 @@ extends Node3D
 @export var mirror_outward_deg := 13.0
 @export var display_resolution := Vector2i(512, 256)
 ## Retrovisores atualizam todo quadro só quando `mirrors_active` (câmeras de bordo).
-## Fora disso atualizam a cada N quadros, para economizar.
-@export var idle_mirror_interval := 12
+## Fora disso atualizam a cada N quadros (um espelho de cada vez), para economizar; o display do
+## volante também.
+@export var idle_mirror_interval := 30
+## Abaixo deste FPS, nas câmeras de bordo, os dois espelhos se revezam (cada um a meio FPS): cada
+## espelho é a cidade inteira renderizada de novo.
+@export var mirror_alternate_below_fps := 90
+## Taxa máxima de redesenho do display do volante (Hz).
+const DISPLAY_HZ := 30.0
 
 var mirrors_active := false
 
@@ -27,6 +33,7 @@ var _mirror_glass: Array[Node3D] = []
 var _display_view: SubViewport
 var _display: SteeringDisplay
 var _frame := 0
+var _display_wait := 0.0
 
 
 func _ready() -> void:
@@ -41,7 +48,7 @@ func _ready() -> void:
 		var cam := Camera3D.new()
 		cam.fov = mirror_fov
 		cam.near = 0.05
-		cam.far = 800.0
+		cam.far = 400.0
 		cam.physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
 		view.add_child(cam)
 		add_child(view)
@@ -53,7 +60,7 @@ func _ready() -> void:
 	_display_view = SubViewport.new()
 	_display_view.name = "SteeringDisplayView"
 	_display_view.size = display_resolution
-	_display_view.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+	_display_view.render_target_update_mode = SubViewport.UPDATE_ONCE
 	_display = SteeringDisplay.new()
 	_display.car = car
 	_display.set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -125,13 +132,24 @@ func _add_screen(parent: Node3D, node_name: String, quad_size: Vector2, pos: Vec
 	parent.add_child(mi)
 
 
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
 	if car == null:
 		return
 	_frame += 1
 	var xf := car.get_global_transform_interpolated()
-	var update := mirrors_active or _frame % idle_mirror_interval == 0
+	var alternate := Engine.get_frames_per_second() < mirror_alternate_below_fps
 	for i in 2:
-		_mirror_views[i].render_target_update_mode = SubViewport.UPDATE_ALWAYS if update else SubViewport.UPDATE_DISABLED
+		var update: bool
+		if mirrors_active:
+			update = not alternate or (_frame + i) % 2 == 0
+		else:
+			update = (_frame + i * idle_mirror_interval / 2) % idle_mirror_interval == 0
+		_mirror_views[i].render_target_update_mode = SubViewport.UPDATE_ONCE if update else SubViewport.UPDATE_DISABLED
 		if update:
 			_mirror_cameras[i].global_transform = xf * _mirror_locals[i]
+	# Display do volante: a 30 Hz nas câmeras de bordo; fora delas, de vez em quando
+	_display_wait -= delta
+	if (mirrors_active and _display_wait <= 0.0) or (not mirrors_active and _frame % idle_mirror_interval == 0):
+		_display_wait = 1.0 / DISPLAY_HZ
+		_display.queue_redraw()
+		_display_view.render_target_update_mode = SubViewport.UPDATE_ONCE

@@ -1,24 +1,25 @@
 class_name StudioPanel
 extends HBoxContainer
-## Estúdio: equipa e combina o que a conta tem (nunca libera nada novo). Usado na garagem do menu
+## Estúdio: cores livres (seletor + sugestões) e o que a conta tem de peças e decalques. Usado na garagem do menu
 ## principal (painel à direita, carro em foco) e no painel da garagem durante a corrida (Tab).
 ##
 ## Layout compacto: uma coluna de abas só com ícones (o nome aparece no topo e no tooltip) e uma
 ## grade de 2 colunas em que toda opção tem o mesmo tamanho (TILE).
-## * Pinturas aplicam as 3 cores de uma vez; as cores principal/secundária/destaque se misturam só
-##   entre as cores das pinturas possuídas.
-## * Capacete, macacão, cor das rodas, brilho do boost e neon: as cores das peças daquele tipo.
+## * Pinturas prontas (grátis) aplicam as 3 cores de uma vez; cada cor (carro, capacete, macacão,
+##   rodas) é livre: seletor de qualquer cor e sugestões. Boost e neon: as cores ganhas nas roletas.
 ## * Peças: as variantes ganhas (a padrão sempre), com o efeito na aerodinâmica no tooltip.
 ## * Engenharia: o comportamento do carro (aerodinâmica, freios, pneus, direção, câmbio,
 ##   suspensão, assistências), com slider, ajuste grosso/fino e explicação de cada parâmetro.
-## * Decalques: SVG (padrão ou da pasta do jogador) em cada lugar do carro, com cor livre,
-##   tamanho e giro (CarDecals). São grátis.
+## * Decalques: SVG (padrão ganho ou da pasta do jogador) em cada lugar do carro, com cor livre
+##   (seletor), e posição/tamanho/largura/giro numa prévia do lugar (arrastar e roda) ou nos sliders;
+##   a câmera da garagem vai até o lugar (focus_request).
 ## Cada escolha vai para o Profile (que confere e salva) e para o carro na hora.
 
 const TILE := Vector2(148, 92)
 const CATEGORIES := [
 	["engineering", "Engenharia"],
 	["livery", "Pinturas"],
+	["scheme", "Esquema de pintura"],
 	["finish", "Acabamento"],
 	["decals", "Decalques"],
 	["primary", "Cor principal"],
@@ -34,17 +35,18 @@ const CATEGORIES := [
 ## Explicação de cada aba (tooltip).
 const CATEGORY_TIPS := {
 	"engineering": "Comportamento do carro: aerodinâmica, freios, pneus, direção, câmbio, suspensão e assistências. Não muda a aparência.",
-	"livery": "Pinturas que você tem. Uma pintura aplica as 3 cores do carro de uma vez.",
+	"livery": "Pinturas prontas (grátis). Uma pintura aplica as 3 cores do carro de uma vez.",
+	"scheme": "Como as 3 cores se dividem pelo carro: faixas, diagonal, metades, flechas, ondas, camuflagem… Todos vêm com o jogo.",
 	"finish": "Acabamento da pintura (brilhante, metálico, perolado, acetinado, fosco, cromado) e das rodas. Todos vêm com o jogo.",
-	"decals": "Adesivos SVG nas laterais, no bico, na entrada de ar e na asa traseira, pintados na cor que você quiser. Dá para usar os seus próprios SVGs.",
-	"primary": "Cor principal do carro, escolhida entre as cores das suas pinturas.",
-	"secondary": "Cor secundária do carro, escolhida entre as cores das suas pinturas.",
-	"accent": "Cor de destaque (detalhes e faixas), escolhida entre as cores das suas pinturas.",
+	"decals": "Adesivos SVG nas laterais, no bico, na entrada de ar e na asa traseira, na cor, posição e tamanho que você quiser. Ganhe mais nas roletas ou use os seus próprios SVGs.",
+	"primary": "Cor principal do carro: qualquer cor.",
+	"secondary": "Cor secundária do carro: qualquer cor.",
+	"accent": "Cor de destaque (detalhes e faixas): qualquer cor.",
 	"helmet": "Cor do capacete do piloto.",
 	"suit": "Cor do macacão do piloto.",
 	"rim": "Cor das rodas.",
-	"boost": "Cor do brilho das rodas, do rastro e das partículas quando o boost está ligado.",
-	"neon": "Luz de neon embaixo do carro (fica mais forte à noite).",
+	"boost": "Cor do brilho das rodas, do rastro e das partículas quando o boost está ligado. Ganhe mais cores nas roletas.",
+	"neon": "Luz de neon embaixo do carro (fica mais forte à noite). As cores saem nas roletas.",
 	"parts": "Peças de desempenho que você ganhou: trocam aderência por velocidade.",
 }
 
@@ -53,15 +55,28 @@ var category := "engineering"
 ## Lugar do carro escolhido na aba de decalques.
 var decal_slot := "sidepods"
 
-## Cores rápidas dos decalques (além das três da pintura e do seletor livre).
-const DECAL_SWATCHES := ["ffffff", "15161a", "e8202a", "ff7a1a", "ffd21f", "2fd36b", "1fd6e8", "1f5fe0", "8a3df0",
-	"ff4fb0", "d4af37", "b8bcc6"]
+## Ajustes do decalque (sliders): [rótulo, chave, mín, máx, passo, formato, multiplicador, padrão].
+const DECAL_SLIDERS := [
+	["TAMANHO", "scale", 0.2, 2.5, 0.05, "%d%%", 100.0, 1.0],
+	["LARGURA", "stretch", 0.4, 2.5, 0.05, "%d%%", 100.0, 1.0],
+	["GIRO", "rot", -180.0, 180.0, 5.0, "%d°", 1.0, 0.0],
+	["HORIZONTAL", "x", -1.0, 1.0, 0.02, "%d", 100.0, 0.0],
+	["VERTICAL", "y", -1.0, 1.0, 0.02, "%d", 100.0, 0.0],
+]
+## Lugar do decalque → ponto da câmera da garagem (MainMenu.FOCUS).
+const DECAL_FOCUS := {"sidepods": "sidepods", "nose": "nose", "airbox": "airbox", "wing": "rear_wing"}
+
+## Pede à garagem para levar a câmera até um ponto do carro ("" = volta à órbita).
+signal focus_request(key: String)
 
 var _profile: PlayerProfile
 var _tabs: VBoxContainer
 var _title: Label
 var _note: Label
 var _grid: GridContainer
+## Aba de decalques: prévia do lugar e sliders (atualizados juntos sem reconstruir a tela).
+var _pad: PositionPad
+var _decal_sliders := {}
 
 
 func setup(target: F1Car, _compact := false) -> void:
@@ -99,6 +114,7 @@ func setup(target: F1Car, _compact := false) -> void:
 func _on_decals_changed() -> void:
 	if car and car.config:
 		_profile.apply_to_config(car.config)
+	_sync_decal_controls()
 
 
 func _on_profile_changed() -> void:
@@ -118,11 +134,18 @@ func _build() -> void:
 		t.selected = cat[0] == category
 		t.tint = _tab_tint(cat[0])
 		t.pressed.connect(func() -> void:
+			var was_decals := category == "decals"
 			category = cat[0]
+			if category == "decals" and not was_decals:
+				focus_request.emit(DECAL_FOCUS.get(decal_slot, ""))
+			elif was_decals:
+				focus_request.emit("")
 			_build())
 		_tabs.add_child(t)
 	for c in _grid.get_children():
 		c.queue_free()
+	_pad = null
+	_decal_sliders.clear()
 	_grid.columns = 1 if category in ["engineering", "decals"] else 2
 	var eq := _profile.equipped
 	for cat in CATEGORIES:
@@ -130,42 +153,68 @@ func _build() -> void:
 			_title.text = str(cat[1]).to_upper()
 	match category:
 		"livery":
-			var owned := _profile.owned_of_type("livery")
-			_note.text = "%d de %d pinturas · aplica as 3 cores" % [owned.size(), ShopCatalog.items_of_type("livery").size()]
-			for id in owned:
-				_tile(id, ShopCatalog.item(id)["name"], eq["livery"] == id, _profile.equip_livery.bind(id))
-		"primary", "secondary", "accent", "helmet", "suit", "rim", "boost":
-			_note.text = "cores das %s que você tem" % ("pinturas" if category in ["primary", "secondary", "accent"] else "peças deste tipo")
+			_note.text = "%d pinturas prontas · grátis · aplica as 3 cores" % ShopCatalog.PAINTS.size()
+			for id in ShopCatalog.PAINTS:
+				_tile(id, ShopCatalog.PAINTS[id]["name"], eq["livery"] == id, _profile.equip_livery.bind(id))
+		"primary", "secondary", "accent", "helmet", "suit", "rim":
+			_note.text = "qualquer cor · seletor ou sugestões"
 			_color_tiles(category)
+		"boost":
+			var have := _profile.collection_count("boost")
+			_note.text = "%d de %d cores ganhas · mais nas roletas" % [have.x, have.y]
+			for c in _profile.owned_colors("boost"):
+				var t := OptionTile.new()
+				t.item_id = c[0]
+				t.title = c[1]
+				t.art_kind = "glow"
+				t.color = c[2]
+				t.selected = str(eq["boost"]) == (c[2] as Color).to_html(false)
+				t.pressed.connect(_profile.equip_color.bind("boost", c[2]))
+				_add(t)
 		"neon":
-			if not _profile.has_neon():
-				_note.text = "ganhe um neon nas roletas da loja"
-			else:
-				_note.text = "fica mais forte à noite"
+			var have := _profile.collection_count("neon")
+			_note.text = ("%d de %d cores ganhas · fica mais forte à noite" % [have.x, have.y]) if have.x > 0 \
+				else "nenhum neon ainda · ganhe nas roletas Neon e Inferno"
 			var off := OptionTile.new()
 			off.title = "Desligado"
 			off.art_kind = "off"
 			off.selected = not eq["neon_on"]
 			off.pressed.connect(_profile.set_neon.bind(false))
 			_add(off)
-			if _profile.has_neon():
-				for c in _profile.unlocked_colors("neon"):
-					var t := OptionTile.new()
-					t.title = _color_source_name("neon", c)
-					t.art_kind = "glow"
-					t.color = c
-					t.selected = eq["neon_on"] and str(eq["neon"]) == c.to_html(false)
-					t.pressed.connect(func() -> void:
-						_profile.equip_color("neon", c)
-						_profile.set_neon(true))
-					_add(t)
+			for c in _profile.owned_colors("neon"):
+				var col: Color = c[2]
+				var t := OptionTile.new()
+				t.item_id = c[0]
+				t.title = c[1]
+				t.art_kind = "glow"
+				t.color = col
+				t.selected = eq["neon_on"] and str(eq["neon"]) == col.to_html(false)
+				t.pressed.connect(func() -> void:
+					_profile.equip_color("neon", col)
+					_profile.set_neon(true))
+				_add(t)
+		"scheme":
+			_note.text = "como as 3 cores se dividem · todos grátis"
+			var cols := [Color(str(eq["primary"])), Color(str(eq["secondary"])), Color(str(eq["accent"]))]
+			for k in CarConfig.PAINT_SCHEMES.size():
+				var t := OptionTile.new()
+				t.title = CarConfig.PAINT_SCHEMES[k][0]
+				t.art_kind = "scheme"
+				t.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+				t.scheme = k
+				t.scheme_cols = cols
+				t.tip_text = CarConfig.PAINT_SCHEMES[k][1]
+				t.selected = int(eq.get("paint_scheme", 0)) == k
+				t.pressed.connect(_profile.set_finish.bind("paint_scheme", k))
+				_add(t)
 		"engineering":
 			_build_engineering()
 		"finish":
 			_note.text = "como a luz reflete na pintura e nas rodas"
 			_build_finishes()
 		"decals":
-			_note.text = "adesivos SVG na cor que você quiser · grátis"
+			_note.text = "%d de %d decalques · ganhe mais nas roletas · seus SVGs são livres" % [
+				_profile.owned_decals().size(), CarDecals.PRESETS.size()]
 			_build_decals()
 		"parts":
 			_note.text = "trocam aderência por velocidade"
@@ -221,11 +270,11 @@ func _build_finishes() -> void:
 
 func _build_decals() -> void:
 	var decals: Dictionary = _profile.equipped["decals"]
-	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 8)
+	var row := row_box()
 	row.add_child(_kicker("LUGAR"))
 	var place := OptionButton.new()
 	place.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	place.clip_text = true
 	for k in CarDecals.SLOT_ORDER.size():
 		var s: String = CarDecals.SLOT_ORDER[k]
 		place.add_item(CarDecals.slot_label(s) + ("  ●" if decals.has(s) else ""))
@@ -233,12 +282,14 @@ func _build_decals() -> void:
 			place.selected = k
 	place.item_selected.connect(func(i: int) -> void:
 		decal_slot = CarDecals.SLOT_ORDER[i]
+		focus_request.emit(DECAL_FOCUS.get(decal_slot, ""))
 		_build())
 	row.add_child(place)
 	_grid.add_child(row)
 	var cur: Dictionary = decals.get(decal_slot, {})
 	if not cur.is_empty():
 		_decal_controls(cur)
+	_grid.add_child(_kicker("DESENHO"))
 	var tiles := GridContainer.new()
 	tiles.columns = 2
 	tiles.add_theme_constant_override("h_separation", 8)
@@ -251,7 +302,7 @@ func _build_decals() -> void:
 	none.pressed.connect(_profile.set_decal.bind(decal_slot, ""))
 	tiles.add_child(none)
 	var tint := Color(str(cur.get("color", "ffffff")))
-	var ids: Array = CarDecals.PRESETS.map(func(p: Array) -> String: return p[0])
+	var ids: Array = _profile.owned_decals()
 	ids.append_array(CarDecals.custom_ids())
 	for id: String in ids:
 		var t := OptionTile.new()
@@ -268,8 +319,9 @@ func _build_decals() -> void:
 	var files := HBoxContainer.new()
 	files.add_theme_constant_override("separation", 8)
 	var open := Button.new()
-	open.text = "Abrir pasta dos meus SVG"
+	open.text = "Pasta dos meus SVG"
 	open.add_theme_font_size_override("font_size", 12)
+	open.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	open.tooltip_text = "Coloque arquivos .svg (desenho branco, fundo transparente) nesta pasta e clique em Recarregar."
 	open.pressed.connect(func() -> void: OS.shell_open(CarDecals.ensure_user_dir()))
 	files.add_child(open)
@@ -285,55 +337,108 @@ func _build_decals() -> void:
 	_grid.add_child(files)
 
 
-## Cor (paleta + seletor livre), tamanho e giro do decalque do lugar escolhido.
+## Cor (seletor livre), prévia do lugar (arrastar = mover) e os ajustes do decalque escolhido.
 func _decal_controls(cur: Dictionary) -> void:
-	var eq := _profile.equipped
 	var colors := row_box()
 	colors.add_child(_kicker("COR"))
-	var current := str(cur.get("color", "ffffff"))
-	var swatches: Array = [str(eq["primary"]), str(eq["secondary"]), str(eq["accent"])]
-	swatches.append_array(DECAL_SWATCHES)
-	for html: String in swatches:
-		var sw := Swatch.new()
-		sw.color = Color(html)
-		sw.selected = Color(html).to_html(false) == Color(current).to_html(false)
-		sw.tooltip_text = "Cor da pintura" if swatches.find(html) < 3 else "#" + html
-		sw.pressed.connect(func() -> void:
-			_profile.set_decal_value(decal_slot, "color", Color(html).to_html(false))
-			_build())
-		colors.add_child(sw)
 	var picker := ColorPickerButton.new()
-	picker.color = Color(current)
+	picker.color = Color(str(cur.get("color", "ffffff")))
 	picker.edit_alpha = false
-	picker.custom_minimum_size = Vector2(34, 22)
+	picker.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	picker.custom_minimum_size = Vector2(0, 28)
 	picker.tooltip_text = "Qualquer cor"
-	picker.color_changed.connect(func(c: Color) -> void: _profile.set_decal_value(decal_slot, "color", c.to_html(false)))
-	picker.popup_closed.connect(_build)
+	var hex := Label.new()
+	hex.text = "#" + picker.color.to_html(false)
+	hex.custom_minimum_size = Vector2(64, 0)
+	hex.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	hex.add_theme_font_size_override("font_size", 12)
+	picker.color_changed.connect(func(c: Color) -> void:
+		hex.text = "#" + c.to_html(false)
+		_profile.set_decal_value(decal_slot, "color", c.to_html(false)))
 	colors.add_child(picker)
+	colors.add_child(hex)
 	_grid.add_child(colors)
-	for spec in [["TAMANHO", "scale", 0.3, 1.5, 0.05, "%d%%", 100.0], ["GIRO", "rot", -180.0, 180.0, 5.0, "%d°", 1.0]]:
+	_pad = PositionPad.new()
+	_pad.studio = self
+	_pad.slot = decal_slot
+	_grid.add_child(_pad)
+	# Lugares de dois lados: o esquerdo espelha o direito (desligar para textos)
+	if (CarDecals.SLOTS[decal_slot]["places"] as Array).size() > 1:
+		var mirror := CheckButton.new()
+		mirror.text = "Espelhar no lado esquerdo"
+		mirror.add_theme_font_size_override("font_size", 12)
+		mirror.button_pressed = bool(cur.get("mirror", CarDecals.default_mirror(str(cur.get("id", "")))))
+		mirror.tooltip_text = "Ligado: o lado esquerdo é o reflexo do direito (chamas e setas apontam para o mesmo lado do carro).\nDesligado: os dois lados leem o desenho normalmente (bom para textos)."
+		mirror.toggled.connect(func(on: bool) -> void: _profile.set_decal_value(decal_slot, "mirror", on))
+		_grid.add_child(mirror)
+	var hint := Label.new()
+	hint.text = "arraste para mover · roda: tamanho · Shift+roda: giro · duplo clique: centraliza"
+	hint.theme_type_variation = "RetroMuted"
+	hint.add_theme_font_size_override("font_size", 11)
+	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	hint.custom_minimum_size = Vector2(200, 0)
+	_grid.add_child(hint)
+	for spec in DECAL_SLIDERS:
 		var r := row_box()
-		r.add_child(_kicker(spec[0]))
-		var value := Label.new()
-		value.custom_minimum_size = Vector2(48, 0)
-		value.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-		value.add_theme_font_size_override("font_size", 12)
+		r.add_child(_kicker(spec[0], 84))
 		var sl := HSlider.new()
 		sl.min_value = spec[2]
 		sl.max_value = spec[3]
 		sl.step = spec[4]
-		sl.value = float(cur.get(spec[1], 1.0 if spec[1] == "scale" else 0.0))
+		sl.value = float(cur.get(spec[1], spec[7]))
 		sl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		sl.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-		sl.custom_minimum_size = Vector2(0, 20)
+		sl.custom_minimum_size = Vector2(60, 20)
 		StudioPanel.style_slider(sl)
+		var value := Label.new()
+		value.custom_minimum_size = Vector2(44, 0)
+		value.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		value.add_theme_font_size_override("font_size", 12)
 		value.text = spec[5] % roundi(sl.value * spec[6])
-		sl.value_changed.connect(func(v: float) -> void:
-			value.text = spec[5] % roundi(v * spec[6])
-			_profile.set_decal_value(decal_slot, spec[1], v))
+		sl.value_changed.connect(func(v: float) -> void: _profile.set_decal_value(decal_slot, spec[1], v))
 		r.add_child(sl)
 		r.add_child(value)
 		_grid.add_child(r)
+		_decal_sliders[spec[1]] = [sl, value, spec]
+	var reset := Button.new()
+	reset.text = "Centralizar e tamanho padrão"
+	reset.add_theme_font_size_override("font_size", 12)
+	reset.pressed.connect(func() -> void:
+		for spec in DECAL_SLIDERS:
+			_profile.set_decal_value(decal_slot, spec[1], spec[7]))
+	_grid.add_child(reset)
+
+
+## Valor de um ajuste do decalque atual (o padrão se ainda não mudou).
+func decal_value(key: String) -> float:
+	var cur: Dictionary = (_profile.equipped["decals"] as Dictionary).get(decal_slot, {})
+	for spec in DECAL_SLIDERS:
+		if spec[1] == key:
+			return float(cur.get(key, spec[7]))
+	return 0.0
+
+
+## Mudança vinda da prévia (arrastar/roda): dentro dos limites, vai para o perfil.
+func set_decal_from_pad(key: String, value: float) -> void:
+	for spec in DECAL_SLIDERS:
+		if spec[1] == key:
+			value = clampf(value, spec[2], spec[3])
+	_profile.set_decal_value(decal_slot, key, value)
+
+
+## Sliders e prévia acompanham o perfil (sem reconstruir a tela).
+func _sync_decal_controls() -> void:
+	if _pad and is_instance_valid(_pad):
+		_pad.queue_redraw()
+	for key in _decal_sliders:
+		var e: Array = _decal_sliders[key]
+		var sl: HSlider = e[0]
+		if not is_instance_valid(sl):
+			continue
+		var v := decal_value(key)
+		if absf(sl.value - v) > 0.0001:
+			sl.set_value_no_signal(v)
+		(e[1] as Label).text = e[2][5] % roundi(v * e[2][6])
 
 
 func row_box() -> HBoxContainer:
@@ -342,12 +447,12 @@ func row_box() -> HBoxContainer:
 	return r
 
 
-func _kicker(text: String) -> Label:
+func _kicker(text: String, width := 64.0) -> Label:
 	var l := Label.new()
 	l.text = text
 	l.theme_type_variation = "RetroKicker"
 	l.add_theme_font_size_override("font_size", 11)
-	l.custom_minimum_size = Vector2(64, 0)
+	l.custom_minimum_size = Vector2(width, 0)
 	return l
 
 
@@ -381,7 +486,7 @@ func _tab_tint(kind: String) -> Color:
 		"primary", "secondary", "accent", "helmet", "suit", "rim", "boost":
 			return Color(str(eq[kind]))
 		"neon":
-			return Color(str(eq["neon"])) if eq["neon_on"] else Retro.c("muted")
+			return Color(str(eq["neon"])) if eq["neon_on"] and str(eq["neon"]) != "" else Retro.c("muted")
 	return Retro.c("text_2")
 
 
@@ -401,24 +506,41 @@ func _tile(id: String, title: String, selected: bool, on_press: Callable) -> voi
 
 func _color_tiles(field: String) -> void:
 	var current := str(_profile.equipped.get(field, ""))
-	for c in _profile.unlocked_colors(field):
+	_color_picker_tile(field)
+	for sug in _profile.color_suggestions(field):
+		var c: Color = sug[1]
 		var t := OptionTile.new()
-		t.title = _color_source_name(field, c)
-		t.art_kind = "glow" if field == "boost" else "color"
+		t.title = sug[0]
+		t.art_kind = "color"
 		t.color = c
 		t.selected = c.to_html(false) == current
 		t.pressed.connect(_profile.equip_color.bind(field, c))
 		_add(t)
 
 
-## Nome da peça de onde a cor veio (a primeira que a tem).
-func _color_source_name(field: String, c: Color) -> String:
-	var key := c.to_html(false)
-	for id in _profile.owned_of_type(PlayerProfile.COLOR_FIELDS[field]):
-		for cc in ShopCatalog.colors_of(id):
-			if cc.to_html(false) == key:
-				return ShopCatalog.item(id)["name"]
-	return "#" + key
+## Primeira opção da grade: a cor atual com o seletor livre (qualquer cor).
+func _color_picker_tile(field: String) -> void:
+	var box := VBoxContainer.new()
+	box.custom_minimum_size = TILE
+	box.add_theme_constant_override("separation", 4)
+	var picker := ColorPickerButton.new()
+	picker.color = Color(str(_profile.equipped.get(field, "ffffff")))
+	picker.edit_alpha = false
+	picker.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	picker.tooltip_text = "Escolher qualquer cor"
+	# Ao arrastar no seletor só o carro muda; a tela é refeita quando ele fecha
+	picker.color_changed.connect(func(c: Color) -> void:
+		_profile.equipped[field] = c.to_html(false)
+		if car and car.config:
+			_profile.apply_to_config(car.config))
+	picker.popup_closed.connect(func() -> void: _profile.equip_color(field, picker.color))
+	box.add_child(picker)
+	var l := Label.new()
+	l.text = "Qualquer cor · #%s" % picker.color.to_html(false)
+	l.add_theme_font_size_override("font_size", 12)
+	l.add_theme_color_override("font_color", Retro.c("text"))
+	box.add_child(l)
+	_grid.add_child(box)
 
 
 func _stats_rows(slot: String, variant: String) -> Array:
@@ -486,6 +608,9 @@ class OptionTile extends Button:
 	var color := Color.WHITE
 	## Acabamento (arte "finish"): mesmo índice de CarConfig.PAINT_FINISHES.
 	var finish := 0
+	## Esquema de pintura (art_kind "scheme") e as 3 cores da prévia.
+	var scheme := 0
+	var scheme_cols: Array = []
 	var selected := false
 	## Tooltip em cartão: título (padrão = nome), texto e linhas de valores.
 	var tip_title := ""
@@ -529,7 +654,7 @@ class OptionTile extends Button:
 					draw_colored_polygon(PackedVector2Array([art.position + Vector2(a + (k if i > 0 else 0.0), 0),
 						art.position + Vector2(b + (k if i < 2 else 0.0), 0), art.position + Vector2(b, art.size.y),
 						art.position + Vector2(a, art.size.y)]), Color(cols[i], a_mul))
-				if not ShopCatalog.is_free(item_id):
+				if ShopCatalog.ITEMS.has(item_id):
 					var rc: Color = ShopCatalog.RARITY_COLORS[ShopCatalog.item(item_id)["rarity"]]
 					draw_rect(Rect2(art.position.x, art.end.y - 3, art.size.x, 3), rc)
 			"color":
@@ -541,6 +666,13 @@ class OptionTile extends Button:
 				draw_circle(art.get_center(), art.size.y * 0.26, Color(color, a_mul))
 			"finish":
 				StudioPanel.draw_finish_ball(self, art.get_center(), art.size.y * 0.4, color, finish)
+			"scheme":
+				# O carro de lado (em cima) e de cima (embaixo), frente para a direita
+				var tex := CarLivery.scheme_preview(scheme, scheme_cols)
+				var box := art.grow(-3.0)
+				var k := minf(box.size.x / tex.get_width(), box.size.y / tex.get_height())
+				var sz := Vector2(tex.get_width(), tex.get_height()) * k
+				draw_texture_rect(tex, Rect2(box.get_center() - sz * 0.5, sz), false, Color(1, 1, 1, a_mul))
 			"off":
 				draw_arc(art.get_center(), art.size.y * 0.3, 0, TAU, 32, Retro.c("muted"), 2.0)
 				draw_line(art.get_center() + Vector2(-12, 12), art.get_center() + Vector2(12, -12), Retro.c("muted"), 2.0)
@@ -649,6 +781,19 @@ class IconTab extends Button:
 					draw_line(c + Vector2(-12 + g * 2, 5 + g * 3), c + Vector2(12 - g * 2, 5 + g * 3), Color(tint, 0.9 - g * 0.25), 2.0)
 			"finish":
 				StudioPanel.draw_finish_ball(self, c, 12.0, Retro.c("accent"), 1)
+			"scheme":
+				# Carroceria dividida na diagonal em três faixas
+				var body := Rect2(c + Vector2(-13, -7), Vector2(26, 14))
+				var cols := [Retro.c("accent"), Color.WHITE, Retro.c("accent_2")]
+				var xs := [-13.0, -2.0, 3.0, 13.0]
+				for i in 3:
+					var a: float = xs[i]
+					var b: float = xs[i + 1]
+					var pts := PackedVector2Array()
+					for q in [Vector2(a + 3.0, -7), Vector2(b + 3.0, -7), Vector2(b - 3.0, 7), Vector2(a - 3.0, 7)]:
+						pts.append(c + Vector2(clampf(q.x, -13.0, 13.0), q.y))
+					draw_colored_polygon(pts, cols[i])
+				draw_rect(body, ink, false, 1.0)
 			"decals":
 				# Estrela (adesivo) com a ponta descolando
 				var pts := PackedVector2Array()
@@ -792,25 +937,103 @@ class SetupRow extends VBoxContainer:
 		_reset.modulate.a = 1.0 if changed else 0.0
 
 
-## Bolinha de cor clicável (cores dos decalques).
-class Swatch extends Button:
-	var color := Color.WHITE
-	var selected := false
+## Prévia do lugar do decalque, na proporção real: a área do lugar na cor da pintura, o limite até
+## onde ele pode ir e o desenho na posição, tamanho, largura e giro atuais (as mesmas contas de
+## CarDecals.build). Arrastar move; roda = tamanho; Shift+roda = giro; Ctrl+roda = largura; duplo
+## clique centraliza.
+class PositionPad extends Control:
+	var studio: StudioPanel
+	var slot := "sidepods"
+	var _drag := false
 
 	func _ready() -> void:
-		custom_minimum_size = Vector2(22, 22)
-		flat = true
-		mouse_entered.connect(queue_redraw)
-		mouse_exited.connect(queue_redraw)
+		custom_minimum_size = Vector2(0, 150)
+		mouse_filter = Control.MOUSE_FILTER_STOP
+		mouse_default_cursor_shape = Control.CURSOR_MOVE
+		tooltip_text = "Arraste o desenho para mover"
+
+	## [centro (px), px por metro, largura e altura do lugar (m)].
+	func _frame() -> Array:
+		var place: Array = CarDecals.SLOTS[slot]["places"][0]
+		var w: float = place[3]
+		var h: float = place[4]
+		# Espaço para o centro andar ±MOVE do lugar e o desenho ainda caber
+		var span := Vector2(w * (2.0 * CarDecals.MOVE + 1.0), h * (2.0 * CarDecals.MOVE + 1.0))
+		var area := Rect2(Vector2.ZERO, size).grow(-10.0)
+		var k := minf(area.size.x / span.x, area.size.y / span.y)
+		return [area.get_center(), k, w, h]
 
 	func _draw() -> void:
-		var c := size * 0.5
-		draw_circle(c, 8.0, color)
-		draw_arc(c, 8.0, 0.0, TAU, 20, Color(0, 0, 0, 0.5), 1.0)
-		if selected:
-			draw_arc(c, 10.5, 0.0, TAU, 24, Retro.c("accent_2"), 2.0)
-		elif is_hovered():
-			draw_arc(c, 10.5, 0.0, TAU, 24, Retro.line(3), 1.0)
+		var f := _frame()
+		var c: Vector2 = f[0]
+		var k: float = f[1]
+		var w: float = f[2]
+		var h: float = f[3]
+		draw_rect(Rect2(Vector2.ZERO, size), Color(Retro.c("bg"), 0.85))
+		Retro.draw_corners(self, Rect2(Vector2.ZERO, size), Color(Retro.c("accent"), 0.5), 8.0, 2.0)
+		var eq: Dictionary = studio._profile.equipped
+		# Lugar (na cor da pintura) e até onde o centro pode ir
+		var body := Rect2(c - Vector2(w, h) * k * 0.5, Vector2(w, h) * k)
+		draw_rect(body, Color(Color(str(eq["primary"])), 0.9))
+		draw_rect(body, Color(Retro.c("text"), 0.35), false, 1.0)
+		var travel := Rect2(c - Vector2(w, h) * k * CarDecals.MOVE, Vector2(w, h) * k * 2.0 * CarDecals.MOVE)
+		draw_rect(travel, Color(Retro.c("accent_2"), 0.35), false, 1.0)
+		draw_line(Vector2(c.x, travel.position.y), Vector2(c.x, travel.end.y), Color(Retro.c("text"), 0.12), 1.0)
+		draw_line(Vector2(travel.position.x, c.y), Vector2(travel.end.x, c.y), Color(Retro.c("text"), 0.12), 1.0)
+		var cur: Dictionary = (eq["decals"] as Dictionary).get(slot, {})
+		var tex := CarDecals.texture(str(cur.get("id", "")))
+		if tex:
+			var aspect := float(tex.get_width()) / maxf(tex.get_height(), 1.0)
+			var scale := studio.decal_value("scale")
+			var dw := w * scale
+			var dh := dw / aspect
+			if dh > h * scale:
+				dh = h * scale
+				dw = dh * aspect
+			dw *= studio.decal_value("stretch")
+			var at := c + Vector2(studio.decal_value("x") * w, -studio.decal_value("y") * h) * CarDecals.MOVE * k
+			# Giro: o Decal gira em volta da normal (anti-horário visto de fora); na tela o ângulo cresce no horário
+			draw_set_transform(at, -deg_to_rad(studio.decal_value("rot")), Vector2.ONE)
+			var r := Rect2(-Vector2(dw, dh) * k * 0.5, Vector2(dw, dh) * k)
+			draw_texture_rect(tex, r, false, Color(str(cur.get("color", "ffffff"))))
+			draw_rect(r, Color(Retro.c("accent_2"), 0.8 if _drag else 0.45), false, 1.0)
+			draw_set_transform(Vector2.ZERO)
+		var label := CarDecals.slot_label(slot)
+		if (CarDecals.SLOTS[slot]["places"] as Array).size() > 1:
+			label += " · visto pelo lado direito"
+		Retro.draw_label(self, Retro.body(600), Vector2(10, size.y - 8), label, HORIZONTAL_ALIGNMENT_LEFT, -1, 11,
+			Color(Retro.c("text_2"), 0.8))
+
+	func _gui_input(event: InputEvent) -> void:
+		if event is InputEventMouseButton:
+			var mb := event as InputEventMouseButton
+			if mb.button_index == MOUSE_BUTTON_LEFT:
+				if mb.double_click:
+					studio.set_decal_from_pad("x", 0.0)
+					studio.set_decal_from_pad("y", 0.0)
+				_drag = mb.pressed
+				if _drag:
+					_move_to(mb.position)
+				queue_redraw()
+				accept_event()
+			elif mb.pressed and mb.button_index in [MOUSE_BUTTON_WHEEL_UP, MOUSE_BUTTON_WHEEL_DOWN]:
+				var dir := 1.0 if mb.button_index == MOUSE_BUTTON_WHEEL_UP else -1.0
+				if mb.shift_pressed:
+					studio.set_decal_from_pad("rot", wrapf(studio.decal_value("rot") + dir * 5.0, -180.0, 180.0))
+				elif mb.ctrl_pressed:
+					studio.set_decal_from_pad("stretch", studio.decal_value("stretch") + dir * 0.05)
+				else:
+					studio.set_decal_from_pad("scale", studio.decal_value("scale") + dir * 0.05)
+				accept_event()
+		elif event is InputEventMouseMotion and _drag:
+			_move_to((event as InputEventMouseMotion).position)
+			accept_event()
+
+	func _move_to(pos: Vector2) -> void:
+		var f := _frame()
+		var d: Vector2 = (pos - (f[0] as Vector2)) / (f[1] as float) / CarDecals.MOVE
+		studio.set_decal_from_pad("x", clampf(d.x / float(f[2]), -1.0, 1.0))
+		studio.set_decal_from_pad("y", clampf(-d.y / float(f[3]), -1.0, 1.0))
 
 
 ## Trilho fino e escuro, parte preenchida na cor de destaque (sliders da engenharia).

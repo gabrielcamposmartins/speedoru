@@ -10,17 +10,20 @@ config_version=5
 
 [application]
 
-config/name="F1 Gatcha"
-config/description="Jogo de Fórmula 1 em estilo anime."
+config/name="Speedoru"
+config/description="Speedoru: corrida de Fórmula 1 em estilo anime."
 config/version="0.4.0"
 run/main_scene="res://scenes/boot.tscn"
 config/features=PackedStringArray("4.7", "Forward Plus")
 boot_splash/bg_color=Color(0.02, 0.03, 0.08, 1)
 boot_splash/stretch_mode=4
 boot_splash/image="res://assets/ui/speedoru_splash.png"
+config/icon="res://assets/ui/speedoru_icon.png"
+config/windows_native_icon="res://assets/ui/speedoru_icon.ico"
 
 [autoload]
 
+UserDataMigration="*res://scripts/settings/user_data_migration.gd"
 Music="*res://scripts/audio/music_player.gd"
 Profile="*res://scripts/economy/player_profile.gd"
 Loading="*res://scripts/ui/loading_screen.gd"
@@ -107,7 +110,6 @@ toggle_tc={
 reset_car={
 "deadzone": 0.5,
 "events": [Object(InputEventKey,"resource_local_to_scene":false,"resource_name":"","device":16,"window_id":0,"alt_pressed":false,"shift_pressed":false,"ctrl_pressed":false,"meta_pressed":false,"pressed":false,"keycode":0,"physical_keycode":82,"key_label":0,"unicode":0,"location":0,"echo":false,"script":null)
-, Object(InputEventJoypadButton,"resource_local_to_scene":false,"resource_name":"","device":0,"button_index":4,"pressure":0.0,"pressed":false,"script":null)
 ]
 }
 camera_next={
@@ -169,7 +171,7 @@ toggle_garage={
 [physics]
 
 common/physics_ticks_per_second=120
-common/max_physics_steps_per_frame=12
+common/max_physics_steps_per_frame=6
 common/physics_interpolation=true
 
 [rendering]

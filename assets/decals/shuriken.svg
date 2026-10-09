@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+<polygon points="321.8,232.0 496.0,256.0 299.5,310.8" fill="#ffffff"/>
+<polygon points="280.0,321.8 256.0,496.0 201.2,299.5" fill="#ffffff"/>
+<polygon points="190.2,280.0 16.0,256.0 212.5,201.2" fill="#ffffff"/>
+<polygon points="232.0,190.2 256.0,16.0 310.8,212.5" fill="#ffffff"/>
+<path fill-rule="evenodd" fill="#ffffff" d="M 161 256 a 95 95 0 1 0 190 0 a 95 95 0 1 0 -190 0 Z M 222 256 a 34 34 0 1 0 68 0 a 34 34 0 1 0 -68 0 Z"/>
+</svg>

@@ -17,7 +17,8 @@ signal changed(section: String, key: String)
 const PATH := "user://settings.cfg"
 ## Versão dos controles salvos. Arquivos mais antigos mantêm as teclas do teclado, mas recebem os
 ## botões de controle atuais (ex.: o Start, botão 6, passou de Garagem para Pausa na versão 2).
-const CONTROLS_VERSION := 2
+## 3: o Back do controle saiu de "recolocar o carro" (fica só para voltar aos boxes).
+const CONTROLS_VERSION := 3
 
 ## Ações remapeáveis, na ordem do menu: [ação, rótulo, grupo].
 const ACTIONS := [
@@ -37,8 +38,9 @@ const ACTIONS := [
 	["reset_car", "Recolocar o carro", "Carro"],
 	["repair_car", "Reparar o carro", "Carro"],
 	["pit_limiter", "Limitador de velocidade (boxes e bandeira amarela)", "Corrida"],
-	["go_to_pit", "Ir aos boxes depois de uma batida", "Corrida"],
+	["go_to_pit", "Voltar aos boxes (pede confirmação)", "Corrida"],
 	["pass_signal", "Pedir passagem (pisca a luz dos retrovisores)", "Corrida"],
+	["vote_yes", "Votar sim (votações da corrida online)", "Corrida"],
 	["pit_soft", "Pneu do pit: macio", "Corrida"],
 	["pit_medium", "Pneu do pit: médio", "Corrida"],
 	["pit_hard", "Pneu do pit: duro", "Corrida"],
@@ -55,6 +57,7 @@ const ACTIONS := [
 	["cycle_time", "Horário do dia", "Interface"],
 	["cycle_biome", "Ambiente", "Interface"],
 	["toggle_racing_line", "Linha ideal (desligada / frenagens / completa)", "Interface"],
+	["spectator", "Modo espectador (câmeras de TV e livre)", "Câmera"],
 ]
 
 ## Ações que não estão no project.godot (antes eram teclas fixas no código): [ação, tecla].
@@ -62,11 +65,11 @@ const EXTRA_ACTIONS := [
 	["pit_soft", KEY_1], ["pit_medium", KEY_2], ["pit_hard", KEY_3],
 	["standings_next", KEY_PAGEDOWN], ["standings_prev", KEY_PAGEUP],
 	["pause", KEY_ESCAPE], ["open_settings", KEY_F10], ["toggle_help", KEY_H], ["toggle_racing_line", KEY_L],
-	["pit_limiter", KEY_P], ["go_to_pit", KEY_K], ["pass_signal", KEY_X],
+	["pit_limiter", KEY_P], ["go_to_pit", KEY_K], ["pass_signal", KEY_X], ["vote_yes", KEY_Y], ["spectator", KEY_F6],
 ]
 ## Botões do controle das ações acima (Start pausa; o resto fica pelos menus).
 const EXTRA_PAD := {"pause": JOY_BUTTON_START, "pit_limiter": JOY_BUTTON_DPAD_LEFT, "go_to_pit": JOY_BUTTON_BACK,
-	"pass_signal": JOY_BUTTON_MISC1}
+	"pass_signal": JOY_BUTTON_MISC1, "vote_yes": JOY_BUTTON_TOUCHPAD}
 
 const RESOLUTIONS := [Vector2i(1280, 720), Vector2i(1366, 768), Vector2i(1600, 900), Vector2i(1920, 1080),
 	Vector2i(2560, 1440), Vector2i(3840, 2160)]
@@ -344,7 +347,7 @@ static func event_label(ev: InputEvent) -> String:
 			JOY_BUTTON_LEFT_SHOULDER: "LB", JOY_BUTTON_RIGHT_SHOULDER: "RB", JOY_BUTTON_BACK: "Back",
 			JOY_BUTTON_START: "Start", JOY_BUTTON_LEFT_STICK: "L3", JOY_BUTTON_RIGHT_STICK: "R3",
 			JOY_BUTTON_DPAD_UP: "D-pad ↑", JOY_BUTTON_DPAD_DOWN: "D-pad ↓", JOY_BUTTON_DPAD_LEFT: "D-pad ←",
-			JOY_BUTTON_DPAD_RIGHT: "D-pad →", JOY_BUTTON_MISC1: "Share"}
+			JOY_BUTTON_DPAD_RIGHT: "D-pad →", JOY_BUTTON_MISC1: "Share", JOY_BUTTON_TOUCHPAD: "Touchpad"}
 		return "Botão " + pad.get(ev.button_index, str(ev.button_index))
 	if ev is InputEventJoypadMotion:
 		var plus: bool = ev.axis_value > 0.0
@@ -485,7 +488,8 @@ func _apply_graphics() -> void:
 		env.ssao_enabled = g["ssao"]
 		env.ssil_enabled = g["ssil"]
 		env.glow_enabled = g["glow"]
-		env.volumetric_fog_enabled = g["volumetric_fog"]
+		# Ambientes marcados (garagem do menu) nunca têm névoa
+		env.volumetric_fog_enabled = g["volumetric_fog"] and not env.has_meta("no_fog")
 
 
 func _on_node_added(node: Node) -> void:

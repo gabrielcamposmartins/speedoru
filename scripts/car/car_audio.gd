@@ -13,6 +13,10 @@ extends Node3D
 ## Carros dos outros (make_rival): bus "Rivals" separado (o compressor do seu motor não os abafa),
 ## som chegando de mais longe, estéreo mais marcado (dá para saber de que lado vem) e um reforço
 ## de volume quando o carro está perto da câmera — ao lado ou colado atrás.
+##
+## Desempenho: cada AudioStreamPlayer3D tocando (mesmo pausado) recalcula posição, doppler e áreas
+## a cada passo de física. Os loops em silêncio ficam parados (stop, não pausa) e os rivais longe
+## da câmera (RIVAL_CULL m) ficam mudos.
 
 const DIR := "res://assets/audio/car/"
 const ENGINE_RPMS: Array[float] = [4000.0, 5500.0, 7000.0, 8500.0, 10000.0, 11500.0, 13000.0]
@@ -34,6 +38,8 @@ const RIVAL_PANNING := 1.8
 const NEAR_BOOST_DB := 7.0
 const NEAR_CLOSE := 8.0
 const NEAR_FAR := 45.0
+## Rival além desta distância (m) da câmera: todos os loops parados (já quase não se ouvia).
+const RIVAL_CULL := 260.0
 
 var rival := false
 var _near_db := 0.0
@@ -61,6 +67,8 @@ var _bus_index := -1
 ## zumbido de tom puro de 200 Hz no grid).
 var _idle_detune := 0.0
 var _idle_phase := 0.0
+## Rival longe da câmera, já calado.
+var _silent := false
 
 
 func _ready() -> void:
@@ -126,9 +134,6 @@ func _make_player(file: String, pos: Vector3, loop: bool) -> AudioStreamPlayer3D
 	p.attenuation_filter_cutoff_hz = 9000.0
 	p.volume_db = -80.0
 	add_child(p)
-	if loop:
-		p.play()
-		p.stream_paused = true
 	return p
 
 
@@ -149,21 +154,22 @@ func play_shot(shot: String, pos: Vector3, db := 0.0, pitch := 1.0) -> void:
 	player.play()
 
 
-## Nível linear (0..1) e pitch de um loop; pausa os que estão em silêncio.
+## Nível linear (0..1) e pitch de um loop; para os que estão em silêncio (e volta a tocar de um
+## ponto qualquer do loop: os carros não ficam em fase).
 func _set_loop(p: AudioStreamPlayer3D, level: float, pitch := 1.0, offset_db := 0.0) -> void:
 	if level < 0.003:
-		if not p.stream_paused:
-			p.stream_paused = true
+		if p.playing:
+			p.stop()
 		return
-	if p.stream_paused:
-		p.stream_paused = false
 	p.volume_db = linear_to_db(level) + offset_db
 	p.pitch_scale = clampf(pitch, 0.3, 3.5)
+	if not p.playing:
+		p.play(randf() * p.stream.get_length())
 
 
 func get_loop_level(loop_name: String) -> float:
 	var p: AudioStreamPlayer3D = _loops[loop_name]
-	return 0.0 if p.stream_paused else db_to_linear(p.volume_db - (effects_db + _near_db))
+	return db_to_linear(p.volume_db - (effects_db + _near_db)) if p.playing else 0.0
 
 
 ## Pesos (0..1) das camadas do motor ligadas — para depuração/testes.
@@ -172,7 +178,7 @@ func get_engine_layers() -> Dictionary:
 	for i in ENGINE_RPMS.size():
 		for pair in [[_on[i], "on"], [_off[i], "off"]]:
 			var p: AudioStreamPlayer3D = pair[0]
-			if not p.stream_paused:
+			if p.playing:
 				out["%s_%d" % [pair[1], int(ENGINE_RPMS[i])]] = [db_to_linear(p.volume_db - (engine_db + _near_db)), p.pitch_scale]
 	return out
 
@@ -182,6 +188,12 @@ func _process(delta: float) -> void:
 		return
 	_time += delta
 	_update_near(delta)
+	if rival and _far_from_camera():
+		if not _silent:
+			_silence()
+			_silent = true
+		return
+	_silent = false
 	var rpm := car.rpm
 	var reversing := car.gear == F1Car.GEAR_REVERSE
 	var pedal := car.reverse_input if reversing else car.throttle_input
@@ -195,6 +207,19 @@ func _process(delta: float) -> void:
 	_update_effects(rpm)
 	_update_backfire(rpm, pedal, delta)
 	_update_helmet()
+
+
+func _far_from_camera() -> bool:
+	var cam := get_viewport().get_camera_3d()
+	return cam != null and cam.global_position.distance_squared_to(car.global_position) > RIVAL_CULL * RIVAL_CULL
+
+
+## Todos os loops parados (os sons curtos terminam sozinhos).
+func _silence() -> void:
+	for p in _on + _off:
+		_set_loop(p, 0.0)
+	for loop_name in _loops:
+		_set_loop(_loops[loop_name], 0.0)
 
 
 func _update_engine(rpm: float, _delta: float) -> void:

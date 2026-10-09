@@ -14,10 +14,14 @@ var minimap: Minimap
 var banner: Banner
 var flag_panel: FlagPanel
 var vote_bar: VoteBar
+var spectator: Spectator
+var spectator_bar: SpectatorBar
 var info: RaceInfo
 var menu: Control
 var results: Control
 var pause_menu: Control
+## Popup "voltar aos boxes?" (Select/K).
+var pit_confirm: Control
 
 
 func _ready() -> void:
@@ -51,6 +55,16 @@ func _ready() -> void:
 	vote_bar.position = Vector2(-260, 334)
 	vote_bar.size = Vector2(520, 46)
 	add_child(vote_bar)
+	spectator = Spectator.new()
+	spectator.name = "Spectator"
+	spectator.hud = self
+	add_child(spectator)
+	spectator_bar = SpectatorBar.new()
+	spectator_bar.hud = self
+	spectator_bar.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
+	spectator_bar.position = Vector2(-430, -92)
+	spectator_bar.size = Vector2(860, 60)
+	add_child(spectator_bar)
 	banner = Banner.new()
 	banner.hud = self
 	banner.set_anchors_preset(Control.PRESET_CENTER_RIGHT)
@@ -99,6 +113,12 @@ func _unhandled_input(event: InputEvent) -> void:
 		standings.page += 1
 	elif event.is_action_pressed("standings_prev"):
 		standings.page = maxi(standings.page - 1, 0)
+	elif pit_confirm and event.is_action_pressed("go_to_pit"):
+		_close_pit_confirm(true)
+	elif pit_confirm and (event.is_action_pressed("ui_cancel") or event.is_action_pressed("pause")):
+		_close_pit_confirm(false)
+	elif event.is_action_pressed("vote_yes") and manager.vote_hotkey():
+		pass
 	elif event.is_action_pressed("pause") and manager.state != RaceManager.State.MENU:
 		_toggle_pause()
 	elif event.is_action_pressed("ui_cancel") and pause_menu:
@@ -106,6 +126,46 @@ func _unhandled_input(event: InputEvent) -> void:
 	else:
 		return
 	get_viewport().set_input_as_handled()
+
+
+## Select/K: pergunta antes de voltar aos boxes (solo, o jogo pausa enquanto pergunta). Apertar de
+## novo confirma; B/Esc cancela.
+func ask_return_to_pit() -> void:
+	if pit_confirm:
+		_close_pit_confirm(true)
+		return
+	if pause_menu or menu or (spectator and spectator.active):
+		return
+	var online := manager.net == RaceManager.Net.CLIENT
+	get_tree().paused = not online
+	var box := _panel("BOXES", "VOLTAR AOS BOXES?", 480, 0.55)
+	pit_confirm = box.get_meta("root")
+	var e := manager.player_entry
+	var damage := e.car.get_node_or_null("Damage") as CarDamage if e else null
+	var fix := (damage != null and damage.get_overall() < 0.97) or (manager.control != null and manager.control.is_involved(e))
+	var info := Label.new()
+	info.theme_type_variation = "RetroMuted"
+	info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	info.custom_minimum_size = Vector2(420, 0)
+	info.text = "O carro é levado agora para o seu box: a volta em andamento recomeça e há um pit stop (pneu %s%s)." % [
+		CarConfig.COMPOUND_NAMES[manager.pit_compound].to_lower(), " e conserto" if fix else ""]
+	if online:
+		info.text += " A corrida não para enquanto você decide."
+	box.add_child(info)
+	var yes := _button(box, "Voltar aos boxes %s" % RaceControl.key_label("go_to_pit"), _close_pit_confirm.bind(true), true)
+	_button(box, "Cancelar", _close_pit_confirm.bind(false))
+	yes.grab_focus.call_deferred()
+
+
+func _close_pit_confirm(confirm: bool) -> void:
+	if pit_confirm == null:
+		return
+	pit_confirm.queue_free()
+	pit_confirm = null
+	if pause_menu == null:
+		get_tree().paused = false
+	if confirm:
+		manager.return_to_pit()
 
 
 ## Fecha a pausa e abre a garagem do carro (pelo controle, que não tem Tab).
@@ -377,20 +437,33 @@ func _toggle_pause() -> void:
 	var box := _panel("SPEEDORU", "CORRIDA ONLINE" if online else "PAUSA", 440, 0.7)
 	pause_menu = box.get_meta("root")
 	_button(box, "Continuar", _toggle_pause, true)
+	if spectator.can_enter() or spectator.active:
+		_button(box, "Sair do modo espectador (F6)" if spectator.active else "Modo espectador (F6)", func() -> void:
+			_toggle_pause()
+			spectator.toggle())
 	if online:
 		_button(box, "Configurações", _open_settings)
 		if manager.state != RaceManager.State.FINISHED:
-			# Votação para recomeçar: maioria dos jogadores na corrida
-			_button(box, "Retirar voto para recomeçar" if manager.my_restart_vote else "Votar para recomeçar a corrida",
-				func() -> void:
-					manager.vote_restart(not manager.my_restart_vote)
+			# Votações (maioria dos jogadores na corrida): pausar/retomar e recomeçar
+			var v := manager.vote_state
+			var open_kind := str(v.get("kind", "")) if manager.vote_left() > 0.0 else ""
+			var items := [["restart", "recomeçar a corrida"]]
+			items.push_front(["resume", "retomar a corrida"] if manager.net_paused else ["pause", "pausar a corrida"])
+			for item in items:
+				var kind: String = item[0]
+				var mine := open_kind == kind and manager.my_vote
+				var b := _button(box, ("Retirar voto para " if mine else "Votar para ") + item[1], func() -> void:
+					manager.vote(kind, not mine)
 					_toggle_pause())
+				b.disabled = open_kind != "" and open_kind != kind
 			var status := Label.new()
 			status.theme_type_variation = "RetroMuted"
 			status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-			var v := manager.restart_vote
-			status.text = ("Votação aberta: %d/%d votos · %d s" % [v["yes"], v["needed"], ceili(manager.restart_vote_left())]) \
-				if not v.is_empty() else "Recomeça do zero (sem resultado nem prêmio) se a maioria votar em 30 s."
+			status.text = ("Votação aberta (%s): %d/%d votos · %d s · %s vota sim sem abrir o menu" % [
+				str(RaceManager.VOTE_NAMES.get(open_kind, "")).to_lower(), v["yes"], v["needed"], ceili(manager.vote_left()),
+				RaceControl.key_label("vote_yes")]) if open_kind != "" else \
+				"Recomeçar descarta a corrida (sem resultado nem prêmio); a pausa dura até 3 min. %s vota sim nas votações abertas." \
+				% RaceControl.key_label("vote_yes")
 			box.add_child(status)
 		_button(box, "Sair da corrida", func() -> void: manager.restart(false))
 		return
@@ -875,6 +948,32 @@ class FlagPanel extends Control:
 
 
 # ---------------------------------------------------------------------------
+# Modo espectador
+# ---------------------------------------------------------------------------
+## Faixa embaixo da tela no modo espectador: o que está no ar e as teclas.
+class SpectatorBar extends Control:
+	var hud: RaceModeHud
+
+	func _ready() -> void:
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+
+	func _process(_d: float) -> void:
+		visible = hud.spectator != null and hud.spectator.active
+		if visible:
+			queue_redraw()
+
+	func _draw() -> void:
+		var lines := hud.spectator.status_text()
+		var r := Rect2(Vector2.ZERO, size)
+		draw_rect(r, Color(Retro.c("bg"), 0.7))
+		Retro.draw_corners(self, r.grow(1.0), Retro.c("accent"), 10.0, 2.0)
+		Retro.draw_label(self, Retro.display(800), Vector2(0, 24), str(lines[0]), HORIZONTAL_ALIGNMENT_CENTER, size.x, 16,
+			Retro.c("accent"))
+		Retro.draw_label(self, Retro.body(600), Vector2(0, 46), str(lines[1]), HORIZONTAL_ALIGNMENT_CENTER, size.x, 13,
+			Retro.c("text_2"))
+
+
+# ---------------------------------------------------------------------------
 # Votação para recomeçar (online)
 # ---------------------------------------------------------------------------
 ## Faixa abaixo da bandeira enquanto há votação aberta: votos, tempo e como votar.
@@ -891,19 +990,36 @@ class VoteBar extends Control:
 
 	func _draw() -> void:
 		var m := hud.manager
-		if m.restart_vote.is_empty() or m.restart_vote_left() <= 0.0:
+		var voting := not m.vote_state.is_empty() and m.vote_left() > 0.0
+		if m.net_paused:
+			_draw_paused(m, voting)
+		if not voting:
 			return
-		var v := m.restart_vote
+		var v := m.vote_state
 		var col := Retro.c("accent")
 		var r := Rect2(Vector2.ZERO, size)
 		draw_rect(r, Color(Retro.c("bg"), 0.62))
 		draw_rect(Rect2(0, 0, 6, size.y), col if int(_t * 2.0) % 2 == 0 else col.lightened(0.4))
-		var title := "VOTAÇÃO: RECOMEÇAR A CORRIDA  %d/%d" % [v["yes"], v["needed"]]
+		var title := "VOTAÇÃO: %s  %d/%d" % [RaceManager.VOTE_NAMES.get(v["kind"], ""), v["yes"], v["needed"]]
 		Retro.draw_label(self, Retro.display(800), Vector2(18, 20), title, HORIZONTAL_ALIGNMENT_LEFT, -1, 13, col)
-		var how := "Você votou sim · Esc para retirar" if m.my_restart_vote else "Esc → Votar para recomeçar"
-		Retro.draw_label(self, Retro.body(600), Vector2(18, 38), "%s · %d s" % [how, ceili(m.restart_vote_left())],
+		var key := RaceControl.key_label("vote_yes")
+		var how := "Você votou sim · %s retira" % key if m.my_vote else "%s vota sim (sem abrir o menu)" % key
+		Retro.draw_label(self, Retro.body(600), Vector2(18, 38), "%s · %d s" % [how, ceili(m.vote_left())],
 			HORIZONTAL_ALIGNMENT_LEFT, size.x - 30, 13, Retro.c("text_2"))
 		Retro.draw_corners(self, r.grow(1.0), Color(col, 0.8), 8.0, 2.0)
+
+	## Corrida pausada (online): painel acima da faixa da votação, com quando retoma.
+	func _draw_paused(m: RaceManager, voting: bool) -> void:
+		var r := Rect2(Vector2(-20, -96), Vector2(size.x + 40, 84))
+		draw_rect(r, Color(Retro.c("bg"), 0.78))
+		Retro.draw_corners(self, r.grow(1.0), Retro.c("warn"), 10.0, 2.0)
+		var left := ceili(m.pause_left())
+		var title := "RETOMANDO EM %d" % left if m.net_resume_at >= 0.0 else "CORRIDA PAUSADA"
+		Retro.draw_glow_text(self, Retro.display(900), Vector2(r.position.x, r.position.y + 38), title, HORIZONTAL_ALIGNMENT_CENTER,
+			r.size.x, 26, Retro.c("warn"), Retro.c("warn"))
+		var hint := "" if m.net_resume_at >= 0.0 else ("retoma sozinha em %d:%02d" % [left / 60, left % 60]) + 			("" if voting else " · %s abre a votação para retomar" % RaceControl.key_label("vote_yes"))
+		Retro.draw_label(self, Retro.body(600), Vector2(r.position.x, r.position.y + 66), hint, HORIZONTAL_ALIGNMENT_CENTER,
+			r.size.x, 14, Retro.c("text_2"))
 
 
 ## Nome da pista em jogo (do layout; antes de a pista existir, o escolhido no menu).

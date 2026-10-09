@@ -106,6 +106,21 @@ def decals():
     # Estrela cadente: estrela + rastro
     trail = poly([(60, 330), (330, 210), (360, 260), (90, 360)]) + poly([(100, 420), (320, 300), (340, 340), (120, 445)])
     out["cometa"] = svg(640, 512, trail + "\n" + poly(star(470, 200, 150, 62)))
+    # Shuriken: estrela de quatro pontas com furo no meio
+    sh = []
+    for k in range(4):
+        a0 = math.radians(k * 90.0)
+        tip = (256 + 240 * math.cos(a0), 256 + 240 * math.sin(a0))
+        l = (256 + 70 * math.cos(a0 + 0.9), 256 + 70 * math.sin(a0 + 0.9))
+        r = (256 + 70 * math.cos(a0 - 0.35), 256 + 70 * math.sin(a0 - 0.35))
+        sh.append(poly([r, tip, l]))
+    # Anel no meio (o furo fica transparente pela regra par-ímpar)
+    sh.append('<path fill-rule="evenodd" fill="#ffffff" d="M 161 256 a 95 95 0 1 0 190 0 a 95 95 0 1 0 -190 0 Z '
+              'M 222 256 a 34 34 0 1 0 68 0 a 34 34 0 1 0 -68 0 Z"/>')
+    out["shuriken"] = svg(512, 512, "\n".join(sh))
+    # Faixas duplas de corrida (para o bico ou a lateral)
+    out["faixa_dupla"] = svg(1024, 300, poly([(0, 40), (1024, 40), (1024, 120), (0, 120)]) + "\n" +
+                             poly([(0, 180), (1024, 180), (1024, 260), (0, 260)]))
     return out
 
 

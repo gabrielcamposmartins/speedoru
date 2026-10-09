@@ -57,7 +57,7 @@ var start_lights: StartLights
 ## em etapas de um quadro cada (sem pausar as outras salas).
 static var server_mode := false
 const SERVER_SKIP := ["arquibancadas", "árvores", "folhas", "pinheiros", "cenário", "grama", "prédios", "túnel", "porto",
-	"jardins", "entorno", "navios", "detalhes"]
+	"jardins", "entorno", "navios", "detalhes", "vitrine"]
 
 var terrain: TrackTerrain
 ## Circuito de rua: dados da cidade (layout.city); nulo nos circuitos de campo.
@@ -141,6 +141,8 @@ func rebuild(staged := false) -> void:
 			["cenário", "Cenário e céu", 200, func(): _build_scenery()],
 			["grama", "Grama", 30, func(): _build_grass()],
 		])
+	# Balões de personagem, outdoors e murais (depois do cenário: usa prédios, vilarejos e terreno)
+	steps.append(["vitrine", "Balões, outdoors e murais", 150, func(): TrackShowcase.build(self, _root)])
 	var tree := get_tree()
 	var was_paused := false
 	if staged:

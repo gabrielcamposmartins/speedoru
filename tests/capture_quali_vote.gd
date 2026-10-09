@@ -47,7 +47,7 @@ func _run() -> void:
 	await create_timer(4.0).timeout
 	await _shot("quali_relogio.png")
 	# Votação como o cliente recebe do servidor
-	manager.restart_vote = {"yes": 1, "needed": 2, "until": manager.race_time + 24.0, "voters": ["Alice"]}
+	manager.vote_state = {"kind": "pause", "yes": 1, "needed": 2, "until": manager.race_time + 24.0, "voters": ["Alice"]}
 	await _shot("votacao.png")
 	DirAccess.remove_absolute(ProjectSettings.globalize_path("user://test_capqv_profile.cfg"))
 	quit()

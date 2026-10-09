@@ -2,7 +2,8 @@ class_name CarDecals
 extends RefCounted
 ## Decalques (adesivos SVG) do carro: projetados na carroceria com nós Decal e tingidos com a cor
 ## escolhida. O que está aplicado vive em CarConfig.decals / Profile.equipped["decals"]:
-##   {lugar: {"id": "estrela" | "custom:arquivo.svg", "color": "rrggbb", "scale": 0.3..1.5, "rot": graus}}
+##   {lugar: {"id": "estrela" | "custom:arquivo.svg", "color": "rrggbb", "scale": SCALE_RANGE,
+##            "stretch": STRETCH_RANGE (largura / altura), "rot": graus, "x"/"y": -1..1 (posição)}}
 ##
 ## * Padrão: assets/decals/<id>.svg (brancos, gerados por tools/generate_decals.py).
 ## * Do jogador: qualquer .svg na pasta user://decals (botão "Abrir pasta" no Estúdio). Só aparecem
@@ -23,6 +24,7 @@ const PRESETS := [
 	["estrela", "Estrela"], ["raio", "Raio"], ["chamas", "Chamas"], ["xadrez", "Bandeira quadriculada"],
 	["sakura", "Sakura"], ["coracao", "Coração"], ["asas", "Asas"], ["listras", "Listras de velocidade"],
 	["garras", "Garras"], ["alvo", "Disco de número"], ["onda", "Onda"], ["logo_s", "Logo S"], ["cometa", "Cometa"],
+	["shuriken", "Shuriken"], ["faixa_dupla", "Faixas duplas"],
 ]
 
 ## Lugares no carro (espaço local: +Z frente, +X esquerda, Y para cima). Cada posição:
@@ -41,6 +43,11 @@ const SLOTS := {
 		[Vector3(-0.506, 0.80, -2.55), Vector3(-1, 0, 0), Vector3(0, 0, 1), 0.5, 0.32, 0.1]]},
 }
 const SLOT_ORDER := ["sidepods", "nose", "airbox", "wing"]
+## Limites de tamanho (sobre o retângulo do lugar) e de esticamento (largura relativa à altura).
+const SCALE_RANGE := Vector2(0.2, 2.5)
+const STRETCH_RANGE := Vector2(0.4, 2.5)
+## Quanto a posição livre ("x"/"y" = ±1) desloca o centro, em frações do retângulo do lugar.
+const MOVE := 0.75
 
 static var _textures := {}
 
@@ -145,6 +152,10 @@ static func _raster_file(path: String) -> Texture2D:
 
 
 ## Monta os nós Decal de `decals` dentro de `parent` (apaga os anteriores).
+## Lugares de dois lados: o lado direito (o que a garagem mostra) é a referência e lê o desenho como
+## ele é; com "mirror" (padrão) o esquerdo é o reflexo exato dele (desenho virado, mesma posição e
+## giro espelhados), então chamas, setas e asas apontam para o mesmo lado do carro nos dois lados.
+## Sem "mirror" (textos), cada lado lê o desenho normalmente.
 static func build(parent: Node3D, decals: Dictionary) -> void:
 	for c in parent.get_children():
 		parent.remove_child(c)
@@ -153,41 +164,110 @@ static func build(parent: Node3D, decals: Dictionary) -> void:
 		if not SLOTS.has(slot) or not decals[slot] is Dictionary:
 			continue
 		var d: Dictionary = decals[slot]
-		var tex := texture(str(d.get("id", "")))
+		var id := str(d.get("id", ""))
+		var tex := texture(id)
 		if tex == null:
 			continue
 		var color_html := str(d.get("color", "ffffff"))
 		var color := Color(color_html) if Color.html_is_valid(color_html) else Color.WHITE
-		var scale := clampf(float(d.get("scale", 1.0)), 0.3, 1.5)
-		var rot := deg_to_rad(clampf(float(d.get("rot", 0.0)), -180.0, 180.0))
-		var aspect := float(tex.get_width()) / maxf(tex.get_height(), 1.0)
+		var mirror := bool(d.get("mirror", default_mirror(id)))
 		var places: Array = SLOTS[slot]["places"]
+		var ref := reference_place(slot)
+		var ref_xf := _place_xform(places[ref], d, tex)
 		for k in places.size():
-			var place: Array = places[k]
-			var w: float = place[3]
-			var h: float = place[4]
-			# Cabe no retângulo do lugar mantendo a proporção do desenho
-			var dw := w * scale
-			var dh := dw / aspect
-			if dh > h * scale:
-				dh = h * scale
-				dw = dh * aspect
-			var normal: Vector3 = (place[1] as Vector3).normalized()
-			var right: Vector3 = place[2]
-			right = (right - normal * right.dot(normal)).normalized()
-			# Decal: projeta ao longo de -Y local; a imagem vai em X (largura) e Z (altura, para baixo)
-			var basis := Basis(right, normal, right.cross(normal)) * Basis(Vector3.UP, rot)
+			var xf: Array
+			var t := tex
+			if k == ref or not mirror:
+				xf = _place_xform(places[k], d, tex)
+			else:
+				xf = _mirrored(ref_xf)
+				t = texture_flipped(id)
 			var dec := Decal.new()
 			dec.name = "Decal_%s_%d" % [slot, k]
-			dec.transform = Transform3D(basis, place[0])
-			dec.size = Vector3(dw, place[5], dh)
-			dec.texture_albedo = tex
+			dec.transform = xf[0]
+			dec.size = xf[1]
+			dec.texture_albedo = t
 			dec.modulate = color
 			dec.cull_mask = CarAssembly.CAR_LAYER
 			dec.normal_fade = 0.45
 			dec.upper_fade = 0.15
 			dec.lower_fade = 0.15
 			parent.add_child(dec)
+
+
+## Lado de referência de um lugar: o direito (normal para -X) quando há dois lados.
+static func reference_place(slot: String) -> int:
+	var places: Array = SLOTS[slot]["places"]
+	for k in places.size():
+		if (places[k][1] as Vector3).x < -0.5:
+			return k
+	return 0
+
+
+## O espelhamento está ligado por padrão, menos em desenhos com letras (logo S) e SVGs do jogador.
+static func default_mirror(id: String) -> bool:
+	return not (id == "logo_s" or id.begins_with(CUSTOM_PREFIX))
+
+
+## [Transform3D, tamanho] do Decal num lugar, com tamanho, largura, giro e posição do decalque.
+static func _place_xform(place: Array, d: Dictionary, tex: Texture2D) -> Array:
+	var scale := clampf(float(d.get("scale", 1.0)), SCALE_RANGE.x, SCALE_RANGE.y)
+	var stretch := clampf(float(d.get("stretch", 1.0)), STRETCH_RANGE.x, STRETCH_RANGE.y)
+	var rot := deg_to_rad(clampf(float(d.get("rot", 0.0)), -180.0, 180.0))
+	var off := Vector2(clampf(float(d.get("x", 0.0)), -1.0, 1.0), clampf(float(d.get("y", 0.0)), -1.0, 1.0))
+	var aspect := float(tex.get_width()) / maxf(tex.get_height(), 1.0)
+	var w: float = place[3]
+	var h: float = place[4]
+	# Cabe no retângulo do lugar mantendo a proporção do desenho
+	var dw := w * scale
+	var dh := dw / aspect
+	if dh > h * scale:
+		dh = h * scale
+		dw = dh * aspect
+	dw *= stretch
+	var normal: Vector3 = (place[1] as Vector3).normalized()
+	var right: Vector3 = place[2]
+	right = (right - normal * right.dot(normal)).normalized()
+	# Posição livre: para a direita/esquerda e para cima/baixo de quem olha de fora
+	var up := normal.cross(right)
+	var center: Vector3 = place[0] + right * (off.x * w * MOVE) + up * (off.y * h * MOVE)
+	# Decal: projeta ao longo de -Y local; a imagem vai em X (largura) e Z (altura, para baixo)
+	var basis := Basis(right, normal, right.cross(normal)) * Basis(Vector3.UP, rot)
+	return [Transform3D(basis, center), Vector3(dw, place[5], dh)]
+
+
+## Reflexo de um Decal no plano do meio do carro (X = 0). O reflexo inverte a mão da base; virar o
+## eixo X local (a largura da imagem) devolve uma rotação de verdade, e a imagem virada
+## (texture_flipped) compensa.
+static func _mirrored(xf: Array) -> Array:
+	var t: Transform3D = xf[0]
+	var m := Basis(Vector3(-1, 0, 0), Vector3(0, 1, 0), Vector3(0, 0, 1))
+	var b := m * t.basis
+	b.x = -b.x
+	return [Transform3D(b, m * t.origin), xf[1]]
+
+
+## Imagem do decalque virada na horizontal (lado espelhado). Sem imagem legível (servidor sem
+## tela), devolve a normal.
+static func texture_flipped(id: String) -> Texture2D:
+	var key := id + "#flip"
+	if _textures.has(key):
+		return _textures[key]
+	var tex := texture(id)
+	if tex == null:
+		return null
+	var img := tex.get_image()
+	var out: Texture2D = tex
+	if img and not img.is_empty():
+		img = img.duplicate()
+		if img.is_compressed():
+			img.decompress()
+		img.clear_mipmaps()
+		img.flip_x()
+		img.generate_mipmaps()
+		out = ImageTexture.create_from_image(img)
+	_textures[key] = out
+	return out
 
 
 ## Copia limpa de um dicionário de decalques (lugares e ids válidos, valores nos limites).
@@ -206,7 +286,11 @@ static func sanitize(src: Variant) -> Dictionary:
 		out[str(slot)] = {
 			"id": id,
 			"color": color if Color.html_is_valid(color) else "ffffff",
-			"scale": clampf(float((v as Dictionary).get("scale", 1.0)), 0.3, 1.5),
+			"scale": clampf(float((v as Dictionary).get("scale", 1.0)), SCALE_RANGE.x, SCALE_RANGE.y),
+			"stretch": clampf(float((v as Dictionary).get("stretch", 1.0)), STRETCH_RANGE.x, STRETCH_RANGE.y),
 			"rot": clampf(float((v as Dictionary).get("rot", 0.0)), -180.0, 180.0),
+			"x": clampf(float((v as Dictionary).get("x", 0.0)), -1.0, 1.0),
+			"y": clampf(float((v as Dictionary).get("y", 0.0)), -1.0, 1.0),
+			"mirror": bool((v as Dictionary).get("mirror", default_mirror(id))),
 		}
 	return out

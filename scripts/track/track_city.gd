@@ -20,6 +20,8 @@ const UNDER_ROAD := Color(0.2, 0.2, 0.22)
 const GRASS := Color(0.36, 0.56, 0.24)
 const GARDEN := Color(0.27, 0.47, 0.2)
 const SLOPE := Color(0.62, 0.56, 0.46)
+## Muro de arrimo (pedra calcária em fiadas) nas encostas muito íngremes da cidade.
+const RETAINING := Color(0.7, 0.63, 0.5)
 const QUAY_STONE := Color(0.66, 0.63, 0.57)
 const QUAY_WET := Color(0.36, 0.36, 0.33)
 const STREET := Color(0.25, 0.25, 0.28)
@@ -35,6 +37,7 @@ const FLOOR_SIDEWALK := 0.7
 const FLOOR_COBBLE := 0.5
 const FLOOR_GRASS := 0.3
 const FLOOR_SCRUB := 0.22
+const FLOOR_WALL := 0.16
 const FLOOR_ROCK := 0.12
 const FLOOR_ASPHALT := 0.0
 ## Tamanho (em células da grade) de cada pedaço do terreno.
@@ -128,12 +131,46 @@ static func build_ground(track: RaceTrack, city: TrackCity, parent: Node3D) -> v
 	root.name = "City"
 	parent.add_child(root)
 	city.track_ref = track
+	city._flatten_portals(track)
 	city._terrain(root, not RaceTrack.server_mode)
 	if RaceTrack.server_mode:
 		return
 	city._quays(root)
 	city._streets(root)
 	city._pools(root)
+
+
+## Aproximação das bocas do túnel: o barranco colado na pista (até 6 m atrás da barreira) desce até o
+## nível da pista, para o muro de ala (TrackTunnel._wing_walls) ficar na frente dele — sem a rampa da
+## grade (4 m) formando cunhas pontudas ao lado do portal.
+func _flatten_portals(track: RaceTrack) -> void:
+	if tunnel.y <= tunnel.x:
+		return
+	var p := track.path
+	for portal: Vector2 in [Vector2(tunnel.x, 1.0), Vector2(tunnel.y, -1.0)]:
+		var c := p.frame_at(portal.x, 0.0, 0.0).origin
+		var r := TrackTunnel.WING_LENGTH + 30.0
+		var ix0 := maxi(int((c.x - r - area.position.x) / cell), 0)
+		var ix1 := mini(int((c.x + r - area.position.x) / cell) + 1, nx - 1)
+		var iy0 := maxi(int((-c.z - r - area.position.y) / cell), 0)
+		var iy1 := mini(int((-c.z + r - area.position.y) / cell) + 1, ny - 1)
+		for iy in range(iy0, iy1 + 1):
+			for ix in range(ix0, ix1 + 1):
+				var v := _vertex(ix, iy)
+				var pr := p.project(v, false)
+				if pr.y == INF:
+					continue
+				# Antes da boca (no sentido de quem chega), até o fim do muro de ala
+				var ds := (fposmod(pr.x - portal.x + p.length * 0.5, p.length) - p.length * 0.5) * portal.y
+				if ds > 0.5 or ds < -TrackTunnel.WING_LENGTH:
+					continue
+				var i := p.index_at(pr.x)
+				var side := 1 if pr.y >= 0.0 else -1
+				var line: float = p.half_width(i, side) + track.barrier[RaceTrack._si(side)][i] + 0.4
+				if absf(pr.y) > line + 6.0:
+					continue
+				var road_y := p.frame_at(pr.x, 0.0, 0.0).origin.y
+				heights[iy * nx + ix] = minf(heights[iy * nx + ix], road_y - 0.2)
 
 
 ## Distância de cada vértice da grade ao prédio mais próximo (até CONTACT_RANGE m; além disso fica
@@ -219,11 +256,14 @@ func _ground_base(i: int, n: Vector3, rng: RandomNumberGenerator) -> Color:
 		c = PAVEMENT.lerp(GARDEN, garden)
 		if garden > 0.3:
 			kind = FLOOR_GRASS
-	if n.y < 0.75:
-		var rock := clampf((0.75 - n.y) / 0.35, 0.0, 0.8)
-		c = c.lerp(SLOPE, rock)
-		if rock > 0.45:
-			kind = FLOOR_ROCK
+	# Encostas da cidade (Mônaco é cheia delas): as muito íngremes viram muro de arrimo de pedra com
+	# hera; as outras, jardim em terraços (o shader desenha as muretas nas curvas de nível) — nada de
+	# rampa lisa de calçada ou de rocha à vista da pista
+	if n.y < 0.68:
+		return Color(lin(RETAINING * rng.randf_range(0.92, 1.06)), FLOOR_WALL)
+	if n.y < 0.93:
+		c = GARDEN.lerp(GRASS, rng.randf_range(0.0, 0.5))
+		kind = FLOOR_GRASS
 	return Color(lin(c * rng.randf_range(0.96, 1.04)), kind)
 
 
@@ -568,6 +608,10 @@ static func build_buildings(track: RaceTrack, city: TrackCity, parent: Node3D) -
 		_building(chunks[key], poly, base, top, color, style, roof, mansard, lm, rng, track)
 		if near and lm == "" and height > 8.0:
 			_balconies(chunks[key], poly, base, top - 3.6 if mansard else top, style, rng)
+	if city.tunnel.y > city.tunnel.x:
+		var hotel := Arrays.new()
+		_tunnel_hotel(track, city, hotel, rng)
+		chunks[Vector2i(99999, 99999)] = hotel
 	var mat := _building_material()
 	for key in chunks:
 		var arr: Arrays = chunks[key]
@@ -577,6 +621,42 @@ static func build_buildings(track: RaceTrack, city: TrackCity, parent: Node3D) -
 		mi.name = "Block_%d_%d" % [key.x, key.y]
 		mi.mesh = arr.commit(mat)
 		root.add_child(mi)
+
+
+## Hotel sobre a boca do túnel, como o Fairmont de verdade (o túnel passa por baixo dele): o prédio
+## acompanha a curva do túnel do portal até ~170 m para dentro, mais largo do lado do morro (cobre a
+## laje vazia sobre o túnel), com a base acima do portal (as paredes, que descem WALL_SINK, param
+## antes da boca) e fachada moderna com varandas.
+static func _tunnel_hotel(track: RaceTrack, city: TrackCity, arr: Arrays, rng: RandomNumberGenerator) -> void:
+	var p := track.path
+	var s0: float = city.tunnel.x
+	var s1: float = minf(city.tunnel.y - 10.0, s0 + 170.0)
+	var probe_l := p.frame_at(s0 + 60.0, 35.0, 0.0).origin
+	var probe_r := p.frame_at(s0 + 60.0, -35.0, 0.0).origin
+	var land := 1 if city.height_at(probe_l.x, probe_l.z) > city.height_at(probe_r.x, probe_r.z) else -1
+	var left := PackedVector2Array()
+	var right := PackedVector2Array()
+	var road_y := -INF
+	var k := s0 + 0.8
+	while k <= s1 + 0.01:
+		var i := p.index_at(k)
+		var wl: float = p.width_left[i] + track.barrier[0][i] + (26.0 if land > 0 else 12.0)
+		var wr: float = p.width_right[i] + track.barrier[1][i] + (26.0 if land < 0 else 12.0)
+		var l := p.frame_at(k, wl, 0.0).origin
+		var r := p.frame_at(k, -wr, 0.0).origin
+		left.append(Vector2(l.x, -l.z))
+		right.append(Vector2(r.x, -r.z))
+		road_y = maxf(road_y, p.frame_at(k, 0.0, 0.0).origin.y)
+		k += 10.0
+	var poly := PackedVector2Array(left)
+	for i in range(right.size() - 1, -1, -1):
+		poly.append(right[i])
+	if Geometry2D.is_polygon_clockwise(poly):
+		poly.reverse()
+	var base := road_y + TrackTunnel.HEIGHT + TrackTunnel.SLAB + WALL_SINK + 0.5
+	var top := base + 22.0
+	_building(arr, poly, base, top, Color("f1e7d2"), STYLE_MODERN, 0, false, "", rng, track)
+	_balconies(arr, poly, base, top, STYLE_MODERN, rng)
 
 
 static var _bmat: ShaderMaterial
@@ -899,6 +979,9 @@ static func build_trees(track: RaceTrack, city: TrackCity, parent: Node3D) -> vo
 	for k in range(0, t.size(), 4):
 		var kind := int(t[k + 3])
 		var pos := to_world(t[k], t[k + 1], t[k + 2] - 0.2)
+		# Nunca na pista, na faixa dos boxes nem nas garagens (em nenhum trecho do circuito)
+		if not CityProps.clear_of_track(track, pos, 2.0 if kind == 0 else 1.0):
+			continue
 		if kind == 1:
 			var s := rng.randf_range(0.8, 1.25)
 			palms.append(Transform3D(Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3(s, s * rng.randf_range(0.9, 1.15), s)), pos))
@@ -913,43 +996,17 @@ static func build_trees(track: RaceTrack, city: TrackCity, parent: Node3D) -> vo
 			by_species[species] = [[] as Array[Transform3D], [] as Array[Color]]
 		by_species[species][0].append(Transform3D(basis, pos))
 		by_species[species][1].append(Color(rng.randf(), rng.randf(), rng.randf(), 0.0))
-	TrackTrees.ensure_meshes()
-	var mat := TrackMaterials.tree()
-	for species in by_species:
-		var buffer := Grandstands.pack_buffer(by_species[species][0], by_species[species][1])
-		for lod in 2:
-			var mm := MultiMesh.new()
-			mm.transform_format = MultiMesh.TRANSFORM_3D
-			mm.use_custom_data = true
-			mm.mesh = TrackTrees.mesh(species, lod == 0)
-			mm.instance_count = (by_species[species][0] as Array).size()
-			mm.buffer = buffer
-			var mmi := MultiMeshInstance3D.new()
-			mmi.name = "Trees_%d_%s" % [species, "near" if lod == 0 else "far"]
-			mmi.multimesh = mm
-			mmi.material_override = mat
-			if lod == 0:
-				mmi.visibility_range_end = TrackTrees.LOD_DISTANCE
-				mmi.visibility_range_end_margin = 30.0
-			else:
-				mmi.visibility_range_begin = TrackTrees.LOD_DISTANCE
-				mmi.visibility_range_begin_margin = 30.0
-				mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-			parent.add_child(mmi)
+	# Perto: copas de folhas soltas; longe: as bolhas simples (em blocos, ver CityProps.add_chunked)
+	CityProps.add_trees(parent, "Trees", by_species)
 	if palms.is_empty():
 		return
-	var pm := MultiMesh.new()
-	pm.transform_format = MultiMesh.TRANSFORM_3D
-	pm.mesh = _palm_mesh(DaylightPresets.Biome.SUMMER)
-	pm.instance_count = palms.size()
-	for i in palms.size():
-		pm.set_instance_transform(i, palms[i])
-	var pmi := MultiMeshInstance3D.new()
-	pmi.name = "Palms"
-	pmi.multimesh = pm
-	pmi.add_to_group("city_trees")
-	pmi.set_meta("kind", 1)
-	parent.add_child(pmi)
+	# Palmeiras: folíolos perto, folhas simples (sem sombra) longe; no grupo city_trees para
+	# acompanhar o ambiente (apply_biome)
+	var lods := [[_palm_mesh(DaylightPresets.Biome.SUMMER), null, 0.0, PALM_LOD, true],
+		[_palm_mesh(DaylightPresets.Biome.SUMMER, false), null, PALM_LOD, 0.0, false]]
+	for mmi in CityProps.add_chunked(parent, "Palms", palms, [], lods):
+		mmi.add_to_group("city_trees")
+		mmi.set_meta("detailed", not mmi.name.contains("_lod"))
 
 
 static func _pick_tree(rng: RandomNumberGenerator) -> int:
@@ -964,9 +1021,13 @@ static func _pick_tree(rng: RandomNumberGenerator) -> int:
 ## Palmeiras no tema do ambiente (só puxam um pouco para a cor do tema); chamado pelo RaceTrack
 ## quando o ambiente muda. As outras árvores seguem o ambiente pelo shader (globais das folhas).
 static func apply_biome(root: Node, biome: int) -> void:
+	var meshes := {}
 	for mmi in root.get_tree().get_nodes_in_group("city_trees"):
 		if root.is_ancestor_of(mmi):
-			(mmi as MultiMeshInstance3D).multimesh.mesh = _palm_mesh(biome)
+			var detailed: bool = mmi.get_meta("detailed", true)
+			if not meshes.has(detailed):
+				meshes[detailed] = _palm_mesh(biome, detailed)
+			(mmi as MultiMeshInstance3D).multimesh.mesh = meshes[detailed]
 
 
 static func _leaf_colors(biome: int) -> Array:
@@ -974,11 +1035,16 @@ static func _leaf_colors(biome: int) -> Array:
 	return b["leaves"]
 
 
-static func _palm_mesh(biome := 0) -> ArrayMesh:
+## Palmeiras: com folíolos até esta distância (m), versão simples depois.
+const PALM_LOD := 220.0
+
+
+## Palmeira; `detailed` = falso dá a versão de longe (menos segmentos, folíolos maiores).
+static func _palm_mesh(biome := 0, detailed := true) -> ArrayMesh:
 	var mb := MeshBuilder.new()
 	var trunk := Color(0.55, 0.45, 0.33)
 	# Tronco levemente curvo, em anéis
-	var segs := 7
+	var segs := 7 if detailed else 3
 	var height := 8.5
 	var prev := Vector3.ZERO
 	for k in segs:
@@ -989,29 +1055,44 @@ static func _palm_mesh(biome := 0) -> ArrayMesh:
 			trunk.darkened(0.1 if k % 2 == 0 else 0.0), 6, false)
 		prev = p
 	var crown := prev
-	# Folhas: tiras arqueadas caindo para fora
+	# Folhas de palmeira de verdade: nervura em arco caindo para fora e folíolos dos dois lados
+	# (dupla face), mais curtos perto da ponta; 12 folhas em duas alturas
 	var leaf := Color(0.3, 0.55, 0.22)
 	if biome != DaylightPresets.Biome.SUMMER:
 		var tint: Color = _leaf_colors(biome)[0]
 		leaf = leaf.lerp(tint, 0.45 if biome != DaylightPresets.Biome.SAKURA else 0.25)
-	for f in 9:
-		var ang := TAU * f / 9.0 + (0.2 if f % 2 == 0 else 0.0)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 515
+	for f in 12:
+		var ang := TAU * f / 12.0 + (0.13 if f % 2 == 0 else 0.0)
 		var dir := Vector3(cos(ang), 0.0, sin(ang))
 		var side := Vector3(-dir.z, 0.0, dir.x)
-		var length := 4.2 if f % 2 == 0 else 3.6
-		var a := crown
-		for k in 4:
-			var t0 := float(k) / 4.0
-			var t1 := float(k + 1) / 4.0
-			var p0 := crown + dir * length * t0 + Vector3.UP * (1.2 * t0 - 2.6 * t0 * t0)
-			var p1 := crown + dir * length * t1 + Vector3.UP * (1.2 * t1 - 2.6 * t1 * t1)
-			var w0 := 0.75 * sin(PI * (t0 * 0.85 + 0.1))
-			var w1 := 0.75 * sin(PI * (t1 * 0.85 + 0.1))
-			var c := leaf.darkened(0.12 * k)
-			mb.quad(p0 - side * w0, p1 - side * w1, p1 + side * w1, p0 + side * w0, c)
-			mb.quad(p0 + side * w0, p1 + side * w1, p1 - side * w1, p0 - side * w0, c.darkened(0.2))
-			a = p1
-	mb.blob(crown + Vector3(0, -0.2, 0), Vector3(0.45, 0.5, 0.45), Color(0.45, 0.36, 0.22), 6, 3)
+		var length := rng.randf_range(3.8, 4.6) * (1.0 if f % 2 == 0 else 0.88)
+		var rise := 1.3 if f % 2 == 0 else 1.7
+		var spine := func(t: float) -> Vector3:
+			return crown + dir * length * t + Vector3.UP * (rise * t - 3.0 * t * t)
+		var steps := 10 if detailed else 4
+		for k in steps:
+			var t0 := float(k) / steps
+			var t1 := float(k + 1) / steps
+			var p0: Vector3 = spine.call(t0)
+			var p1: Vector3 = spine.call(t1)
+			# Nervura
+			if detailed:
+				mb.quad(p0 - side * 0.05, p1 - side * 0.04, p1 + side * 0.04, p0 + side * 0.05, Color(0.52, 0.5, 0.25))
+			if t0 < 0.08 and detailed:
+				continue
+			var ll := 1.05 * sin(PI * (t0 * 0.9 + 0.08))
+			var c := leaf.darkened(0.06 * k * 0.5 * (10.0 / steps) + rng.randf_range(0.0, 0.08))
+			for sgn: float in [-1.0, 1.0]:
+				# Folíolo: sai da nervura para o lado, caindo, um pouco para a frente
+				var tipv: Vector3 = side * sgn * ll + Vector3.DOWN * ll * 0.45 + dir * ll * 0.35
+				var a0 := p0
+				var a1 := p0.lerp(p1, 0.7 if detailed else 1.0)
+				var tp := a0.lerp(a1, 0.5) + tipv
+				mb.tri(a0, a1, tp, c)
+				mb.tri(a1, a0, tp, c.darkened(0.2))
+	mb.blob(crown + Vector3(0, -0.2, 0), Vector3(0.45, 0.5, 0.45), Color(0.45, 0.36, 0.22), 6 if detailed else 4, 3 if detailed else 2)
 	return mb.commit(null, TrackMaterials.structure())
 
 

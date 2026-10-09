@@ -333,13 +333,15 @@ func _panel(kicker: String, width_ratio: float) -> VBoxContainer:
 	return box
 
 
+## Jogar solo: duas colunas (corrida | classificatória e ambiente), cada opção com o nome em cima;
+## a área das opções rola se a janela for baixa e os botões ficam sempre embaixo.
 func _build_solo() -> void:
-	var box := _panel("JOGAR SOLO", 0.5)
+	var box := _panel("JOGAR SOLO", 0.64)
 	var title := Label.new()
 	title.text = RaceSettings.track_name(RaceSettings.track).to_upper()
 	title.theme_type_variation = "RetroTitle"
 	box.add_child(title)
-	var rows := [
+	var race_rows := [
 		["Pista", RaceSettings.TRACKS.map(func(t: Dictionary) -> String: return t["name"]), RaceSettings.track_index(RaceSettings.track),
 			func(i: int) -> void:
 				RaceSettings.track = RaceSettings.TRACKS[i]["id"]
@@ -350,63 +352,42 @@ func _build_solo() -> void:
 		["Dificuldade dos bots", ["Fácil", "Médio", "Difícil", "Mista"], RaceSettings.difficulty, func(i: int) -> void: RaceSettings.difficulty = i],
 		["Largada", ["Pole position", "Meio do grid", "Última fila"], RaceSettings.grid, func(i: int) -> void: RaceSettings.grid = i as RaceSettings.Grid],
 		["DRS", ["Livre", "Só a até 1 s do carro da frente"], RaceSettings.drs_rule, func(i: int) -> void: RaceSettings.drs_rule = i],
+	]
+	var more_rows := [
 		["Classificatória", RaceSettings.QUALI_LAP_NAMES, RaceSettings.quali_laps,
 			func(i: int) -> void: RaceSettings.quali_laps = i,
-			["Colisão", RaceSettings.quali_collisions, func(on: bool) -> void: RaceSettings.quali_collisions = on]],
+			["Colisão entre os carros", RaceSettings.quali_collisions, func(on: bool) -> void: RaceSettings.quali_collisions = on]],
 		["Tempo da classificatória", RaceSettings.QUALI_TIME_NAMES, RaceSettings.quali_time,
 			func(i: int) -> void: RaceSettings.quali_time = i,
 			["Infração anula a volta", RaceSettings.quali_strict, func(on: bool) -> void: RaceSettings.quali_strict = on]],
 		["Horário", Array(DaylightPresets.TIME_NAMES), RaceSettings.time_of_day, func(i: int) -> void: RaceSettings.time_of_day = i],
 		["Ambiente", Array(DaylightPresets.BIOME_NAMES), RaceSettings.biome, func(i: int) -> void: RaceSettings.biome = i],
 	]
-	for r in rows:
-		var row := HBoxContainer.new()
-		row.add_theme_constant_override("separation", 14)
-		var l := Label.new()
-		l.text = str(r[0]).to_upper()
-		l.theme_type_variation = "RetroKicker"
-		l.custom_minimum_size = Vector2(230, 0)
-		row.add_child(l)
-		var o := OptionButton.new()
-		o.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		for item in r[1]:
-			o.add_item(item)
-		# Online: a dificuldade dos bots é liberada por nível (o servidor confere)
-		if r[0] == "Dificuldade dos bots" and _net and _net.online:
-			var level := int(_net.account.get("level", 1))
-			for k in o.item_count:
-				if not Progression.tier_unlocked(k, level):
-					o.set_item_disabled(k, true)
-					o.set_item_text(k, "%s (nível %d)" % [o.get_item_text(k), Progression.TIER_LEVEL[k]])
-			if not Progression.tier_unlocked(RaceSettings.difficulty, level):
-				RaceSettings.difficulty = 0
-				r[2] = 0
-		o.selected = maxi(int(r[2]), 0)
-		o.item_selected.connect(r[3])
-		row.add_child(o)
-		# Caixa de marcar opcional na mesma linha (ex.: colisão na classificatória)
-		if r.size() > 4:
-			var chk: Array = r[4]
-			var cb := CheckBox.new()
-			cb.text = chk[0]
-			cb.button_pressed = chk[1]
-			cb.toggled.connect(chk[2])
-			row.add_child(cb)
-		box.add_child(row)
-	var reward := Label.new()
+	var scroll := ScrollContainer.new()
+	scroll.follow_focus = true
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	box.add_child(scroll)
+	var cols := HBoxContainer.new()
+	cols.add_theme_constant_override("separation", 28)
+	cols.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.add_child(cols)
+	var left := _solo_column(cols, "CORRIDA")
+	var right := _solo_column(cols, "CLASSIFICATÓRIA E AMBIENTE")
+	for r in race_rows:
+		_solo_option(left, r)
+	for r in more_rows:
+		_solo_option(right, r)
 	var per_lap: int = ShopCatalog.REWARD_PER_LAP[clampi(RaceSettings.difficulty, 0, 3)]
-	reward.text = "Prêmio: %d %s por volta completada (fácil 20 · médio 30 · difícil 40 · mista 30). Treino livre não paga." % [per_lap, ShopCatalog.CURRENCY]
-	reward.theme_type_variation = "RetroMuted"
-	reward.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	box.add_child(reward)
-	var rules := Label.new()
-	rules.text = "Regras: limites de pista (3 avisos, depois +5 s), cortar a pista +5 s, colisão +5/+10 s, largada queimada +10 s, mais de 80 km/h nos boxes +5 s, sem pit stop = desclassificado."
-	rules.theme_type_variation = "RetroMuted"
-	rules.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	box.add_child(rules)
-	var spacer := Control.new()
-	spacer.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	box.add_child(spacer)
+	for text in ["Prêmio: %d %s por volta completada (fácil 20 · médio 30 · difícil 40 · mista 30). Treino livre não paga." % [
+				per_lap, ShopCatalog.CURRENCY],
+			"Regras: limites de pista (3 avisos, depois +5 s), cortar a pista +5 s, colisão +5/+10 s, largada queimada +10 s, mais de 80 km/h nos boxes +5 s, sem pit stop = desclassificado."]:
+		var note := Label.new()
+		note.text = text
+		note.theme_type_variation = "RetroMuted"
+		note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		note.add_theme_font_size_override("font_size", 13)
+		right.add_child(note)
 	var buttons := HBoxContainer.new()
 	buttons.add_theme_constant_override("separation", 12)
 	box.add_child(buttons)
@@ -422,6 +403,58 @@ func _build_solo() -> void:
 	back.custom_minimum_size = Vector2(150, 52)
 	back.pressed.connect(show_screen.bind("home"))
 	buttons.add_child(back)
+
+
+func _solo_column(parent: Container, heading: String) -> VBoxContainer:
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation", 10)
+	col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	col.size_flags_stretch_ratio = 1.0
+	parent.add_child(col)
+	var h := Label.new()
+	h.text = heading
+	h.theme_type_variation = "RetroKicker"
+	h.add_theme_color_override("font_color", Retro.c("accent_2"))
+	col.add_child(h)
+	return col
+
+
+## Uma opção: nome em cima, a lista embaixo e, se houver, a caixa de marcar logo abaixo.
+## r = [nome, itens, selecionado, ao escolher, (caixa: [texto, marcada, ao mudar])]
+func _solo_option(col: VBoxContainer, r: Array) -> void:
+	var item := VBoxContainer.new()
+	item.add_theme_constant_override("separation", 4)
+	col.add_child(item)
+	var l := Label.new()
+	l.text = str(r[0]).to_upper()
+	l.theme_type_variation = "RetroKicker"
+	l.add_theme_font_size_override("font_size", 12)
+	item.add_child(l)
+	var o := OptionButton.new()
+	o.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	o.clip_text = true
+	for text in r[1]:
+		o.add_item(text)
+	# Online: a dificuldade dos bots é liberada por nível (o servidor confere)
+	if r[0] == "Dificuldade dos bots" and _net and _net.online:
+		var level := int(_net.account.get("level", 1))
+		for k in o.item_count:
+			if not Progression.tier_unlocked(k, level):
+				o.set_item_disabled(k, true)
+				o.set_item_text(k, "%s (nível %d)" % [o.get_item_text(k), Progression.TIER_LEVEL[k]])
+		if not Progression.tier_unlocked(RaceSettings.difficulty, level):
+			RaceSettings.difficulty = 0
+			r[2] = 0
+	o.selected = maxi(int(r[2]), 0)
+	o.item_selected.connect(r[3])
+	item.add_child(o)
+	if r.size() > 4:
+		var chk: Array = r[4]
+		var cb := CheckBox.new()
+		cb.text = chk[0]
+		cb.button_pressed = chk[1]
+		cb.toggled.connect(chk[2])
+		item.add_child(cb)
 
 
 func _garage_tabs(box: Container, compact: bool) -> void:
@@ -508,6 +541,12 @@ func _build_side_panel() -> void:
 		var studio := StudioPanel.new()
 		scroll.add_child(studio)
 		studio.setup(menu.car)
+		# Decalques: a câmera vai até o lugar escolhido (e volta à órbita ao sair da aba)
+		studio.focus_request.connect(func(key: String) -> void:
+			if key == "":
+				menu.clear_focus()
+			else:
+				menu.focus_on(key))
 	else:
 		var gallery := GalleryPanel.new()
 		gallery.on_go_shop = func(_roulette: String) -> void:

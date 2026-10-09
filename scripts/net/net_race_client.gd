@@ -22,8 +22,14 @@ var _offset := 0.0
 var _has_offset := false
 var _seq := 0
 var _render_t := -1.0
-var _counts := PackedFloat32Array([0, 0, 0, 0, 0, 0, 0, 0])
+## Contadores das ações de toque (um por item de ACTIONS; o servidor aplica a diferença).
+var _counts := PackedFloat32Array()
 var _net: Node
+
+
+func _init() -> void:
+	_counts.resize(ACTIONS.size())
+	_counts.fill(0.0)
 
 
 func setup(p_manager: RaceManager) -> void:

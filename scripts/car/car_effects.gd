@@ -42,6 +42,8 @@ var _flare_material: StandardMaterial3D
 
 
 var _ready_done := false
+## Materiais das rodas ainda com o brilho do boost (para apagá-lo uma vez quando ele acaba).
+var _glow_shown := true
 
 
 func _ready() -> void:
@@ -127,7 +129,9 @@ func _process(delta: float) -> void:
 	if c != _color and _dust_material:
 		_color = c
 		_dust_material.albedo_color = c
-	_update_wheel_materials(c)
+	if glow > 0.0 or _glow_shown:
+		_update_wheel_materials(c)
+		_glow_shown = glow > 0.0
 	_update_neon(delta)
 	_update_brake_light(delta)
 	var wheels := car.get_wheels()
@@ -136,13 +140,16 @@ func _process(delta: float) -> void:
 	for i in wheels.size():
 		var wheel := wheels[i]
 		var hub := wheel.global_position
-		# Boost: luz, rastro e pó mágico
+		# Boost: luz, rastro e pó mágico (apagados não são mexidos)
 		_lights[i].visible = glow > 0.01
-		_lights[i].global_position = hub
-		_lights[i].light_color = c
-		_lights[i].light_energy = glow * (1.6 + 0.4 * sin(_time * 18.0 + i))
-		_dust[i].global_position = hub
-		_dust[i].emitting = car.boost_active and speed > 2.0
+		if glow > 0.01:
+			_lights[i].global_position = hub
+			_lights[i].light_color = c
+			_lights[i].light_energy = glow * (1.6 + 0.4 * sin(_time * 18.0 + i))
+		var dusting := car.boost_active and speed > 2.0
+		if dusting or _dust[i].emitting:
+			_dust[i].global_position = hub
+			_dust[i].emitting = dusting
 		if car.boost_active and speed > 1.0:
 			_trails[i].color = Color(c.r, c.g, c.b, 0.9)
 			_trails[i].add_point(hub - car.global_basis.y * 0.1, car.global_basis.y, forward)

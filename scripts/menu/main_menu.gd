@@ -110,6 +110,9 @@ const FOCUS := {
 	"nose": [Vector3(0, 0.35, 1.8), 0.7, 22.0, 4.4],
 	"rear_wing": [Vector3(0, 0.85, -2.35), PI - 0.6, 18.0, 4.8],
 	"sidepods": [Vector3(-0.65, 0.42, -0.2), -PI / 2.0 + 0.25, 16.0, 4.6],
+	"airbox": [Vector3(-0.15, 0.8, -0.8), -PI / 2.0 + 0.3, 24.0, 3.6],
+	"halo": [Vector3(0, 0.8, 0.0), -0.7, 30.0, 3.4],
+	"mirrors": [Vector3(-0.5, 0.75, 0.45), -0.8, 22.0, 3.0],
 	"engine_cover": [Vector3(0, 0.75, -1.0), PI - 0.9, 32.0, 4.6],
 	"rim": [Vector3(-0.85, 0.33, 1.62), -PI / 2.0 + 0.45, 10.0, 3.6],
 	"helmet": [Vector3(0, 0.85, 0.35), -0.5, 28.0, 3.6],
@@ -153,6 +156,13 @@ func preview_item(id: String) -> void:
 		"part":
 			cfg.set_part(it["slot"], it["variant"])
 			focus_key = it["slot"]
+		"decal":
+			var decals := cfg.decals.duplicate(true)
+			var cur: Dictionary = decals.get("sidepods", {"color": "ffffff", "scale": 1.0, "rot": 0.0})
+			cur["id"] = ShopCatalog.decal_of(id)
+			decals["sidepods"] = cur
+			cfg.decals = decals
+			focus_key = "sidepods"
 	car.config = cfg
 	_previewing = true
 	if focus_key != "" and FOCUS.has(focus_key):
@@ -361,7 +371,12 @@ func _tyre(pos: Vector3, mat: Material, rot := Vector3.ZERO) -> void:
 	_mesh(tm, pos, mat, rot, Vector3(1, 0.75, 1))
 
 
+## Garagem sem névoa nenhuma: nem a comum nem a volumétrica (que as Configurações ligam nas
+## pistas; o meta "no_fog" deixa este ambiente de fora).
 func _env(env: Environment) -> void:
+	env.fog_enabled = false
+	env.volumetric_fog_enabled = false
+	env.set_meta("no_fog", true)
 	var we := WorldEnvironment.new()
 	we.environment = env
 	_set.add_child(we)
@@ -539,9 +554,6 @@ func _build_neon() -> void:
 	env.ssao_enabled = true
 	env.ssao_intensity = 1.6
 	env.ssr_enabled = true
-	env.fog_enabled = true
-	env.fog_light_color = Color("140f24")
-	env.fog_density = 0.003
 	_env(env)
 	var accent := Retro.c("accent")
 	var accent2 := Retro.c("accent_2")
@@ -636,10 +648,6 @@ func _build_sun() -> void:
 	env.glow_enabled = true
 	env.glow_intensity = 0.3
 	env.ssao_enabled = true
-	env.fog_enabled = true
-	env.fog_light_color = Color("c9dcef")
-	env.fog_density = 0.0025
-	env.fog_sky_affect = 0.2
 	_env(env)
 	var sun := DirectionalLight3D.new()
 	sun.light_energy = 1.5

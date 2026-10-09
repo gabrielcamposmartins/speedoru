@@ -5,11 +5,12 @@ extends Node
 ##
 ## Regras (ver ShopCatalog):
 ## * spin(roleta): cobra o ticket, sorteia com gerador criptográfico e entrega na mesma operação;
-##   repetida devolve 30% do preço de tabela.
-## * O Estúdio só combina o que a conta tem: as cores da pintura saem das pinturas possuídas
-##   (cada uma libera as 3 cores dela), capacete/macacão/rodas/boost/neon saem das peças daquele
-##   tipo, e as peças de desempenho das variantes ganhas. Tudo é conferido de novo em
-##   clamp_equipped() antes de ir para o carro: o que a conta não tem volta para o gratuito.
+##   repetida devolve 30% do preço de tabela. As roletas têm peças, decalques, boost e neon.
+## * Cores livres: carro (3 cores), capacete, macacão e rodas aceitam qualquer cor; as pinturas
+##   prontas (ShopCatalog.PAINTS) são atalhos grátis. Brilho do boost e neon: só as cores ganhas.
+## * Peças de desempenho: só as variantes ganhas; decalques padrão: só os ganhos (ou grátis); os
+##   SVGs do próprio jogador são livres. Tudo é conferido de novo em clamp_equipped() antes de ir
+##   para o carro: o que a conta não tem volta para o padrão.
 
 signal changed
 ## Engenharia mudou (separado de `changed` para não reconstruir as telas a cada clique de slider).
@@ -20,6 +21,7 @@ signal decals_changed
 signal equip_requested(equipped: Dictionary)
 
 const PATH := "user://profile.cfg"
+## Campos de cor (boost e neon só com cores ganhas: ShopCatalog.GACHA_COLORS).
 const COLOR_FIELDS := {"primary": "livery", "secondary": "livery", "accent": "livery", "helmet": "helmet",
 	"suit": "suit", "rim": "rim", "boost": "boost", "neon": "neon"}
 
@@ -53,17 +55,17 @@ func _ready() -> void:
 # Persistência
 # ---------------------------------------------------------------------------
 static func default_equipped() -> Dictionary:
-	var free := ShopCatalog.FREE
+	var paint: Array = ShopCatalog.PAINTS[ShopCatalog.DEFAULT_PAINT]["colors"]
+	var def := ShopCatalog.DEFAULT_COLORS
 	return {
-		"livery": "livery_akane",
-		"primary": free["livery_akane"]["colors"][0], "secondary": free["livery_akane"]["colors"][1],
-		"accent": free["livery_akane"]["colors"][2],
-		"helmet": free["helmet_akane"]["color"], "suit": free["suit_akane"]["color"],
-		"rim": free["rim_akane"]["color"], "boost": free["boost_akane"]["color"],
-		"neon_on": false, "neon": "",
+		"livery": ShopCatalog.DEFAULT_PAINT,
+		"primary": paint[0], "secondary": paint[1], "accent": paint[2],
+		"helmet": def["helmet"], "suit": def["suit"], "rim": def["rim"], "boost": def["boost"],
+		"neon_on": false, "neon": def["neon"],
 		"parts": {},
 		"scene": "neon",
 		"paint_finish": 0,
+		"paint_scheme": 0,
 		"rim_finish": 0,
 		"setup": {},
 		"decals": {},
@@ -179,25 +181,59 @@ func owned_of_type(type: String) -> Array[String]:
 	return out
 
 
-## Cores liberadas para um campo do Estúdio (sem repetir), na ordem das peças.
-func unlocked_colors(field: String) -> Array[Color]:
-	var out: Array[Color] = []
+## Sugestões de cor para um campo do Estúdio (sem repetir): [nome, cor]. As cores do carro saem
+## das pinturas prontas; as outras de ShopCatalog.COLOR_SUGGESTIONS. Qualquer cor é aceita.
+func color_suggestions(field: String) -> Array:
+	var out := []
 	var seen := {}
-	for id in owned_of_type(COLOR_FIELDS[field]):
-		for c in ShopCatalog.colors_of(id):
-			var key := c.to_html(false)
-			if not seen.has(key):
-				seen[key] = true
-				out.append(c)
+	if field in ["primary", "secondary", "accent"]:
+		var k := ["primary", "secondary", "accent"].find(field)
+		for id in ShopCatalog.PAINTS:
+			var c := Color(str(ShopCatalog.PAINTS[id]["colors"][k]))
+			if not seen.has(c.to_html(false)):
+				seen[c.to_html(false)] = true
+				out.append([ShopCatalog.PAINTS[id]["name"], c])
+	else:
+		for item in ShopCatalog.COLOR_SUGGESTIONS.get(field, []):
+			out.append([item[0], Color(str(item[1]))])
 	return out
 
 
-func is_color_unlocked(field: String, color: Color) -> bool:
-	var key := color.to_html(false)
-	for c in unlocked_colors(field):
-		if c.to_html(false) == key:
+## Cores ganhas de um tipo ("boost"/"neon"): [id, nome, cor], grátis primeiro.
+func owned_colors(type: String) -> Array:
+	var out := []
+	for id in owned_of_type(type):
+		var it := ShopCatalog.item(id)
+		out.append([id, it["name"], Color(str(it["color"]))])
+	return out
+
+
+## A conta tem um item de boost/neon com essa cor?
+func owns_color(type: String, html: String) -> bool:
+	if not Color.html_is_valid(html):
+		return false
+	var want := Color(html).to_html(false)
+	for c in owned_colors(type):
+		if (c[2] as Color).to_html(false) == want:
 			return true
 	return false
+
+
+## Decalques padrão (ids do CarDecals) que a conta pode usar: grátis e ganhos nas roletas.
+func owned_decals() -> Array[String]:
+	var out: Array[String] = []
+	for p in CarDecals.PRESETS:
+		var item := ShopCatalog.decal_item(p[0])
+		if item != "" and owns(item):
+			out.append(p[0])
+	return out
+
+
+## Um decalque pode ser usado: SVG do jogador (livre) ou padrão que a conta tem.
+func can_use_decal(id: String) -> bool:
+	if id.begins_with(CarDecals.CUSTOM_PREFIX):
+		return CarDecals.valid_id(id)
+	return id in owned_decals()
 
 
 ## Variantes de uma peça que a conta pode montar (a padrão sempre).
@@ -281,8 +317,9 @@ static func format_credits(amount: int) -> String:
 # ---------------------------------------------------------------------------
 # Estúdio (equipar)
 # ---------------------------------------------------------------------------
+## Aplica uma pintura pronta (grátis): as três cores do carro.
 func equip_livery(id: String) -> void:
-	if not owns(id) or ShopCatalog.item(id).get("type", "") != "livery":
+	if not ShopCatalog.PAINTS.has(id):
 		return
 	var cols := ShopCatalog.colors_of(id)
 	equipped["livery"] = id
@@ -292,9 +329,11 @@ func equip_livery(id: String) -> void:
 	_commit()
 
 
-## Troca uma cor (primary/secondary/accent/helmet/suit/rim/boost/neon) — só cores liberadas.
+## Troca uma cor (primary/secondary/accent/helmet/suit/rim: qualquer cor; boost/neon: só as ganhas).
 func equip_color(field: String, color: Color) -> void:
-	if not COLOR_FIELDS.has(field) or not is_color_unlocked(field, color):
+	if not COLOR_FIELDS.has(field):
+		return
+	if field in ShopCatalog.GACHA_COLORS and not owns_color(field, color.to_html(false)):
 		return
 	equipped[field] = color.to_html(false)
 	if field in ["primary", "secondary", "accent"]:
@@ -317,37 +356,62 @@ func set_decal(slot: String, id: String) -> void:
 	var decals: Dictionary = equipped["decals"]
 	if id == "":
 		decals.erase(slot)
-	elif CarDecals.valid_id(id):
+	elif can_use_decal(id):
 		var cur: Dictionary = decals.get(slot, {"color": "ffffff", "scale": 1.0, "rot": 0.0})
+		if str(cur.get("id", "")) != id:
+			cur["mirror"] = CarDecals.default_mirror(id)
 		cur["id"] = id
 		decals[slot] = cur
 	_commit()
 
 
-## Cor ("rrggbb"), tamanho ("scale") ou giro ("rot", graus) de um decalque já colocado. Não
-## reconstrói as telas (sliders): avisa por decals_changed.
+## Cor ("rrggbb"), tamanho ("scale"), largura ("stretch"), giro ("rot", graus) ou posição ("x"/"y",
+## -1..1) de um decalque já colocado. Não reconstrói as telas (sliders, arrastar): avisa por
+## decals_changed; grava e manda ao servidor quando os valores param de mudar.
 func set_decal_value(slot: String, key: String, value: Variant) -> void:
 	var decals: Dictionary = equipped["decals"]
-	if not decals.has(slot) or not key in ["color", "scale", "rot"]:
+	if not decals.has(slot) or not key in ["color", "scale", "stretch", "rot", "x", "y", "mirror"]:
 		return
 	decals[slot][key] = value
 	equipped["decals"] = CarDecals.sanitize(decals)
-	save_profile()
 	decals_changed.emit()
+	_save_soon()
+
+
+
+## Grava (e, conectado, manda o equipamento) 0,35 s depois da última mudança seguida.
+func _save_soon() -> void:
+	if not is_inside_tree():
+		save_profile()
+		return
+	_save_tick += 1
+	var tick := _save_tick
+	await get_tree().create_timer(0.35, true).timeout
+	if tick != _save_tick:
+		return
+	save_profile()
 	if mode == "remote":
 		equip_requested.emit(equipped.duplicate(true))
 
 
+var _save_tick := 0
+
+
+## Liga/desliga o neon (precisa de uma cor de neon ganha; sem cor escolhida, usa a primeira).
 func set_neon(on: bool) -> void:
-	equipped["neon_on"] = on and not owned_of_type("neon").is_empty()
-	if equipped["neon_on"] and equipped["neon"] == "":
-		equipped["neon"] = ShopCatalog.colors_of(owned_of_type("neon")[0])[0].to_html(false)
+	if on and not owns_color("neon", str(equipped["neon"])):
+		var mine := owned_colors("neon")
+		if mine.is_empty():
+			return
+		equipped["neon"] = (mine[0][2] as Color).to_html(false)
+	equipped["neon_on"] = on
 	_commit()
 
 
-## Acabamento da pintura ("paint_finish") ou das rodas ("rim_finish"): todos vêm com o jogo.
+## Acabamento da pintura ("paint_finish"), das rodas ("rim_finish") ou esquema de pintura
+## ("paint_scheme"): todos vêm com o jogo.
 func set_finish(kind: String, index: int) -> void:
-	if kind in ["paint_finish", "rim_finish"]:
+	if kind in ["paint_finish", "rim_finish", "paint_scheme"]:
 		equipped[kind] = index
 		_commit()
 
@@ -356,8 +420,9 @@ func has_neon() -> bool:
 	return not owned_of_type("neon").is_empty()
 
 
+## Pintura pronta com exatamente as três cores atuais ("" = combinação própria).
 func _matching_livery() -> String:
-	for id in owned_of_type("livery"):
+	for id in ShopCatalog.PAINTS:
 		var cols := ShopCatalog.colors_of(id)
 		if cols[0].to_html(false) == equipped["primary"] and cols[1].to_html(false) == equipped["secondary"] \
 				and cols[2].to_html(false) == equipped["accent"]:
@@ -373,17 +438,25 @@ func _commit() -> void:
 		equip_requested.emit(equipped.duplicate(true))
 
 
-## Trava: o que a conta não tem volta para o gratuito.
+## Trava: o que a conta não tem volta para o padrão (cores livres só precisam ser válidas; boost e
+## neon precisam ser cores ganhas).
 func clamp_equipped() -> void:
 	var defaults := default_equipped()
 	for field in COLOR_FIELDS:
 		var value := str(equipped.get(field, ""))
-		if field == "neon":
-			if value != "" and not is_color_unlocked("neon", Color(value)):
-				equipped["neon"] = ""
+		if field in ShopCatalog.GACHA_COLORS:
+			if owns_color(field, value):
+				equipped[field] = Color(value).to_html(false)
+			elif field == "neon":
+				var mine := owned_colors("neon")
+				equipped["neon"] = (mine[0][2] as Color).to_html(false) if not mine.is_empty() else ""
+			else:
+				equipped[field] = defaults[field]
 			continue
-		if value == "" or not Color.html_is_valid(value) or not is_color_unlocked(field, Color(value)):
+		if value == "" or not Color.html_is_valid(value):
 			equipped[field] = defaults[field]
+		else:
+			equipped[field] = Color(value).to_html(false)
 	if not equipped.get("parts") is Dictionary:
 		equipped["parts"] = {}
 	# Engenharia: só chaves conhecidas, dentro dos limites
@@ -400,13 +473,17 @@ func clamp_equipped() -> void:
 	for slot in parts.keys():
 		if not CarPartCatalog.has_variant(slot, str(parts[slot])) or not str(parts[slot]) in owned_variants(slot):
 			parts.erase(slot)
-	equipped["neon_on"] = bool(equipped.get("neon_on", false)) and has_neon() and equipped["neon"] != ""
-	# Decalques: grátis (padrão e SVGs do jogador), só lugares/ids válidos e valores nos limites
-	equipped["decals"] = CarDecals.sanitize(equipped.get("decals", {}))
+	equipped["neon_on"] = bool(equipped.get("neon_on", false)) and str(equipped["neon"]) != ""
+	# Decalques: só lugares/ids válidos, valores nos limites, e padrão só se a conta tiver
+	var decals := CarDecals.sanitize(equipped.get("decals", {}))
+	for slot in decals.keys():
+		if not can_use_decal(str(decals[slot]["id"])):
+			decals.erase(slot)
+	equipped["decals"] = decals
 	equipped["paint_finish"] = clampi(int(equipped.get("paint_finish", 0)), 0, CarConfig.PAINT_FINISHES.size() - 1)
+	equipped["paint_scheme"] = clampi(int(equipped.get("paint_scheme", 0)), 0, CarConfig.PAINT_SCHEMES.size() - 1)
 	equipped["rim_finish"] = clampi(int(equipped.get("rim_finish", 0)), 0, CarConfig.RIM_FINISHES.size() - 1)
-	if not owns(str(equipped.get("livery", ""))):
-		equipped["livery"] = _matching_livery()
+	equipped["livery"] = _matching_livery()
 
 
 # ---------------------------------------------------------------------------
@@ -465,6 +542,7 @@ func apply_to_config(config: CarConfig) -> void:
 	config.boost_color = Color(equipped["boost"])
 	config.neon_enabled = equipped["neon_on"]
 	config.paint_finish = equipped["paint_finish"]
+	config.paint_scheme = equipped["paint_scheme"]
 	if var_to_str(config.decals) != var_to_str(equipped["decals"]):
 		config.decals = (equipped["decals"] as Dictionary).duplicate(true)
 	config.rim_finish = equipped["rim_finish"]
