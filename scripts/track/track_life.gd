@@ -39,7 +39,7 @@ static func _walkers(track: RaceTrack, terrain: TrackTerrain, rng: RandomNumberG
 			data.append(Color(rng.randf(), length / 100.0, rng.randf() if rng.randf() > 0.25 else 0.0, rng.randf()))
 
 	var flat := func(pos: Vector3) -> bool:
-		return terrain.height_at(pos.x, pos.z) < 0.15
+		return terrain.rise_at(pos.x, pos.z) < 0.15
 
 	# Corredores atrás das barreiras e das arquibancadas
 	var lay := track.layout

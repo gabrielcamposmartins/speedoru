@@ -6,6 +6,8 @@ extends Node
 ## na primeira vez) e espelha a conta no Profile (modo "remote": créditos, coleção e giros só mudam
 ## pelo servidor). As telas usam request() e os sinais. Se o servidor não responde, o jogo segue
 ## offline (Profile local; sem loja, sem multiplayer).
+## O endereço aceita IPv4, IPv6 e nomes (NetProtocol.parse_address). O aparelho guarda servidores
+## com nome e as últimas conexões, e pode abrir o próprio servidor (local_host, LocalHost).
 ## Servidor: o GameServer chama Net.host() e recebe as mensagens por handler.
 
 signal connection_changed(online: bool)
@@ -13,6 +15,8 @@ signal message(type: String, data: Dictionary)
 signal account_changed
 signal race_snapshot(data: PackedByteArray)
 signal race_state(data: Dictionary)
+## Servidores salvos ou histórico mudaram.
+signal servers_changed
 
 const ACCOUNT_FILE := "user://account.cfg"
 
@@ -34,6 +38,8 @@ var account_file := ACCOUNT_FILE
 var auto_profile := true
 ## Troca para a cena da corrida quando a sala larga (os testes desligam).
 var auto_race := true
+## Servidor aberto por este jogo (só no cliente).
+var local_host: LocalHost
 
 var _peer: ENetMultiplayerPeer
 var _pending := {}
@@ -43,6 +49,8 @@ var _equip_pending: Variant = null
 var _retry := 0.0
 var _connecting := false
 var _local_owned := {}
+## Tirado do servidor pelo anfitrião: não reconecta sozinho.
+var _kicked := false
 
 
 func _ready() -> void:
@@ -58,10 +66,14 @@ func _ready() -> void:
 		server_port = int(cfg.get_value("server", "port", server_port))
 	for a in args:
 		if a.begins_with("--connect="):
-			var hp := a.substr(10).split(":")
-			server_host = hp[0]
-			if hp.size() > 1:
-				server_port = int(hp[1])
+			var addr := NetProtocol.parse_address(a.substr(10))
+			if addr["host"] != "":
+				server_host = addr["host"]
+				server_port = addr["port"]
+	if not is_server:
+		local_host = LocalHost.new()
+		local_host.name = "LocalHost"
+		add_child(local_host)
 	multiplayer.connected_to_server.connect(_on_connected)
 	multiplayer.connection_failed.connect(_on_failed)
 	multiplayer.server_disconnected.connect(_on_disconnected)
@@ -84,6 +96,12 @@ func host(port: int, p_handler: Object) -> Error:
 	return OK
 
 
+## Servidor: derruba a conexão de um jogador.
+func kick(peer: int) -> void:
+	if _peer and peer in multiplayer.get_peers():
+		_peer.disconnect_peer(peer)
+
+
 func send(peer: int, type: String, data: Dictionary = {}) -> void:
 	if multiplayer.multiplayer_peer and peer in multiplayer.get_peers():
 		msg.rpc_id(peer, type, data)
@@ -100,6 +118,7 @@ func connect_to_server(host_name := "", port := 0) -> void:
 	if port > 0:
 		server_port = port
 	_connecting = true
+	_kicked = false
 	_peer = ENetMultiplayerPeer.new()
 	if _peer.create_client(server_host, server_port) != OK:
 		_connecting = false
@@ -117,6 +136,87 @@ func set_server(host_name: String, port: int) -> void:
 	cfg.set_value("server", "host", server_host)
 	cfg.set_value("server", "port", server_port)
 	cfg.save(account_file)
+
+
+## Troca de servidor: desconecta e conecta no novo endereço (persist: vira o servidor padrão).
+func switch_server(host_name: String, port: int, persist := true) -> void:
+	if persist:
+		set_server(host_name, port)
+	else:
+		server_host = host_name.strip_edges()
+		server_port = port if port > 0 else NetProtocol.DEFAULT_PORT
+	disconnect_from_server()
+	_connecting = false
+	connect_to_server()
+
+
+## Endereço atual para mostrar ("host:porta", IPv6 entre colchetes).
+func server_address() -> String:
+	return NetProtocol.format_address(server_host, server_port)
+
+
+# ---------------------------------------------------------------------------
+# Servidores salvos e histórico (no arquivo da conta deste aparelho)
+# ---------------------------------------------------------------------------
+## [{name, host, port}] na ordem em que foram salvos.
+func saved_servers() -> Array:
+	return _cfg_list("saved")
+
+
+## Salva (ou renomeia) um servidor com nome.
+func save_server(label: String, host_name: String, port: int) -> void:
+	var list := saved_servers().filter(func(e: Dictionary) -> bool: return not _same(e, host_name, port))
+	var name := label.strip_edges().substr(0, 32)
+	list.append({"name": name if name != "" else NetProtocol.format_address(host_name, port), "host": host_name, "port": port})
+	_cfg_store("saved", list.slice(maxi(list.size() - NetProtocol.SAVED_SERVERS_MAX, 0)))
+
+
+func forget_server(host_name: String, port: int) -> void:
+	_cfg_store("saved", saved_servers().filter(func(e: Dictionary) -> bool: return not _same(e, host_name, port)))
+
+
+## Nome salvo para o endereço ("" se não tem).
+func server_name(host_name: String, port: int) -> String:
+	for e: Dictionary in saved_servers():
+		if _same(e, host_name, port):
+			return str(e["name"])
+	return ""
+
+
+## Últimas conexões que deram certo, a mais nova primeiro: [{host, port, t}].
+func server_history() -> Array:
+	return _cfg_list("history")
+
+
+func clear_history() -> void:
+	_cfg_store("history", [])
+
+
+func _remember_connection() -> void:
+	var list := server_history().filter(func(e: Dictionary) -> bool: return not _same(e, server_host, server_port))
+	list.push_front({"host": server_host, "port": server_port, "t": int(Time.get_unix_time_from_system())})
+	_cfg_store("history", list.slice(0, NetProtocol.SERVER_HISTORY_MAX))
+
+
+static func _same(e: Dictionary, host_name: String, port: int) -> bool:
+	return str(e.get("host", "")) == host_name and int(e.get("port", 0)) == port
+
+
+func _cfg_list(key: String) -> Array:
+	var cfg := ConfigFile.new()
+	cfg.load(account_file)
+	var v: Variant = cfg.get_value("servers", key, [])
+	if not v is Array:
+		return []
+	return (v as Array).filter(func(e: Variant) -> bool: return e is Dictionary and str(e.get("host", "")) != "")
+
+
+func _cfg_store(key: String, list: Array) -> void:
+	var cfg := ConfigFile.new()
+	cfg.load(account_file)
+	cfg.set_value("servers", key, list)
+	cfg.save(account_file)
+	servers_changed.emit()
 
 
 func disconnect_from_server() -> void:
@@ -154,7 +254,7 @@ func _on_failed() -> void:
 func _on_disconnected() -> void:
 	multiplayer.multiplayer_peer = null
 	_set_online(false)
-	_retry = 5.0
+	_retry = 0.0 if _kicked else 5.0
 
 
 func _set_online(value: bool) -> void:
@@ -267,6 +367,7 @@ func msg(type: String, data: Dictionary) -> void:
 			var profile := get_node_or_null("/root/Profile") as PlayerProfile if auto_profile else null
 			if type == "welcome":
 				_set_online(true)
+				_remember_connection()
 			if profile and account.has("profile"):
 				profile.from_dict(account["profile"])
 			account_changed.emit()
@@ -277,6 +378,10 @@ func msg(type: String, data: Dictionary) -> void:
 		"error":
 			if not data.has("req"):
 				last_error = str(data.get("error", ""))
+		"kicked":
+			_kicked = true
+			_retry = 0.0
+			last_error = str(data.get("error", ""))
 		"race_start":
 			if auto_race:
 				_enter_race(data)

@@ -16,6 +16,7 @@ enum Kind {
 	START_GANTRY,   ## Pórtico com as luzes de largada (em s_start)
 	BRAKE_MARKERS,  ## Placas 200/150/100/50 antes de s_start
 	BUNTING,        ## Bandeirolas ao longo das cercas e cruzando por cima da pista (spacing = intervalo das travessias)
+	FERRIS_WHEEL,   ## Roda-gigante (em s_start; distance = afastamento além da barreira, rows = diâmetro em m)
 }
 enum Side { LEFT, RIGHT, BOTH }
 

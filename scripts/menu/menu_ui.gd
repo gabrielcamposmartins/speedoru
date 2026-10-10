@@ -379,8 +379,8 @@ func _build_solo() -> void:
 	for r in more_rows:
 		_solo_option(right, r)
 	var per_lap: int = ShopCatalog.REWARD_PER_LAP[clampi(RaceSettings.difficulty, 0, 3)]
-	for text in ["Prêmio: %d %s por volta completada (fácil 20 · médio 30 · difícil 40 · mista 30). Treino livre não paga." % [
-				per_lap, ShopCatalog.CURRENCY],
+	for text in ["Prêmio: %d %s por volta completada (fácil %d · médio %d · difícil %d · mista %d). Treino livre não paga." % (
+				[per_lap, ShopCatalog.CURRENCY] + ShopCatalog.REWARD_PER_LAP),
 			"Regras: limites de pista (3 avisos, depois +5 s), cortar a pista +5 s, colisão +5/+10 s, largada queimada +10 s, mais de 80 km/h nos boxes +5 s, sem pit stop = desclassificado."]:
 		var note := Label.new()
 		note.text = text

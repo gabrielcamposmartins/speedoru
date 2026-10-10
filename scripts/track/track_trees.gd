@@ -17,6 +17,13 @@ static var _near: Array[ArrayMesh] = []
 static var _far: Array[ArrayMesh] = []
 
 
+static func _in_footprint(track: RaceTrack, x: float, z: float) -> bool:
+	for poly in track.footprints:
+		if Geometry2D.is_point_in_polygon(Vector2(x, z), poly):
+			return true
+	return false
+
+
 static func build(track: RaceTrack, terrain: TrackTerrain, parent: Node3D) -> void:
 	if track.tree_count <= 0:
 		return
@@ -40,6 +47,8 @@ static func build(track: RaceTrack, terrain: TrackTerrain, parent: Node3D) -> vo
 		var z := rng.randf_range(z0, z1)
 		var f := terrain.clearance(x, z)
 		if f < 4.0:
+			continue
+		if f < 30.0 and _in_footprint(track, x, z):
 			continue
 		var grove := groves.get_noise_2d(x, z)
 		# Linha de árvores junto à pista, bosques e clareiras mais longe

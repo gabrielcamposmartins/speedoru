@@ -56,7 +56,7 @@ var start_lights: StartLights
 ## Servidor dedicado: só gera o que tem colisão (pista, barreiras, boxes, objetos, terreno),
 ## em etapas de um quadro cada (sem pausar as outras salas).
 static var server_mode := false
-const SERVER_SKIP := ["arquibancadas", "árvores", "folhas", "pinheiros", "cenário", "grama", "prédios", "túnel", "porto",
+const SERVER_SKIP := ["arquibancadas", "atrações", "árvores", "folhas", "pinheiros", "cenário", "grama", "prédios", "túnel", "porto",
 	"jardins", "entorno", "navios", "detalhes", "vitrine"]
 
 var terrain: TrackTerrain
@@ -135,6 +135,8 @@ func rebuild(staged := false) -> void:
 	else:
 		steps.append_array([
 			["terreno", "Terreno e montanhas", 550, func(): terrain = TrackTerrain.build(self, _root)],
+			["ponte", "Ponte e corte", 40, func(): TrackBridge.build(self, terrain, _root)],
+			["atrações", "Roda-gigante", 20, func(): TrackAttractions.build(self, terrain, _root)],
 			["árvores", "Árvores", 420, func(): TrackTrees.build(self, terrain, _root)],
 			["folhas", "Folhagem", 700, func(): leaves = TrackLeaves.build(self, terrain, _root)],
 			["pinheiros", "Pinheiros", 400, func(): _build_pines()],
@@ -219,6 +221,11 @@ func structure_extent(i: int, side: int) -> float:
 	var e := hw + barrier[_si(side)][i] + 3.0
 	var s := path.s_at(i)
 	e = maxf(e, hw + outer_distance(i, side) + TrackProps._stand_clearance(self, s, side) + 3.0)
+	for f in layout.features:
+		if f and f.kind == TrackFeature.Kind.FERRIS_WHEEL and side in f.sides():
+			var r := TrackAttractions.half_extent(f)
+			if in_span(s, f.s_start - r, f.s_start + r):
+				e = maxf(e, TrackAttractions.lateral(self, f, i, side) + r)
 	if layout.has_pit and side == layout.pit_side:
 		var ds := fposmod(s - layout.garage_center_s + path.length * 0.5, path.length) - path.length * 0.5
 		if absf(ds) < layout.pit_building_length * 0.5 + 40.0:
@@ -367,6 +374,9 @@ func _compute_profile() -> void:
 					for idx in span_indices(f.s_start, f.s_end):
 						barrier[k][idx] = f.distance
 						barrier_kind[k][idx] = Barrier.CONCRETE if f.variant == 1 else Barrier.ARMCO
+						# Muro colado na pista: sem caixa de brita automática
+						if f.distance < 3.0:
+							gravel[k][idx] = 0.0
 				TrackFeature.Kind.GRANDSTAND:
 					for idx in span_indices(f.s_start - 10.0, f.s_end + 10.0):
 						barrier_kind[k][idx] = Barrier.CONCRETE

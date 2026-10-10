@@ -1,7 +1,8 @@
 // Terreno estilizado: grama com manchas, faixas de corte perto da pista, flores, penhascos de rocha
 // em camadas (estilo Mario Kart), floresta, rocha e neve nas montanhas.
-// use_heightmap: os vértices (PlaneMesh) são deslocados pela textura de altura (TrackTerrain);
-// sem ela (anel de montanhas) a altura já vem na malha.
+// use_heightmap: os vértices (PlaneMesh) são deslocados pela textura de altura (TrackTerrain: R =
+// altura, G = relevo de base, a altura da parte plana); sem ela (anel de montanhas, topo dos muros
+// do corte) a altura já vem na malha e base_height faz o papel do relevo de base.
 shader_type spatial;
 render_mode diffuse_toon, specular_disabled;
 
@@ -12,6 +13,7 @@ uniform sampler2D heightmap : filter_nearest, repeat_disable;
 uniform vec2 hm_origin;
 uniform float hm_cell = 8.0;
 uniform ivec2 hm_size = ivec2(2, 2);
+uniform float base_height = 0.0;
 uniform float stripe_width = 9.0;
 // Normal map do chão (projetado de cima): irregularidades da grama e da terra
 uniform sampler2D normal_tex : hint_normal, filter_linear_mipmap_anisotropic;
@@ -20,6 +22,8 @@ uniform float normal_scale = 0.35;
 
 varying vec3 world_pos;
 varying vec3 world_normal;
+// Altura acima do relevo de base (0 na parte plana do parque)
+varying float rise;
 
 float hm(ivec2 c) {
 	c = clamp(c, ivec2(0), hm_size - ivec2(1));
@@ -31,17 +35,19 @@ void vertex() {
 	if (use_heightmap) {
 		ivec2 c = ivec2(round((w.xz - hm_origin) / hm_cell));
 		float h = hm(c);
+		rise = h - texelFetch(heightmap, clamp(c, ivec2(0), hm_size - ivec2(1)), 0).g;
 		float hl = hm(c - ivec2(1, 0));
 		float hr = hm(c + ivec2(1, 0));
 		float hd = hm(c - ivec2(0, 1));
 		float hu = hm(c + ivec2(0, 1));
 		// Um pouco abaixo de zero na parte plana (asfalto e brita ficam milímetros acima)
-		VERTEX.y = h - 0.03 * (1.0 - smoothstep(0.0, 0.5, h));
+		VERTEX.y = h - 0.03 * (1.0 - smoothstep(0.0, 0.5, rise));
 		NORMAL = normalize(vec3(hl - hr, 2.0 * hm_cell, hd - hu));
 		w.y = VERTEX.y;
 		world_normal = NORMAL;
 	} else {
 		world_normal = normalize((MODEL_MATRIX * vec4(NORMAL, 0.0)).xyz);
+		rise = w.y - base_height;
 	}
 	world_pos = w;
 	TANGENT = normalize(vec3(1.0, 0.0, 0.0) - NORMAL * NORMAL.x);
@@ -56,7 +62,7 @@ void fragment() {
 	vec3 c = tc_grass_color(xz);
 
 	// Faixas do cortador de grama só na área plana do parque
-	float flat_area = 1.0 - smoothstep(0.05, 0.6, y);
+	float flat_area = 1.0 - smoothstep(0.05, 0.6, rise);
 	float stripe = mod(floor(xz.x / stripe_width), 2.0);
 	c *= 1.0 - 0.07 * stripe * flat_area;
 

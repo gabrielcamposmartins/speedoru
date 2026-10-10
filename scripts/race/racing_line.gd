@@ -161,5 +161,5 @@ func _load_csv(csv_path: String) -> PackedVector3Array:
 			continue
 		var v := line.split_floats(",")
 		if v.size() >= 2:
-			out.append(Vector3(v[0], 0.0, -v[1]))
+			out.append(Vector3(v[0], v[2] if v.size() >= 3 else 0.0, -v[1]))
 	return out

@@ -51,7 +51,8 @@ static func bunting(cloth: MeshBuilder, a: Vector3, b: Vector3, sag := 0.6, spac
 		cloth.tri(top0, top1, tip, color, side, Vector2(0, 0), Vector2(0, 0), Vector2(1, 0))
 
 
-## Mastro com bandeira. style: 0 = listras verticais (ex.: Itália), 1 = faixas horizontais.
+## Mastro com bandeira. style: 0 = listras verticais (ex.: Itália), 1 = faixas horizontais,
+## 2 = disco no centro (cor 1) sobre o fundo (cor 0), ex.: Japão.
 static func flagpole(structure: MeshBuilder, cloth: MeshBuilder, base: Vector3, height: float, size: Vector2,
 		colors: Array, style := 0) -> void:
 	structure.posts().cylinder(Transform3D(Basis(), base), 0.09, 0.06, height, POLE, 6)
@@ -68,12 +69,31 @@ static func flagpole(structure: MeshBuilder, cloth: MeshBuilder, base: Vector3, 
 			var v0 := float(j) / ny
 			var v1 := float(j + 1) / ny
 			var idx := int(u0 * colors.size()) if style == 0 else int(v0 * colors.size())
+			if style == 2:
+				idx = 0
 			var color: Color = colors[clampi(idx, 0, colors.size() - 1)]
 			var p00 := top + along * size.x * u0 - Vector3.UP * size.y * v0
 			var p10 := top + along * size.x * u1 - Vector3.UP * size.y * v0
 			var p11 := top + along * size.x * u1 - Vector3.UP * size.y * v1
 			var p01 := top + along * size.x * u0 - Vector3.UP * size.y * v1
 			cloth.quad(p00, p10, p11, p01, color, side, Vector2(u0, 0), Vector2(u1, 0), Vector2(u1, 0), Vector2(u0, 0))
+	if style == 2 and colors.size() > 1:
+		# Disco (3/5 da altura) um pouco à frente e atrás do pano, com a mesma normal e o mesmo
+		# UV.x dele: tremula junto
+		var r := size.y * 0.3
+		var c := top + along * size.x * 0.5 - Vector3.UP * size.y * 0.5
+		var segs := 20
+		for off in [0.012, -0.012]:
+			var o: Vector3 = side * off
+			for k in segs:
+				var a0 := TAU * k / segs
+				var a1 := TAU * (k + 1) / segs
+				var p0 := c + along * cos(a0) * r + Vector3.UP * sin(a0) * r
+				var p1 := c + along * cos(a1) * r + Vector3.UP * sin(a1) * r
+				var uc := 0.5
+				var ua := 0.5 + cos(a0) * r / size.x
+				var ub := 0.5 + cos(a1) * r / size.x
+				cloth.tri(c + o, p0 + o, p1 + o, colors[1], side, Vector2(uc, 0), Vector2(ua, 0), Vector2(ub, 0))
 
 
 ## Junta o pano a uma malha existente (superfície extra com o material de bandeira).

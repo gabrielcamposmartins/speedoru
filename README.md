@@ -17,10 +17,10 @@ pousado na plataforma. A câmera fica a nordeste do carro (frente-direita) e orb
 com o mouse gira, a roda aproxima. O carro fica à direita; à esquerda, os botões grandes
 (`scripts/menu/menu_ui.gd`):
 
-- **Jogar solo:** pista (Monza ou Mônaco), modo, voltas, adversários, dificuldade, largada, horário
+- **Jogar solo:** pista (Monza, Mônaco ou Suzuka), modo, voltas, adversários, dificuldade, largada, horário
   e ambiente → Correr. Na corrida o horário/ambiente ficam como escolhidos (N/B só no treino livre) e
   o carro não muda: a garagem do Tab só existe no treino livre (e pausa o jogo enquanto aberta).
-- **Multiplayer:** salas, amigos, grupo, ranking e perfil (veja [Multiplayer](#multiplayer-servidor-dedicado--turso)); convites e avisos aparecem em qualquer tela do menu.
+- **Multiplayer:** salas, amigos, grupo, ranking, perfil e a aba **Servidor** (endereço IPv4/IPv6, servidores salvos com nome, últimas conexões e **hospedar** um servidor no próprio PC) (veja [Multiplayer](#multiplayer-servidor-dedicado--turso)); convites e avisos aparecem em qualquer tela do menu.
 - **Garagem:** Estúdio, Galeria e Loja, com o carro mudando na hora ao lado. No Estúdio e na
   Galeria o painel é compacto e fica à direita (o carro vem para o centro-esquerda); a Loja usa o
   painel largo à esquerda. **Cenário** da garagem (salvo no perfil):
@@ -359,8 +359,8 @@ Mesmo modelo de negócio do Pokeru (nada se vende por dinheiro real; o gacha é 
 e a meta de longo prazo). Catálogo e regras em `scripts/economy/shop_catalog.gd`; perfil do jogador
 (autoload `Profile`, `scripts/economy/player_profile.gd`) salvo em `user://profile.cfg`.
 
-- **Moeda:** créditos. Conta nova: 10.000. Corrida: 20 / 30 / 40 créditos por volta completada
-  (bots fácil / médio / difícil; mista 30), ou seja 200 / 300 / 400 em 10 voltas; abandono recebe
+- **Moeda:** créditos. Conta nova: 10.000. Corrida: 200 / 300 / 400 créditos por volta completada
+  (bots fácil / médio / difícil; mista 300), ou seja 2.000 / 3.000 / 4.000 em 10 voltas; abandono recebe
   metade, desclassificado e treino livre não recebem. O resultado mostra quanto entrou.
 - **Ticket = um giro** numa roleta, 2.500 créditos. Sem estoque, sem pacote, sem giro de 10, sem
   desconto. Duas roletas temáticas e sem sobreposição, com **peças, decalques e as cores de luz
@@ -917,6 +917,45 @@ monta a cena certa, e para os clientes no `race_start`).
   (`NetProtocol.MIN_LAP_BY_TRACK`).
 - Dados: © colaboradores do OpenStreetMap, licença ODbL (https://www.openstreetmap.org/copyright).
 
+## Suzuka (o "8" com viaduto)
+
+`scenes/tracks/suzuka.tscn` + `resources/tracks/suzuka_layout.tres`, gerados com
+`tools/build_suzuka.py` a partir do [TUMFTM racetrack-database](https://github.com/TUMFTM/racetrack-database)
+(linha central, larguras e linha de corrida; LGPL-3.0, derivado do OpenStreetMap/ODbL).
+
+- **Traçado:** 5,80 km, curvas 1 e 2, os S, Dunlop, Degner 1 e 2, a passagem sob a ponte, o
+  grampo, 200R, Spoon, a reta oposta sobre a ponte, 130R, chicane Casio e a última curva. A
+  **elevação** (5ª coluna do CSV) é aproximada da real: a reta principal desce para a curva 2 (ponto
+  mais baixo), os S e a Dunlop sobem até a Degner 1 (~34 m acima), e a reta oposta passa **10,7 m
+  acima** do trecho entre a Degner 2 e o grampo (o script confere a folga).
+- **Cruzamento:** `TrackPath` acha os pontos em que a pista passa por cima dela mesma
+  (`crossings`: s de baixo, s de cima e ângulo) e, perto deles, `project()` também olha a altura
+  — o carro embaixo da ponte fica no trecho de baixo (posição na corrida, limites de pista,
+  bandeiras, bots, câmera do espectador). A linha de corrida tem a altura na 3ª coluna pelo mesmo
+  motivo.
+- **Relevo em volta:** circuito de campo com subidas. `TrackTerrain` soma os morros a um **relevo
+  de base**: junto da pista ele é a altura dela (plana na lateral, 6 cm abaixo do asfalto) e, mais
+  longe, a superfície suave de `suzuka_relief.json` (Laplace preso à altura da pista, gerado pelo
+  script; `TrackLayout.relief`). O ponto da pista mais próximo de cada nó da grade sai de uma
+  varredura ao longo das normais (bem mais rápido que projetar nó a nó). A textura de altura leva o
+  relevo de base no canal G, e o shader do terreno acha a parte plana (faixas de corte) pela
+  diferença. Sem relevo (Monza) tudo continua em 0.
+- **Ponte e corte** (`track_bridge.gd`): em volta do cruzamento o chão fica no nível de cima, menos
+  no corredor da pista de baixo, que passa num **corte com muros de arrimo** de concreto logo atrás
+  da barreira (o topo, gramado com o shader do terreno, cobre a rampa da grade entre os níveis). A
+  reta de cima atravessa numa **laje** com acostamento asfaltado, parapeito de concreto e faixas de
+  anúncio nas laterais; os muros param embaixo dela. Nada de árvores no corte nem na ponte
+  (`track.footprints`).
+- **Roda-gigante** (`TrackFeature` `FERRIS_WHEEL`, `ferris_wheel.gd`): a do parque de diversões,
+  atrás da arquibancada principal perto da curva 1 — 56 m, pernas em A, dois aros com raios e
+  lâmpadas (mais fortes à noite), 24 gôndolas coloridas que ficam sempre em pé enquanto a roda gira
+  (uma volta a cada ~2 min). A área dela fica plana e sem árvores.
+- **Bandeiras:** os mastros das arquibancadas usam a bandeira do país do circuito
+  (`TrackLayout.flag_colors`/`flag_style`; Japão = disco vermelho que tremula junto com o pano).
+- **Bots:** `bot_pace = 0.92` (as lombadas e descidas tiram aderência) e margem de 1,5 m da borda.
+  Volta do bot no difícil: ~1:46. Volta mínima plausível no servidor: 85 s.
+- Recorde por pista em `best_lap_suzuka` nos contadores (como Mônaco).
+
 ## Vitrine: balões de personagem, outdoors e murais
 
 `scripts/track/track_showcase.gd` (etapa "vitrine" da geração, nas duas pistas; o servidor pula):
@@ -968,9 +1007,36 @@ local da VM (`http://db:8080`, sem token). O servidor cria **tabelas próprias**
 existem no banco. O token do aparelho nunca é guardado, só o SHA-256 dele.
 
 **Rodar o jogo conectado**: o jogo conecta sozinho ao abrir (`127.0.0.1:7350` por padrão); o
-endereço muda na tela Multiplayer (fica salvo) ou com `-- --connect=host:porta`. Para dois jogos no
-mesmo PC: `-- --account=segundo` (outra conta). `-- --offline` não conecta. Sem servidor, o jogo
-segue offline com o perfil local do aparelho (solo, loja e estúdio locais).
+endereço muda na aba **SERVIDOR** da tela Multiplayer (fica salvo) ou com `-- --connect=host:porta`.
+Para dois jogos no mesmo PC: `-- --account=segundo` (outra conta). `-- --offline` não conecta. Sem
+servidor, o jogo segue offline com o perfil local do aparelho (solo, loja e estúdio locais).
+
+**IPv6**: o servidor escuta em IPv4 e IPv6 na mesma porta (ENet com socket duplo). O endereço
+aceita `host`, `host:porta`, IPv6 puro (`2001:db8::1`, porta padrão) ou com porta entre colchetes
+(`[2001:db8::1]:7350`), e nomes que resolvem para IPv6 (`NetProtocol.parse_address` /
+`format_address`). Na VM, a porta UDP precisa estar liberada também para IPv6.
+
+**Aba SERVIDOR** (`multiplayer_panel.gd`, aparece também sem conexão):
+- **Endereço** atual (com ping) e **Desconectar**; **servidores salvos com nome** (salvar de novo o
+  mesmo endereço renomeia; editar, remover) e as **últimas conexões** (8, só as que entraram de
+  fato, com "há 2 h"; salvar com nome, limpar). Ficam no arquivo da conta do aparelho
+  (`account.cfg`, seção `[servers]`).
+- **Hospedar** (`scripts/net/local_host.gd`, `LocalHost`, filho do `Net`): **ABRIR SERVIDOR** sobe o
+  servidor dedicado num processo à parte, o mesmo executável sem janela
+  (`--headless -- --server --host-dir=… --host-watch`; fora do jogo exportado, com `--path`).
+  Com `--host-dir` o servidor usa um **banco em arquivo** em vez do Turso (`LocalStore`,
+  `user://host/server_db.json`; mesmas operações do `AccountStore`, grava no máximo 1 vez por
+  segundo, por troca atômica) — quem hospeda não precisa de banco nem de segredo. O jogo entra no
+  próprio servidor sozinho (opção) sem trocar o servidor padrão; ao fechar, volta para ele.
+- **Controle** por arquivos na pasta do host (`HostControl`, `scripts/server/host_control.gd`):
+  `status.json` a cada segundo (no ar há quanto tempo, jogadores e onde estão, salas, contas) e
+  `cmd_<n>.json` com **fechar** (grava o banco e sai) e **tirar** um jogador (ele vê o motivo e não
+  reconecta sozinho). O jogo grava a hora em `alive` a cada 2 s; se parar por 30 s (jogo fechou ou
+  travou), o servidor fecha sozinho. O log do processo aparece na tela (e em `server.log`).
+- **Passe para os amigos**: endereços da rede local (IPv4/IPv6) e IPv6 público (forma curta), com
+  Copiar; **UPnP** opcional abre a porta UDP no roteador (numa thread) e mostra o IP externo; a
+  porta é fechada ao parar. O processo do servidor nunca grava o perfil nem as configurações do
+  jogador (`NetProtocol.is_server_process()`).
 
 **Conectado** (`Profile.mode = "remote"`): créditos, coleção e equipamento vêm do servidor; o giro
 da loja é feito lá. **O carro do aparelho vale no servidor**: ao conectar, o jogo manda o visual
@@ -1068,9 +1134,12 @@ godot --headless --path . -s res://tests/damage_test.gd     # dano: dirigir sem 
 godot --path . -s res://tests/capture_crash.gd -- <pasta>    # screenshots de uma batida
 godot --path . -s res://tests/capture_moods.gd -- <pasta>    # todos os horários × ambientes
 godot --path . -s res://tests/capture_boost.gd -- <pasta>    # boost, marcas de pneu, sombra, fantasia
-godot --headless --path . -s res://tests/race_test.gd -- 3 9 3  # corrida de 3 voltas, 9 bots, dificuldade mista (+ monaco no fim = em Mônaco)
+godot --headless --path . -s res://tests/race_test.gd -- 3 9 3  # corrida de 3 voltas, 9 bots, dificuldade mista (+ monaco ou suzuka no fim = nessa pista)
 godot --headless --path . -s res://tests/monaco_test.gd     # Mônaco: traçado, desnível, pisos, túnel coberto, cidade, porto, carro na rampa
 godot --path . -s res://tests/monaco_shots.gd -- <pasta> [horário] [ambiente] [prefixo]  # screenshots de Mônaco (+ calçadas, navios, balões, dirigíveis e o céu visto da pista)
+godot --headless --path . -s res://tests/suzuka_test.gd     # Suzuka: traçado, desnível, cruzamento (folga, projeção nos dois níveis), nada acima do asfalto, terreno, carro na ponte e embaixo dela
+godot --path . -s res://tests/suzuka_shots.gd -- <pasta> [horário] [ambiente] [prefixo] [tomadas...]  # screenshots de Suzuka (ponte, corte, roda-gigante, curvas)
+godot --headless --path . -s res://tests/track_bot_probe.gd -- suzuka 2 2 0 - 2700-2900  # bot sozinho: onde perde velocidade, sai da linha ou bate (trecho com registro detalhado)
 godot --path . -s res://tests/capture_decals.gd -- <pasta>   # decalques no carro, SVG do jogador (pasta de teste) e a aba do Estúdio
 godot --path . -s res://tests/capture_race.gd -- <pasta>     # menu, grid, HUD da corrida, boxes, mecânicos
 godot --path . -s res://tests/capture_loading.gd -- <pasta>  # tela de carregamento (circuito e grid)
@@ -1087,7 +1156,9 @@ godot --path . -s res://tests/capture_settings.gd -- <pasta> # menu de configura
 godot --headless --path . -s res://tests/compile_check.gd   # carrega todos os scripts (erros de compilação)
 godot --headless --path . -s res://tests/ccd_probe.gd       # carro não "para do nada" em zebra/raspão a 320 km/h e não atravessa muros
 godot --headless --path . -s res://tests/highspeed_probe.gd # pneus em alta velocidade: carga, aderência, boost, toque de direção, batente
-godot --headless --path . -s res://tests/net_test.gd        # multiplayer de ponta a ponta, com votações de pausa/voltar/recomeçar (precisa do libSQL local)
+godot --headless --path . -s res://tests/net_test.gd        # multiplayer de ponta a ponta, com votações de pausa/voltar/recomeçar (precisa do libSQL local; SPEEDORU_TEST_DB=local usa o banco em arquivo)
+godot --headless --path . -s res://tests/host_test.gd       # endereços IPv4/IPv6, banco local, hospedar (entrar por ::1, status, tirar, fechar, batimento), salvos e histórico (+ -- <Speedoru.exe> = build exportada)
+godot --path . -s res://tests/capture_host.gd -- <pasta> [porta] --offline # aba SERVIDOR: salvos, histórico, hospedando com um amigo, log
 godot --headless --path . -s res://tests/puppet_wheel_test.gd # rodas dos carros da rede: altura do servidor, esterço e giro, sem tremer
 godot --headless --path . -s res://tests/updater_test.gd    # atualizador: versões e download/SHA-256 da última release (internet)
 godot --headless --path . -s res://tests/chase_camera_test.gd # câmera de perseguição: frenagem, aceleração, curva, batida

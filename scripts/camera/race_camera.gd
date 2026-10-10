@@ -401,9 +401,10 @@ func _update_orbit(xf: Transform3D, delta: float) -> void:
 	var hit := space.intersect_ray(PhysicsRayQueryParameters3D.create(pivot, pos, 1, exclude))
 	if hit:
 		pos = hit.position - dir * 0.2
-	# Nunca abaixo do chão: mede a altura do solo embaixo da câmera
+	# Nunca abaixo do chão: mede a altura do solo embaixo da câmera (a partir da altura do carro,
+	# para não pegar uma ponte por cima dele)
 	var ground := space.intersect_ray(PhysicsRayQueryParameters3D.create(
-		pos + Vector3.UP * 50.0, pos - Vector3.UP * 50.0, 1, exclude))
+		Vector3(pos.x, maxf(pos.y, pivot.y) + 2.0, pos.z), pos - Vector3.UP * 50.0, 1, exclude))
 	if ground:
 		pos.y = maxf(pos.y, ground.position.y + orbit_ground_clearance)
 	else:

@@ -48,6 +48,11 @@ var extra_owned := {}
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
+	if NetProtocol.is_server_process():
+		# Servidor: o perfil deste aparelho não é dele (nunca lê nem grava o arquivo)
+		mode = "server"
+		equipped = default_equipped()
+		return
 	load_profile()
 
 

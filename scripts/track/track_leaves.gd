@@ -69,7 +69,7 @@ func _place_trees(track: RaceTrack, terrain: TrackTerrain, rng: RandomNumberGene
 			var s := p.s_at(i)
 			var d := track.outer_distance(i, side) + TrackProps._stand_clearance(track, s, side) + rng.randf_range(3.5, 6.0)
 			var pos := track.edge_point(i, side, d)
-			if terrain.height_at(pos.x, pos.z) > 0.3:
+			if terrain.rise_at(pos.x, pos.z) > 0.3:
 				continue
 			var blocked := false
 			for poly in track.footprints:
@@ -351,10 +351,9 @@ func _build_litter(track: RaceTrack, terrain: TrackTerrain, rng: RandomNumberGen
 			var a := rng.randf() * TAU
 			var r := sqrt(rng.randf()) * 9.0
 			var pos := Vector3(c.x, 0.0, c.z) + Vector3(cos(a), 0, sin(a)) * r + wind * rng.randf_range(0.0, 4.0)
-			var h := terrain.height_at(pos.x, pos.z)
-			if h > 0.4:
+			if terrain.rise_at(pos.x, pos.z) > 0.4:
 				continue
-			pos.y = maxf(h, 0.0) + 0.03
+			pos.y = maxf(terrain.height_at(pos.x, pos.z), 0.0) + 0.03
 			on_ground.append(_lying(pos, rng))
 	var area := p.bounds().grow(120.0)
 	var tries := 0
@@ -372,10 +371,9 @@ func _build_litter(track: RaceTrack, terrain: TrackTerrain, rng: RandomNumberGen
 		var off := absf(pr.y) - p.half_width(i, side)
 		if off < 0.5:
 			continue
-		var h := terrain.height_at(pos.x, pos.z)
-		if h > 0.4:
+		if terrain.rise_at(pos.x, pos.z) > 0.4:
 			continue
-		pos.y = maxf(h, 0.0) + 0.03
+		pos.y = maxf(terrain.height_at(pos.x, pos.z), 0.0) + 0.03
 		on_ground.append(_lying(pos, rng))
 		extra += 1
 	on_track.shuffle()

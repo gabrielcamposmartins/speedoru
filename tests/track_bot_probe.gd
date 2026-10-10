@@ -57,6 +57,11 @@ func _run() -> void:
 	var prev_v := 0.0
 	var reported := -10.0
 	var path := manager.track.path
+	# 6º argumento opcional "inicio-fim": trecho (s, m) com registro a cada 0,1 s
+	var detail_range := Vector2(INF, -INF)
+	var args := OS.get_cmdline_user_args()
+	if args.size() > 5 and "-" in args[5]:
+		detail_range = Vector2(float(args[5].get_slice("-", 0)), float(args[5].get_slice("-", 1)))
 	while not manager._all_finished() and manager.race_time < RaceSettings.laps * 200.0:
 		await physics_frame
 		# Saída dos boxes: o que há logo à frente do carro
@@ -81,7 +86,8 @@ func _run() -> void:
 		if pe.crossings != lap:
 			lap = pe.crossings
 			print("volta %d em %.1f s (melhor %s)" % [lap, manager.race_time, RaceManager.format_time(pe.best_lap)])
-		if manager.race_time - last >= (0.5 if bot.mode != BotDriver.Mode.RACE or (pe.s > 3100 or pe.s < 260) else 2.0) and RaceSettings.opponents == 0:
+		var detail := pe.s >= detail_range.x and pe.s <= detail_range.y
+		if manager.race_time - last >= (0.1 if detail else 0.5 if bot.mode != BotDriver.Mode.RACE or (pe.s > 3100 or pe.s < 260) else 2.0) and RaceSettings.opponents == 0:
 			last = manager.race_time
 			var target := RacingLine.sample(bot.profile, path, pe.s)
 			var line_lat := bot.line.lateral_at(pe.s)

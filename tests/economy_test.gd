@@ -208,10 +208,10 @@ func _run() -> void:
 
 	# --- Recompensas
 	profile.credits = 0
-	_check(profile.award_race(10, 0, true, false) == 200 and profile.award_race(10, 1, true, false) == 300 \
-		and profile.award_race(10, 2, true, false) == 400, "10 voltas pagam 200 / 300 / 400")
+	_check(profile.award_race(10, 0, true, false) == 2000 and profile.award_race(10, 1, true, false) == 3000 \
+		and profile.award_race(10, 2, true, false) == 4000, "10 voltas pagam 2.000 / 3.000 / 4.000")
 	_check(profile.award_race(10, 2, true, true) == 0, "desclassificado não recebe")
-	_check(profile.award_race(6, 2, false, false) == 120, "abandono recebe metade do que andou")
+	_check(profile.award_race(6, 2, false, false) == 1200, "abandono recebe metade do que andou")
 
 	# --- Persistência
 	var credits := profile.credits

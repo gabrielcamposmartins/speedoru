@@ -19,6 +19,12 @@ var width_right := PackedFloat32Array()
 var curvature := PackedFloat32Array()
 var spacing := 2.0
 var length := 0.0
+## Pontos onde a pista passa por cima dela mesma (Suzuka): Vector3(s de baixo, s de cima, ângulo).
+var crossings: Array[Vector3] = []
+## Amostras perto de um cruzamento: lá a projeção também olha a altura (os dois níveis ficam no
+## mesmo lugar do plano).
+var _cross_zone := PackedByteArray()
+const CROSS_ZONE := 90.0
 
 var _grid := {}
 const GRID_CELL := 40.0
@@ -111,6 +117,7 @@ func _build(raw: Array[Vector4], heights: PackedFloat32Array, sample_spacing: fl
 		var ang := atan2(ta.x * tb.y - ta.y * tb.x, ta.dot(tb))
 		curvature[i] = -ang / (6.0 * spacing)
 	_build_grid()
+	_find_crossings()
 
 
 func size() -> int:
@@ -170,7 +177,9 @@ func half_width(i: int, side: int) -> float:
 
 ## Ponto mais próximo da linha central: Vector2(s, lateral).
 ## Com exhaustive = false, pontos a mais de ~120 m da pista retornam Vector2(-1, INF) (rápido).
-func project(pos: Vector3, exhaustive := true) -> Vector2:
+## Perto de um cruzamento a altura de `pos` escolhe o nível (use_height = false: só o plano).
+func project(pos: Vector3, exhaustive := true, use_height := true) -> Vector2:
+	var height := use_height and not crossings.is_empty()
 	var key := Vector2i(floori(pos.x / GRID_CELL), floori(pos.z / GRID_CELL))
 	var best := -1
 	var best_d := INF
@@ -182,6 +191,8 @@ func project(pos: Vector3, exhaustive := true) -> Vector2:
 				var cell: PackedInt32Array = _grid.get(key + Vector2i(dx, dz), PackedInt32Array())
 				for i in cell:
 					var d := Vector2(points[i].x - pos.x, points[i].z - pos.z).length_squared()
+					if height and _cross_zone[i]:
+						d += _height_penalty(pos.y - points[i].y)
 					if d < best_d:
 						best_d = d
 						best = i
@@ -193,12 +204,84 @@ func project(pos: Vector3, exhaustive := true) -> Vector2:
 		# Longe da pista: busca completa
 		for i in points.size():
 			var d := Vector2(points[i].x - pos.x, points[i].z - pos.z).length_squared()
+			if height and _cross_zone[i]:
+				d += _height_penalty(pos.y - points[i].y)
 			if d < best_d:
 				best_d = d
 				best = i
 	var rel := pos - points[best]
 	var along := rel.dot(tangents[best])
 	return Vector2(fposmod(best * spacing + along, length), rel.dot(lefts[best]))
+
+
+## Projeção só entre as amostras a até `reach` m de s0 (um trecho, num cruzamento): Vector2(s, lateral).
+func project_near(pos: Vector3, s0: float, reach: float) -> Vector2:
+	var i0 := index_at(s0)
+	var k := int(reach / spacing)
+	var best := i0
+	var best_d := INF
+	for d in range(-k, k + 1):
+		var i := wrap_index(i0 + d)
+		var dd := Vector2(points[i].x - pos.x, points[i].z - pos.z).length_squared()
+		if dd < best_d:
+			best_d = dd
+			best = i
+	var rel := pos - points[best]
+	return Vector2(fposmod(best * spacing + rel.dot(tangents[best]), length), rel.dot(lefts[best]))
+
+
+## Diferença de altura vira distância: a até ~3 m (carro em cima da pista, lombadas) quase não
+## conta; o outro nível (~10 m) fica bem mais longe que qualquer ponto do próprio trecho.
+static func _height_penalty(dy: float) -> float:
+	var e := maxf(absf(dy) - 2.5, 0.0) * 6.0
+	return e * e
+
+
+## Acha os cruzamentos (segmentos que se cortam no plano com alturas diferentes) e marca as
+## amostras a até CROSS_ZONE m deles.
+func _find_crossings() -> void:
+	crossings.clear()
+	var n := points.size()
+	_cross_zone.resize(n)
+	_cross_zone.fill(0)
+	var min_gap := int(200.0 / spacing)
+	for i in n:
+		var a := Vector2(points[i].x, points[i].z)
+		var b := Vector2(points[(i + 1) % n].x, points[(i + 1) % n].z)
+		var key := Vector2i(floori(a.x / GRID_CELL), floori(a.y / GRID_CELL))
+		var seen := {}
+		for dx in range(-1, 2):
+			for dz in range(-1, 2):
+				for j: int in _grid.get(key + Vector2i(dx, dz), PackedInt32Array()):
+					if j <= i or seen.has(j):
+						continue
+					seen[j] = true
+					if mini(j - i, n - (j - i)) < min_gap:
+						continue
+					var c := Vector2(points[j].x, points[j].z)
+					var d := Vector2(points[(j + 1) % n].x, points[(j + 1) % n].z)
+					var hit: Variant = Geometry2D.segment_intersects_segment(a, b, c, d)
+					if hit == null:
+						continue
+					var ti := (hit as Vector2).distance_to(a) / maxf(a.distance_to(b), 1e-6)
+					var tj := (hit as Vector2).distance_to(c) / maxf(c.distance_to(d), 1e-6)
+					var si := (i + ti) * spacing
+					var sj := (j + tj) * spacing
+					var ang := acos(clampf(absf((b - a).normalized().dot((d - c).normalized())), 0.0, 1.0))
+					var dup := false
+					for o in crossings:
+						dup = dup or absf(o.x - si) < 20.0 or absf(o.y - si) < 20.0
+					if dup:
+						continue
+					if height_at(si) < height_at(sj):
+						crossings.append(Vector3(si, sj, ang))
+					else:
+						crossings.append(Vector3(sj, si, ang))
+	for c in crossings:
+		for s0 in [c.x, c.y]:
+			var k := int(CROSS_ZONE / spacing)
+			for d in range(-k, k + 1):
+				_cross_zone[wrap_index(index_at(s0) + d)] = 1
 
 
 func _build_grid() -> void:

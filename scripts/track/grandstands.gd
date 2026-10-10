@@ -188,8 +188,9 @@ static func _build_one(track: RaceTrack, f: TrackFeature, side: int, rng: Random
 	for k in rail_points.size() - 1:
 		TrackFlags.bunting(cloth, rail_points[k], rail_points[k + 1], 0.7, 0.8, k * 3)
 	for k in pole_points.size():
-		var colors: Array = TrackFlags.ITALY if k % 2 == 0 else [palette[0], Color.WHITE, palette[0]]
-		TrackFlags.flagpole(mb, cloth, pole_points[k], 6.0, Vector2(2.4, 1.5), colors, 0 if k % 2 == 0 else 1)
+		var country := k % 2 == 0
+		var colors: Array = Array(track.layout.flag_colors) if country else [palette[0], Color.WHITE, palette[0]]
+		TrackFlags.flagpole(mb, cloth, pole_points[k], 6.0, Vector2(2.4, 1.5), colors, track.layout.flag_style if country else 1)
 
 	var node := Node3D.new()
 	var mi := MeshInstance3D.new()

@@ -8,11 +8,16 @@ extends Node
 ## variáveis de ambiente TURSO_DATABASE_URL / TURSO_AUTH_TOKEN, ou o arquivo server.cfg
 ## ([db] url, token) na pasta do projeto ou em user://. Porta: --port= (padrão 7350).
 ##
+## Servidor aberto pelo próprio jogo (LocalHost, "Hospedar" na tela de multiplayer): --host-dir=
+## troca o Turso por um arquivo nessa pasta (LocalStore) e liga o HostControl (estado e comandos
+## por arquivos; --host-watch fecha junto com o jogo que o abriu).
+##
 ## Regras de amigos, grupo, salas, ranking e perfil: documento "Pokeru — Regras de amigos, ranking
 ## e perfil", adaptadas para corridas (ver NetProtocol, Progression, Ranking).
 
 var store: AccountStore
 var db: TursoDB
+var host_control: HostControl
 var races: Node
 
 ## peer -> {account: Dictionary, profile: PlayerProfile, room: String, party: String}
@@ -36,23 +41,36 @@ var _gone := {}
 func _ready() -> void:
 	_rng.randomize()
 	RaceTrack.server_mode = true
-	db = TursoDB.new()
-	db.name = "DB"
-	add_child(db)
 	var cfg := _config()
-	db.configure(cfg["url"], cfg["token"])
-	store = AccountStore.new()
-	store.name = "Store"
-	add_child(store)
-	store.setup(db)
 	races = Node.new()
 	races.name = "Races"
 	add_child(races)
-	print("Servidor: banco %s" % (db.url if db.url != "" else "(não configurado)"))
-	if db.url == "" or not await store.migrate():
-		push_error("Servidor: sem banco (%s). Configure TURSO_DATABASE_URL / TURSO_AUTH_TOKEN ou server.cfg." % db.last_error)
-		get_tree().quit(2)
-		return
+	if cfg["host_dir"] != "":
+		# Hospedado pelo jogo: banco num arquivo da pasta do host
+		var local := LocalStore.new()
+		local.name = "Store"
+		local.setup_local(cfg["host_dir"])
+		store = local
+		add_child(store)
+		print("Servidor: banco local %s" % local.path)
+		if not await store.migrate():
+			push_error("Servidor: banco local indisponível (%s)." % local.last_error)
+			get_tree().quit(2)
+			return
+	else:
+		db = TursoDB.new()
+		db.name = "DB"
+		add_child(db)
+		db.configure(cfg["url"], cfg["token"])
+		store = AccountStore.new()
+		store.name = "Store"
+		add_child(store)
+		store.setup(db)
+		print("Servidor: banco %s" % (db.url if db.url != "" else "(não configurado)"))
+		if db.url == "" or not await store.migrate():
+			push_error("Servidor: sem banco (%s). Configure TURSO_DATABASE_URL / TURSO_AUTH_TOKEN ou server.cfg." % db.last_error)
+			get_tree().quit(2)
+			return
 	var err: Error = get_node("/root/Net").host(cfg["port"], self)
 	if err != OK:
 		push_error("Servidor: porta %d indisponível (%d)" % [cfg["port"], err])
@@ -60,10 +78,15 @@ func _ready() -> void:
 		return
 	_ready_ok = true
 	print("Servidor: ouvindo na porta %d" % cfg["port"])
+	if cfg["host_dir"] != "":
+		host_control = HostControl.new()
+		host_control.name = "HostControl"
+		host_control.setup(self, cfg["host_dir"], cfg["port"], cfg["watch"], cfg["session"])
+		add_child(host_control)
 
 
 func _config() -> Dictionary:
-	var out := {"url": "", "token": "", "port": NetProtocol.DEFAULT_PORT}
+	var out := {"url": "", "token": "", "port": NetProtocol.DEFAULT_PORT, "host_dir": "", "watch": false, "session": ""}
 	for path in ["res://server.cfg", "user://server.cfg"]:
 		var c := ConfigFile.new()
 		if c.load(path) == OK:
@@ -81,7 +104,64 @@ func _config() -> Dictionary:
 			out["token"] = a.substr(11)
 		elif a.begins_with("--port="):
 			out["port"] = int(a.substr(7))
+		elif a.begins_with("--host-dir="):
+			out["host_dir"] = a.substr(11)
+		elif a == "--host-watch":
+			out["watch"] = true
+		elif a.begins_with("--host-session="):
+			out["session"] = a.substr(15)
 	return out
+
+
+# ---------------------------------------------------------------------------
+# Controle do host (HostControl)
+# ---------------------------------------------------------------------------
+## Quem está no servidor agora: [{id, name, room, racing}].
+func players_online() -> Array:
+	var out := []
+	for acc_id: String in online:
+		var peers: Array = online[acc_id]
+		if peers.is_empty() or not sessions.has(peers[0]):
+			continue
+		var s: Dictionary = sessions[peers[0]]
+		var room: Dictionary = rooms.get(s["room"], {})
+		out.append({"id": acc_id, "name": s["account"]["name"], "room": str(room.get("name", "")),
+			"racing": not room.is_empty() and room.get("state", "lobby") != "lobby"})
+	return out
+
+
+func room_counts() -> Vector2i:
+	var racing := 0
+	for r: Dictionary in rooms.values():
+		if r.get("state", "lobby") != "lobby":
+			racing += 1
+	return Vector2i(rooms.size(), racing)
+
+
+## Tira a conta do servidor (todas as abas). O jogo dela não reconecta sozinho.
+func kick_account(account_id: String) -> bool:
+	var peers: Array = online.get(account_id, []).duplicate()
+	for p in peers:
+		_send(p, "kicked", {"error": "O anfitrião tirou você do servidor."})
+	if peers.is_empty():
+		return false
+	await get_tree().create_timer(0.3).timeout
+	for p in peers:
+		get_node("/root/Net").kick(p)
+	return true
+
+
+## Fecha o servidor gravando tudo (comando "stop" do host ou o jogo que o abriu fechou).
+func shutdown(code := 0) -> void:
+	print("Servidor: fechando")
+	_ready_ok = false
+	var local := store as LocalStore
+	if local:
+		local.flush()
+	var net := get_node("/root/Net")
+	if net.multiplayer.multiplayer_peer:
+		net.multiplayer.multiplayer_peer.close()
+	get_tree().quit(code)
 
 
 func _id(prefix: String) -> String:

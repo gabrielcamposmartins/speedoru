@@ -8,6 +8,7 @@ enum Mode { RACE, PRACTICE }
 const TRACKS := [
 	{"id": "monza", "name": "Monza", "scene": "res://scenes/tracks/monza.tscn"},
 	{"id": "monaco", "name": "Mônaco", "scene": "res://scenes/tracks/monaco.tscn"},
+	{"id": "suzuka", "name": "Suzuka", "scene": "res://scenes/tracks/suzuka.tscn"},
 ]
 enum Grid { POLE, MIDDLE, BACK }
 

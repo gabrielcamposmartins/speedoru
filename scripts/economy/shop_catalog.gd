@@ -22,8 +22,8 @@ const TICKET_PRICE := 2500
 const DUP_FRACTION := 0.3
 
 ## Recompensa por volta completada, por dificuldade dos bots (fácil, médio, difícil, mista):
-## 10 voltas = 200 / 300 / 400.
-const REWARD_PER_LAP := [20, 30, 40, 30]
+## 10 voltas = 2.000 / 3.000 / 4.000.
+const REWARD_PER_LAP := [200, 300, 400, 300]
 
 enum Rarity { COMMON, UNCOMMON, RARE, EPIC, LEGENDARY }
 const RARITY_NAMES := ["Comum", "Incomum", "Raro", "Épico", "Lendário"]

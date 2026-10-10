@@ -6,10 +6,13 @@ extends SceneTree
 ## Precisa de um libSQL local (Docker):
 ##   docker run -d -p 18080:8080 ghcr.io/tursodatabase/libsql-server
 ##   godot --headless --path . -s res://tests/net_test.gd
-## Outra URL: variável SPEEDORU_TEST_DB. Contas de teste ficam em user://test_net_*.cfg (apagadas no fim).
+## Outra URL: variável SPEEDORU_TEST_DB. SPEEDORU_TEST_DB=local usa o banco em arquivo do servidor
+## hospedado pelo jogo (LocalStore, em user://test_net_host/), sem Docker.
+## Contas de teste ficam em user://test_net_*.cfg (apagadas no fim).
 
 const PORT := 7360
 const GODOT_ARGS := ["--headless", "--path", ".", "--", "--server", "--port=7360"]
+const LOCAL_DIR := "user://test_net_host"
 
 var failures := 0
 var server_pid := -1
@@ -73,7 +76,11 @@ func _run() -> void:
 		db = "http://127.0.0.1:18080"
 	print("Banco de teste: ", db)
 	var args := GODOT_ARGS.duplicate()
-	args.append("--db-url=" + db)
+	if db == "local":
+		_clean_local()
+		args.append("--host-dir=" + ProjectSettings.globalize_path(LOCAL_DIR))
+	else:
+		args.append("--db-url=" + db)
 	server_pid = OS.create_process(OS.get_executable_path(), args)
 	_check(server_pid > 0, "servidor dedicado iniciado")
 	await _wait(6.0)
@@ -299,10 +306,20 @@ func _run() -> void:
 	_finish()
 
 
+func _clean_local() -> void:
+	var dir := ProjectSettings.globalize_path(LOCAL_DIR)
+	if DirAccess.dir_exists_absolute(dir):
+		for f in DirAccess.get_files_at(dir):
+			DirAccess.remove_absolute(dir.path_join(f))
+		DirAccess.remove_absolute(dir)
+
+
 func _finish() -> void:
 	for f in ["user://test_net_a.cfg", "user://test_net_b.cfg"]:
 		DirAccess.remove_absolute(ProjectSettings.globalize_path(f))
 	if server_pid > 0:
 		OS.kill(server_pid)
+	await _wait(0.5)
+	_clean_local()
 	print("Falhas: %d" % failures)
 	quit(1 if failures > 0 else 0)

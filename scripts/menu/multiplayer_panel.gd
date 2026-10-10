@@ -10,9 +10,13 @@ extends VBoxContainer
 ## * GRUPO: até 4; só o líder convida e escolhe a partida (contra bots, fila ou Custom).
 ## * RANKING: Geral, Vitórias, Ganhos, Volta mais rápida (50 linhas + a sua).
 ## * PERFIL: nome, título, nível, "como você pilota", últimas corridas e conquistas.
-## Sem conexão: mostra o endereço do servidor e o botão de conectar (o solo continua offline).
+## * SERVIDOR: endereço (IPv4, IPv6 ou nome), servidores salvos com nome, últimas conexões e
+##   HOSPEDAR: abrir um servidor neste computador (LocalHost), ver quem está nele, tirar jogadores,
+##   endereços para os amigos, UPnP e o log.
+## Sem conexão: mostra só a parte do servidor (o solo continua offline).
 
-const TABS := [["rooms", "SALAS"], ["friends", "AMIGOS"], ["party", "GRUPO"], ["ranking", "RANKING"], ["profile", "PERFIL"]]
+const TABS := [["rooms", "SALAS"], ["friends", "AMIGOS"], ["party", "GRUPO"], ["ranking", "RANKING"], ["profile", "PERFIL"],
+	["server", "SERVIDOR"]]
 const DIFFICULTIES := ["Fácil", "Médio", "Difícil", "Mista"]
 
 static var tab := "rooms"
@@ -29,6 +33,11 @@ var _ranking := {}
 var _profile_view := {}
 var _confirm_remove := ""
 var _rebuild_queued := false
+var _host_box: VBoxContainer
+var _host_log: Label
+var _host_uptime: Label
+var _address_edit: LineEdit
+var _name_edit: LineEdit
 
 
 func setup(p_ui: MenuUI) -> void:
@@ -54,6 +63,12 @@ func setup(p_ui: MenuUI) -> void:
 		net.message.connect(_on_message)
 		net.connection_changed.connect(func(_o: bool) -> void: _queue_rebuild())
 		net.account_changed.connect(_build_header)
+		net.servers_changed.connect(func() -> void:
+			if tab == "server" or not net.online:
+				_queue_rebuild())
+		if net.local_host:
+			net.local_host.changed.connect(_build_host)
+			net.local_host.log_added.connect(func(_l: String) -> void: _update_host_log())
 	_rebuild()
 
 
@@ -124,6 +139,8 @@ func _rebuild() -> void:
 			_build_ranking()
 		"profile":
 			_build_profile()
+		"server":
+			_build_server()
 
 
 # ---------------------------------------------------------------------------
@@ -250,30 +267,306 @@ func _build_header() -> void:
 
 
 func _build_offline() -> void:
-	var card := _card()
-	var connecting: bool = net != null and net._connecting
-	card.add_child(_label("Conectando ao servidor…" if connecting else "Sem conexão com o servidor", "", 18))
-	if net and net.last_error != "":
-		card.add_child(_label(net.last_error, "", 14, Retro.c("bad")))
-	card.add_child(_label("Salas, amigos, grupo, ranking e perfil precisam do servidor dedicado. A corrida solo funciona offline (com o perfil deste aparelho).", "RetroMuted", 13))
-	var row := _row(card)
-	row.add_child(_label("SERVIDOR", "RetroKicker"))
-	var host := LineEdit.new()
-	host.placeholder_text = "endereço:porta"
-	host.text = "%s:%d" % [net.server_host, net.server_port] if net else ""
-	host.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	row.add_child(host)
-	var go := _button("CONECTAR", func() -> void:
-		var parts := host.text.strip_edges().split(":")
-		if parts.is_empty() or parts[0] == "":
-			return
-		net.set_server(parts[0], int(parts[1]) if parts.size() > 1 else NetProtocol.DEFAULT_PORT)
-		net.disconnect_from_server()
-		net.connect_to_server()
-		_queue_rebuild.call_deferred(), true, 150)
-	row.add_child(go)
+	if net == null:
+		_content.add_child(_label("Sem rede neste modo.", "RetroMuted"))
+	else:
+		_build_server()
 	var back := _button("Voltar (Esc)", ui.show_screen.bind("home"))
 	_content.add_child(back)
+
+
+# ---------------------------------------------------------------------------
+# Servidor: conexão, salvos, histórico e hospedar
+# ---------------------------------------------------------------------------
+func _build_server() -> void:
+	var online: bool = net.online
+	var card := _card()
+	var top := _row(card)
+	top.add_child(_status_dot(online, false))
+	var addr: String = net.server_address()
+	var saved_name: String = net.server_name(net.server_host, net.server_port)
+	var label := saved_name
+	if label == "" and net.local_host and net.local_host.is_active() and net.server_port == net.local_host.port 			and net.server_host in ["127.0.0.1", "::1", "localhost"]:
+		label = "Este computador"
+	var where := "%s · %s" % [label, addr] if label != "" else addr
+	var state := "Conectado a %s" if online else ("Conectando a %s…" if net._connecting else "Sem conexão com %s")
+	var title := _label(state % where, "", 18)
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	top.add_child(title)
+	if online:
+		var ping: int = net.ping_ms()
+		if ping >= 0:
+			top.add_child(_label("%d ms" % ping, "RetroMuted"))
+		top.add_child(_button("Desconectar", func() -> void:
+			net.disconnect_from_server()
+			_queue_rebuild()))
+	else:
+		if net.last_error != "":
+			card.add_child(_label(net.last_error, "", 14, Retro.c("bad")))
+		card.add_child(_label("Salas, amigos, grupo, ranking e perfil precisam de um servidor. A corrida solo funciona offline (com o perfil deste aparelho).", "RetroMuted", 13))
+	var row := _row(card)
+	row.add_child(_label("ENDEREÇO", "RetroKicker"))
+	_address_edit = LineEdit.new()
+	_address_edit.placeholder_text = "endereço:porta — IPv4, IPv6 ([2001:db8::1]:7350) ou nome"
+	_address_edit.text = addr
+	_address_edit.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(_address_edit)
+	row.add_child(_button("CONECTAR", func() -> void: _connect_to(_address_edit.text), true, 150))
+	var srow := _row(card)
+	srow.add_child(_label("NOME", "RetroKicker"))
+	_name_edit = LineEdit.new()
+	_name_edit.placeholder_text = "Nome para guardar este endereço (ex.: Casa do Léo)"
+	_name_edit.max_length = 32
+	_name_edit.text = saved_name
+	_name_edit.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	srow.add_child(_name_edit)
+	srow.add_child(_button("Salvar endereço", func() -> void:
+		var a := NetProtocol.parse_address(_address_edit.text)
+		if a["host"] == "":
+			ui.toast("Endereço inválido")
+			return
+		net.save_server(_name_edit.text, a["host"], a["port"])
+		ui.toast("Servidor salvo"), false, 150))
+
+	# Servidores salvos
+	_section("SERVIDORES SALVOS")
+	var saved: Array = net.saved_servers()
+	if saved.is_empty():
+		_content.add_child(_label("Nenhum ainda: escreva o endereço e um nome acima e toque em Salvar endereço.", "RetroMuted", 13))
+	for e: Dictionary in saved:
+		var r := _row(_content)
+		var address := NetProtocol.format_address(e["host"], int(e["port"]))
+		var current: bool = e["host"] == net.server_host and int(e["port"]) == net.server_port
+		var n := _label(("● " if current and online else "") + str(e["name"]), "", 16)
+		n.add_theme_font_override("font", Retro.display(700))
+		r.add_child(n)
+		var a := _label(address, "RetroMuted", 13)
+		a.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		r.add_child(a)
+		r.add_child(_button("Conectar", _connect_to.bind(address), false, 110))
+		r.add_child(_button("Editar", func() -> void:
+			_address_edit.text = address
+			_name_edit.text = str(e["name"])
+			_name_edit.grab_focus()))
+		r.add_child(_button("Remover", func() -> void: net.forget_server(e["host"], int(e["port"]))))
+
+	# Últimas conexões
+	var hist: Array = net.server_history()
+	var head := _row(_content)
+	head.add_child(_label("ÚLTIMAS CONEXÕES", "RetroKicker"))
+	_spacer(head)
+	if hist.is_empty():
+		_content.add_child(_label("Os servidores em que você entrar aparecem aqui.", "RetroMuted", 13))
+	else:
+		head.add_child(_button("Limpar", net.clear_history))
+	for e: Dictionary in hist:
+		var r := _row(_content)
+		var address := NetProtocol.format_address(e["host"], int(e["port"]))
+		var saved_as: String = net.server_name(e["host"], int(e["port"]))
+		var nm := saved_as
+		if nm == "" and e["host"] in ["127.0.0.1", "::1", "localhost"]:
+			nm = "Este computador"
+		r.add_child(_label(nm if nm != "" else address, "", 15))
+		var info := _label(("%s · " % address if nm != "" else "") + _ago(int(e.get("t", 0))), "RetroMuted", 12)
+		info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		r.add_child(info)
+		r.add_child(_button("Conectar", _connect_to.bind(address), false, 110))
+		if saved_as == "":
+			r.add_child(_button("Salvar…", func() -> void:
+				_address_edit.text = address
+				_name_edit.text = ""
+				_name_edit.grab_focus()
+				ui.toast("Dê um nome e toque em Salvar endereço")))
+
+	# Hospedar
+	_host_box = VBoxContainer.new()
+	_host_box.add_theme_constant_override("separation", 8)
+	_content.add_child(_host_box)
+	_build_host()
+
+
+func _connect_to(text: String) -> void:
+	var a := NetProtocol.parse_address(text)
+	if a["host"] == "":
+		ui.toast("Endereço inválido")
+		return
+	net.switch_server(a["host"], a["port"])
+	_queue_rebuild()
+
+
+static func _ago(t: int) -> String:
+	if t <= 0:
+		return ""
+	var d := int(Time.get_unix_time_from_system()) - t
+	if d < 60:
+		return "agora"
+	if d < 3600:
+		return "há %d min" % (d / 60)
+	if d < 86400:
+		return "há %d h" % (d / 3600)
+	return "ontem" if d < 172800 else "há %d dias" % (d / 86400)
+
+
+static func _duration(s: int) -> String:
+	if s < 60:
+		return "%d s" % s
+	if s < 3600:
+		return "%d min" % (s / 60)
+	return "%d h %02d min" % [s / 3600, (s % 3600) / 60]
+
+
+## Cartão HOSPEDAR (refeito quando o servidor local muda de estado ou de jogadores).
+func _build_host() -> void:
+	if _host_box == null or not is_instance_valid(_host_box):
+		return
+	for c in _host_box.get_children():
+		c.queue_free()
+	_host_log = null
+	_host_uptime = null
+	var lh: LocalHost = net.local_host if net else null
+	if lh == null:
+		return
+	var card := PanelContainer.new()
+	card.add_theme_stylebox_override("panel", Retro.panel_style(10.0, 0.5))
+	_host_box.add_child(card)
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", 6)
+	card.add_child(v)
+	var top := _row(v)
+	var t := _label("HOSPEDAR · SEU SERVIDOR", "", 18)
+	t.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	top.add_child(t)
+	var color := Retro.c("good") if lh.is_running() else (Retro.c("warn") if lh.is_active() else Retro.c("muted"))
+	top.add_child(_label("● " + lh.state_name(), "", 14, color))
+	v.add_child(_label("Abre um servidor neste computador para correr com os amigos. Ele tem salas, amigos e ranking próprios; as contas e os créditos dele ficam guardados aqui, em %s." % lh.host_dir_abs(), "RetroMuted", 13))
+	if lh.last_error != "":
+		v.add_child(_label(lh.last_error, "", 14, Retro.c("bad")))
+	if not lh.is_active():
+		var r := _row(v)
+		r.add_child(_label("PORTA", "RetroKicker"))
+		var port := SpinBox.new()
+		port.min_value = 1024
+		port.max_value = 65535
+		port.value = lh.port
+		port.custom_minimum_size = Vector2(120, 0)
+		r.add_child(port)
+		var upnp := CheckBox.new()
+		upnp.text = "Abrir porta no roteador (UPnP)"
+		r.add_child(upnp)
+		var join := CheckBox.new()
+		join.text = "Entrar nele"
+		join.button_pressed = lh.auto_join
+		r.add_child(join)
+		_spacer(r)
+		r.add_child(_button("ABRIR SERVIDOR", func() -> void:
+			lh.auto_join = join.button_pressed
+			if not lh.start(int(port.value), upnp.button_pressed):
+				ui.toast(lh.last_error if lh.last_error != "" else "Não deu para abrir o servidor"), true, 190))
+	else:
+		var r := _row(v)
+		_host_uptime = _label("", "", 15)
+		_host_uptime.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		r.add_child(_host_uptime)
+		_update_host_uptime()
+		var mine: bool = net.server_port == lh.port and net.server_host in ["127.0.0.1", "::1", "localhost"]
+		if lh.is_running() and not (mine and (net.online or net._connecting)):
+			r.add_child(_button("Entrar nele", func() -> void: net.switch_server("127.0.0.1", lh.port, false)))
+		if lh.state != LocalHost.State.STOPPING:
+			r.add_child(_button("FECHAR SERVIDOR", lh.stop, true, 170))
+		if lh.is_running():
+			_build_host_running(v, lh, mine)
+	# Log
+	if not lh.log_lines.is_empty():
+		var lr := _row(v)
+		lr.add_child(_label("LOG", "RetroKicker"))
+		_spacer(lr)
+		lr.add_child(_button("Abrir pasta", func() -> void: OS.shell_open(lh.host_dir_abs())))
+		_host_log = Label.new()
+		_host_log.add_theme_font_size_override("font_size", 12)
+		_host_log.add_theme_color_override("font_color", Retro.c("muted"))
+		_host_log.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		_host_log.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		v.add_child(_host_log)
+		_update_host_log()
+	# Tempo no ar contado aqui (o servidor só manda o início)
+	if lh.is_active():
+		var timer := Timer.new()
+		timer.wait_time = 1.0
+		timer.autostart = true
+		timer.timeout.connect(_update_host_uptime)
+		v.add_child(timer)
+
+
+## Servidor no ar: endereços para os amigos, UPnP e quem está conectado.
+func _build_host_running(v: VBoxContainer, lh: LocalHost, mine: bool) -> void:
+	v.add_child(_label("PASSE PARA OS AMIGOS", "RetroKicker"))
+	var addrs := lh.addresses()
+	if addrs.is_empty():
+		v.add_child(_label("Sem rede: só este computador alcança o servidor (127.0.0.1:%d)." % lh.port, "RetroMuted", 13))
+	for a: Dictionary in addrs:
+		var ar := _row(v)
+		var l := _label(str(a["label"]), "RetroMuted", 13)
+		l.custom_minimum_size = Vector2(200, 0)
+		ar.add_child(l)
+		var al := _label(str(a["address"]), "", 15)
+		al.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		ar.add_child(al)
+		ar.add_child(_button("Copiar", func() -> void:
+			DisplayServer.clipboard_set(str(a["address"]))
+			ui.toast("Endereço copiado")))
+	var ur := _row(v)
+	if lh.upnp_state == "" or lh.upnp_state == "falhou":
+		var ut := _label(lh.upnp_text, "RetroMuted", 13)
+		ut.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		ur.add_child(ut)
+		ur.add_child(_button("Abrir porta no roteador (UPnP)", lh.open_upnp))
+	else:
+		ur.add_child(_label(lh.upnp_text, "", 13, Retro.c("good") if lh.upnp_state == "aberta" else Retro.c("muted")))
+	v.add_child(_label("Pela internet: aceite o aviso do firewall do Windows na primeira vez. Sem UPnP, abra a porta UDP %d no roteador, ou passe um endereço IPv6 (não precisa de roteador, só do firewall liberar)." % lh.port, "RetroMuted", 12))
+	var players: Array = lh.status.get("players", [])
+	v.add_child(_label("NO SERVIDOR (%d)" % players.size(), "RetroKicker"))
+	if players.is_empty():
+		v.add_child(_label("Ninguém conectado ainda.", "RetroMuted", 13))
+	var me: String = str(net.account.get("id", "")) if mine and net.online else ""
+	for p: Dictionary in players:
+		var pr := _row(v)
+		pr.add_child(_status_dot(true, bool(p.get("racing", false))))
+		pr.add_child(_label(str(p["name"]) + ("  (você)" if p["id"] == me else ""), "", 15))
+		var room := _label(("na sala " + str(p["room"])) if str(p.get("room", "")) != "" else "no lobby", "RetroMuted", 12)
+		room.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		pr.add_child(room)
+		if p["id"] != me:
+			pr.add_child(_button("Tirar", func() -> void:
+				lh.kick(str(p["id"]))
+				ui.toast("%s foi tirado do servidor" % p["name"])))
+
+
+func _update_host_uptime() -> void:
+	if _host_uptime == null or not is_instance_valid(_host_uptime) or net.local_host == null:
+		return
+	var lh: LocalHost = net.local_host
+	var st: Dictionary = lh.status
+	if not lh.is_running() or st.is_empty():
+		_host_uptime.text = lh.state_name()
+		return
+	var up := int(Time.get_unix_time_from_system()) - int(st.get("started", 0))
+	var players: int = (st.get("players", []) as Array).size()
+	var rooms := int(st.get("rooms", 0))
+	var racing := int(st.get("racing", 0))
+	var accounts := int(st.get("accounts", 0))
+	_host_uptime.text = "No ar há %s · porta %d · %d %s · %d %s%s · %d %s" % [_duration(up), lh.port,
+		players, "jogador" if players == 1 else "jogadores", rooms, "sala" if rooms == 1 else "salas",
+		(" (%d em corrida)" % racing) if racing > 0 else "", accounts, "conta" if accounts == 1 else "contas"]
+
+
+func _update_host_log() -> void:
+	if _host_log == null or not is_instance_valid(_host_log):
+		# Primeira linha do log: o cartão ainda não tem a caixa do log
+		if _host_box and is_instance_valid(_host_box) and _host_box.is_inside_tree() and net.local_host.log_lines.size() == 1:
+			_build_host()
+		return
+	var lines: Array[String] = net.local_host.log_lines
+	_host_log.text = "\n".join(lines.slice(maxi(lines.size() - 12, 0)))
 
 
 # ---------------------------------------------------------------------------

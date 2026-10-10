@@ -18,12 +18,21 @@ extends Resource
 @export var min_half_width := 5.0
 ## Nome mostrado no menu.
 @export var display_name := ""
+## Bandeira do país nos mastros das arquibancadas: cores e estilo (TrackFlags.flagpole: 0 listras
+## verticais, 1 faixas horizontais, 2 disco no centro sobre a 1ª cor).
+@export var flag_colors := PackedColorArray([Color(0.1, 0.6, 0.3), Color(0.97, 0.97, 0.97), Color(0.86, 0.12, 0.17)])
+@export var flag_style := 0
 
 @export_group("Cidade")
 ## Dados de um circuito de rua (gerados por tools/build_monaco.py): terreno, costa, prédios, ruas,
 ## árvores, píeres e barcos. Com isso o RaceTrack gera a cidade, o mar e o túnel no lugar do
 ## campo (terreno com montanhas, árvores, folhagem, pinheiros, cenário e grama).
 @export_file("*.json") var city := ""
+
+@export_group("Relevo")
+## Relevo de base do terreno dos circuitos de campo com subidas (gerado por tools/build_suzuka.py):
+## grade de alturas suave presa à altura da pista; os morros somam por cima. Vazio = plano.
+@export_file("*.json") var relief := ""
 
 @export_group("Automático")
 @export var auto_kerbs := true

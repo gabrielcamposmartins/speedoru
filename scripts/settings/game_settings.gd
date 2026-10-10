@@ -254,6 +254,8 @@ func load_settings() -> void:
 
 
 func save_settings() -> void:
+	if NetProtocol.is_server_process():
+		return  # servidor no mesmo PC que o jogo: as configurações são do jogador
 	var cfg := ConfigFile.new()
 	for section in values:
 		for key in values[section]:

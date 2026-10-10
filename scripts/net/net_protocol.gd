@@ -18,6 +18,9 @@ const TRUST_CLIENT_CAR := true
 const DEFAULT_PORT := 7350
 const DEFAULT_HOST := "127.0.0.1"
 const MAX_CLIENTS := 64
+## Servidores com nome guardados no aparelho e últimas conexões (tela de multiplayer).
+const SAVED_SERVERS_MAX := 20
+const SERVER_HISTORY_MAX := 8
 
 # --- Amigos ----------------------------------------------------------------------
 ## Sem 0/O, 1/I/L (para ditar o código em voz alta).
@@ -56,8 +59,83 @@ const BTN_REVERSE := 4
 
 ## Volta mais rápida plausível em Monza (s): resultados de corrida solo abaixo disso são recusados.
 const MIN_PLAUSIBLE_LAP := 78.0
-## O mesmo por pista (Mônaco é bem mais curta).
-const MIN_LAP_BY_TRACK := {"monza": MIN_PLAUSIBLE_LAP, "monaco": 55.0}
+## O mesmo por pista (Mônaco é bem mais curta; Suzuka tem o comprimento de Monza, mas bem mais curvas).
+const MIN_LAP_BY_TRACK := {"monza": MIN_PLAUSIBLE_LAP, "monaco": 55.0, "suzuka": 85.0}
+
+
+## Lê o endereço que o jogador digitou: "host", "host:porta", IPv6 puro ("2001:db8::1") ou IPv6
+## com porta entre colchetes ("[2001:db8::1]:7350"). Devolve {host, port}; host "" se inválido.
+static func parse_address(text: String, default_port := DEFAULT_PORT) -> Dictionary:
+	var s := text.strip_edges()
+	var host := s
+	var port := default_port
+	if s.begins_with("["):
+		var close := s.find("]")
+		if close < 0:
+			return {"host": "", "port": default_port}
+		host = s.substr(1, close - 1)
+		var rest := s.substr(close + 1)
+		if rest.begins_with(":"):
+			port = _port(rest.substr(1))
+		elif rest != "":
+			port = -1
+	elif s.count(":") == 1:
+		# host:porta (IPv6 sem colchetes tem dois ou mais ":" e fica inteiro como host)
+		host = s.get_slice(":", 0)
+		port = _port(s.get_slice(":", 1))
+	host = host.strip_edges()
+	if host == "" or port <= 0 or host.contains(" "):
+		return {"host": "", "port": default_port}
+	return {"host": host, "port": port}
+
+
+## Endereço para mostrar/guardar: IPv6 vai entre colchetes ("[::1]:7350").
+static func format_address(host: String, port: int) -> String:
+	return ("[%s]:%d" if host.contains(":") else "%s:%d") % [host, port]
+
+
+## IPv6 na forma curta (sem zeros à esquerda, a maior sequência de zeros vira "::"), mais fácil de
+## ditar: "2804:14c:0:0:0:0:0:11a8" -> "2804:14c::11a8". IPv4 e nomes voltam como estão.
+static func compact_ipv6(ip: String) -> String:
+	if not ip.contains(":") or ip.contains("::") or ip.count(":") != 7:
+		return ip
+	var parts := ip.to_lower().split(":")
+	for i in parts.size():
+		if not parts[i].is_valid_hex_number():
+			return ip
+		parts[i] = "%x" % parts[i].hex_to_int()
+	# Maior sequência de "0" (de pelo menos dois grupos)
+	var best := -1
+	var best_len := 1
+	var i := 0
+	while i < parts.size():
+		if parts[i] == "0":
+			var j := i
+			while j < parts.size() and parts[j] == "0":
+				j += 1
+			if j - i > best_len:
+				best = i
+				best_len = j - i
+			i = j
+		else:
+			i += 1
+	if best < 0:
+		return ":".join(parts)
+	return ":".join(parts.slice(0, best)) + "::" + ":".join(parts.slice(best + best_len))
+
+
+static func _port(text: String) -> int:
+	var t := text.strip_edges()
+	if not t.is_valid_int():
+		return -1
+	var p := t.to_int()
+	return p if p > 0 and p < 65536 else -1
+
+
+## Este processo é o servidor dedicado (--server)? O servidor aberto pelo jogo roda no mesmo PC
+## e na mesma pasta de dados: ele não grava o perfil nem as configurações do jogador.
+static func is_server_process() -> bool:
+	return "--server" in OS.get_cmdline_user_args() + OS.get_cmdline_args()
 
 
 static func min_lap(track: String) -> float:
