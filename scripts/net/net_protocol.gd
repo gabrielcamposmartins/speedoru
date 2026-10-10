@@ -16,7 +16,9 @@ const VERSION := 5
 ## PENDENTE (produção): desligar e validar no servidor que a conta tem as skins e peças.
 const TRUST_CLIENT_CAR := true
 const DEFAULT_PORT := 7350
-const DEFAULT_HOST := "127.0.0.1"
+## Servidor oficial (VM em São Paulo, docker/server/compose.yml). Quem escolheu outro endereço na
+## aba SERVIDOR continua nele: o escolhido fica salvo no aparelho.
+const DEFAULT_HOST := "speedoru.padoru.org"
 const MAX_CLIENTS := 64
 ## Servidores com nome guardados no aparelho e últimas conexões (tela de multiplayer).
 const SAVED_SERVERS_MAX := 20

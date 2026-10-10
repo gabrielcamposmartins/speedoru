@@ -1,0 +1,47 @@
+# Servidor oficial do Speedoru: servidor dedicado + banco libSQL (o servidor do Turso).
+#
+# Na VM (/srv/speedoru):
+#   docker compose pull && docker compose up -d
+#   docker compose logs -f server
+#
+# Os jogadores conectam em speedoru.padoru.org:7350 (UDP). O banco não publica porta: só o
+# servidor do jogo o alcança, pela rede deste Compose.
+#
+# Para usar o Turso na nuvem em vez do banco local: apague o serviço "db" e o depends_on, e troque
+# TURSO_DATABASE_URL por libsql://<banco>-<org>.turso.io, com TURSO_AUTH_TOKEN num arquivo .env.
+name: speedoru
+
+services:
+  db:
+    image: ghcr.io/tursodatabase/libsql-server:latest
+    environment:
+      - SQLD_NODE=primary
+    volumes:
+      - db-data:/var/lib/sqld
+    healthcheck:
+      # a imagem não tem curl/wget; bash com /dev/tcp resolve
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8080"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+    restart: unless-stopped
+
+  server:
+    image: southamerica-east1-docker.pkg.dev/gen-lang-client-0425635607/speedoru/server:latest
+    environment:
+      - TURSO_DATABASE_URL=http://db:8080
+      - TURSO_AUTH_TOKEN=${TURSO_AUTH_TOKEN:-}
+    ports:
+      - "7350:7350/udp"
+    volumes:
+      - server-data:/home/godot/.local/share/godot/app_userdata/Speedoru
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+    stop_grace_period: 15s
+
+volumes:
+  db-data:
+  server-data:

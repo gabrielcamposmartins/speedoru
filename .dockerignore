@@ -1,0 +1,14 @@
+# Contexto da imagem do servidor (docker/server/Dockerfile): só o que o Godot precisa importar.
+.git
+.github
+.godot
+build
+blender
+installer
+tools
+tests
+docker
+**/*.blend
+**/*.blend1
+**/__pycache__
+server.cfg
