@@ -31,7 +31,10 @@ FROM debian:bookworm-slim
 RUN apt-get update -q \
  && apt-get install -y -q --no-install-recommends ca-certificates libfontconfig1 \
  && rm -rf /var/lib/apt/lists/* \
- && useradd --create-home --uid 1000 godot
+ && useradd --create-home --uid 1000 godot \
+ # a pasta do volume precisa existir com o dono certo: um volume novo copia o dono dela
+ && mkdir -p /home/godot/.local/share/godot/app_userdata/Speedoru \
+ && chown -R godot:godot /home/godot/.local
 COPY --from=godot /usr/local/bin/godot /usr/local/bin/godot
 COPY --from=import --chown=godot:godot /app /app
 USER godot

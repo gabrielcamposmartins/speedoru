@@ -1,7 +1,7 @@
 # Servidor oficial do Speedoru
 
 ```
-jogador ──UDP 7350──> speedoru.padoru.org (VM "speedoru", São Paulo) ──> server ──rede do Compose──> db (libSQL)
+jogador ──UDP 7350──> speedoru.padoru.org (VM "speedoru", São Paulo) ──> server ──rede do Compose──> libsql
 ```
 
 | | |
