@@ -13,6 +13,8 @@ extends HBoxContainer
 ## * Decalques: SVG (padrão ganho ou da pasta do jogador) em cada lugar do carro, com cor livre
 ##   (seletor), e posição/tamanho/largura/giro numa prévia do lugar (arrastar e roda) ou nos sliders;
 ##   a câmera da garagem vai até o lugar (focus_request).
+## * Skin: exporta o MOLDE (o carro planificado, CarSkinTemplate) para pintar num editor de imagem
+##   e importa a pintura (CarSkin), que vale por cima das cores e aparece também online.
 ## Cada escolha vai para o Profile (que confere e salva) e para o carro na hora.
 
 const TILE := Vector2(148, 92)
@@ -22,6 +24,7 @@ const CATEGORIES := [
 	["scheme", "Esquema de pintura"],
 	["finish", "Acabamento"],
 	["decals", "Decalques"],
+	["skin", "Skin (pintura livre)"],
 	["primary", "Cor principal"],
 	["secondary", "Cor secundária"],
 	["accent", "Cor de destaque"],
@@ -39,6 +42,7 @@ const CATEGORY_TIPS := {
 	"scheme": "Como as 3 cores se dividem pelo carro: faixas, diagonal, metades, flechas, ondas, camuflagem… Todos vêm com o jogo.",
 	"finish": "Acabamento da pintura (brilhante, metálico, perolado, acetinado, fosco, cromado) e das rodas. Todos vêm com o jogo.",
 	"decals": "Adesivos SVG nas laterais, no bico, na entrada de ar e na asa traseira, na cor, posição e tamanho que você quiser. Ganhe mais nas roletas ou use os seus próprios SVGs.",
+	"skin": "Pinte o carro inteiro num editor de imagem: exporte o molde, pinte por cima e importe. Aparece para todos online.",
 	"primary": "Cor principal do carro: qualquer cor.",
 	"secondary": "Cor secundária do carro: qualquer cor.",
 	"accent": "Cor de destaque (detalhes e faixas): qualquer cor.",
@@ -146,7 +150,7 @@ func _build() -> void:
 		c.queue_free()
 	_pad = null
 	_decal_sliders.clear()
-	_grid.columns = 1 if category in ["engineering", "decals"] else 2
+	_grid.columns = 1 if category in ["engineering", "decals", "skin"] else 2
 	var eq := _profile.equipped
 	for cat in CATEGORIES:
 		if cat[0] == category:
@@ -212,6 +216,9 @@ func _build() -> void:
 		"finish":
 			_note.text = "como a luz reflete na pintura e nas rodas"
 			_build_finishes()
+		"skin":
+			_note.text = "pinte o carro inteiro numa imagem · aparece online"
+			_build_skin()
 		"decals":
 			_note.text = "%d de %d decalques · ganhe mais nas roletas · seus SVGs são livres" % [
 				_profile.owned_decals().size(), CarDecals.PRESETS.size()]
@@ -335,6 +342,138 @@ func _build_decals() -> void:
 		_build())
 	files.add_child(reload)
 	_grid.add_child(files)
+
+
+## Skin: molde para pintar, importar, tirar e as skins já importadas neste aparelho.
+func _build_skin() -> void:
+	var current := str(_profile.equipped.get("skin", ""))
+	var help := Label.new()
+	help.text = "1. Exporte o molde: o seu carro planificado (lados, cima, frente e trás).\n2. Pinte por cima num editor de imagem (Krita, Photoshop, GIMP…), em camadas se quiser.\n3. Importe a imagem (PNG). O que ficar transparente mostra as cores e o esquema."
+	help.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	help.custom_minimum_size = Vector2(TILE.x * 2 + 8, 0)
+	help.add_theme_font_size_override("font_size", 12)
+	help.add_theme_color_override("font_color", Retro.c("text_2"))
+	_grid.add_child(help)
+	var row := row_box()
+	var export := Button.new()
+	export.text = "Exportar molde…"
+	export.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	export.tooltip_text = "Salva um PNG 2048×2048 com o carro como está agora (cores, esquema e skin atual)."
+	export.pressed.connect(_export_template)
+	row.add_child(export)
+	var import := Button.new()
+	import.text = "Importar skin…"
+	import.theme_type_variation = "PrimaryButton"
+	import.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	import.tooltip_text = "PNG, JPG ou WebP pintado sobre o molde (o ideal é 2048×2048)."
+	import.pressed.connect(_import_skin)
+	row.add_child(import)
+	_grid.add_child(row)
+	if current != "":
+		var off := Button.new()
+		off.text = "Tirar a skin (volta às cores)"
+		off.pressed.connect(_profile.set_skin.bind(""))
+		_grid.add_child(off)
+	var own := CarSkin.own_skins()
+	if current != "" and not current in own:
+		own.push_front(current)
+	if own.is_empty():
+		return
+	_grid.add_child(_kicker("SUAS SKINS"))
+	var tiles := GridContainer.new()
+	tiles.columns = 2
+	tiles.add_theme_constant_override("h_separation", 8)
+	tiles.add_theme_constant_override("v_separation", 8)
+	_grid.add_child(tiles)
+	for h: String in own.slice(0, 8):
+		var tex := CarSkin.texture(h)
+		var b := Button.new()
+		b.custom_minimum_size = TILE
+		b.toggle_mode = true
+		b.button_pressed = h == current
+		b.tooltip_text = "Skin em uso" if h == current else "Usar esta skin (botão direito: apagar)"
+		if tex:
+			# Miniatura: lado direito e vista de cima (o resto do molde é quase vazio)
+			var full := tex.get_image()
+			full.clear_mipmaps()
+			var k := float(full.get_width()) / CarSkin.SIZE
+			var side: Rect2i = CarSkin.RECTS[CarSkin.Face.RIGHT]
+			var top: Rect2i = CarSkin.RECTS[CarSkin.Face.TOP]
+			var crop := Rect2i(Vector2i(Vector2(side.position) * k), Vector2i(Vector2(side.size.x, top.end.y - side.position.y) * k))
+			var thumb := full.get_region(crop)
+			thumb.resize(int(TILE.x) - 16, int((TILE.x - 16) * crop.size.y / crop.size.x), Image.INTERPOLATE_BILINEAR)
+			b.icon = ImageTexture.create_from_image(thumb)
+			b.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		else:
+			b.text = "baixando…"
+		b.pressed.connect(_profile.set_skin.bind(h))
+		b.gui_input.connect(func(ev: InputEvent) -> void:
+			if ev is InputEventMouseButton and ev.pressed and ev.button_index == MOUSE_BUTTON_RIGHT and h != current:
+				CarSkin.delete(h)
+				_build())
+		tiles.add_child(b)
+
+
+## Pasta inicial dos diálogos de arquivo: Documentos/Speedoru.
+static func _docs_dir() -> String:
+	var d := OS.get_system_dir(OS.SYSTEM_DIR_DOCUMENTS).path_join("Speedoru")
+	DirAccess.make_dir_recursive_absolute(d)
+	return d
+
+
+func _file_dialog(mode: FileDialog.FileMode, title: String, file_name: String, filters: PackedStringArray, on_file: Callable) -> void:
+	var fd := FileDialog.new()
+	fd.file_mode = mode
+	fd.access = FileDialog.ACCESS_FILESYSTEM
+	fd.use_native_dialog = true
+	fd.title = title
+	fd.filters = filters
+	fd.current_dir = _docs_dir()
+	if file_name != "":
+		fd.current_file = file_name
+	fd.file_selected.connect(func(path: String) -> void:
+		fd.queue_free()
+		on_file.call(path))
+	fd.canceled.connect(fd.queue_free)
+	add_child(fd)
+	fd.popup_centered_ratio(0.6)
+
+
+func _export_template() -> void:
+	_file_dialog(FileDialog.FILE_MODE_SAVE_FILE, "Salvar o molde da skin", "speedoru_molde.png",
+		PackedStringArray(["*.png ; Imagem PNG"]), func(path: String) -> void: export_template_to(path))
+
+
+## Gera o molde do carro e salva em `path` (PNG). Devolve o erro (OK se salvou).
+func export_template_to(path: String, show := true) -> Error:
+	if car == null or car.config == null:
+		return ERR_UNCONFIGURED
+	_note.text = "gerando o molde…"
+	var img := await CarSkinTemplate.render(self, car.config)
+	if path.get_extension().to_lower() != "png":
+		path += ".png"
+	var err := img.save_png(path)
+	_note.text = ("molde salvo em %s" % path) if err == OK else "não deu para salvar o molde (%d)" % err
+	if err == OK and show:
+		OS.shell_show_in_file_manager(path)
+	return err
+
+
+func _import_skin() -> void:
+	_file_dialog(FileDialog.FILE_MODE_OPEN_FILE, "Importar a skin pintada", "",
+		PackedStringArray(["*.png, *.jpg, *.jpeg, *.webp ; Imagens"]), func(path: String) -> void: import_skin_from(path))
+
+
+## Importa a imagem pintada e já equipa. Devolve o resultado de CarSkin.import_file.
+func import_skin_from(path: String) -> Dictionary:
+	_note.text = "importando…"
+	var res := await CarSkin.import_file_async(path)
+	if res.get("ok", false):
+		_profile.set_skin(res["hash"])
+		_note.text = "skin importada e equipada"
+	else:
+		_note.text = str(res.get("error", "não deu para importar"))
+	return res
 
 
 ## Cor (seletor livre), prévia do lugar (arrastar = mover) e os ajustes do decalque escolhido.
@@ -794,6 +933,15 @@ class IconTab extends Button:
 						pts.append(c + Vector2(clampf(q.x, -13.0, 13.0), q.y))
 					draw_colored_polygon(pts, cols[i])
 				draw_rect(body, ink, false, 1.0)
+			"skin":
+				# Rolo de pintura: rolo, cabo e um rastro de tinta colorida
+				draw_rect(Rect2(c + Vector2(-12, 5), Vector2(24, 6)), Retro.c("accent"))
+				draw_rect(Rect2(c + Vector2(-12, 5), Vector2(12, 6)), Retro.c("accent_2"))
+				draw_rect(Rect2(c + Vector2(-9, -12), Vector2(18, 8)), ink)
+				draw_line(c + Vector2(9, -8), c + Vector2(13, -8), ink, 2.0)
+				draw_line(c + Vector2(13, -8), c + Vector2(13, -1), ink, 2.0)
+				draw_line(c + Vector2(13, -1), c + Vector2(1, -1), ink, 2.0)
+				draw_line(c + Vector2(1, -1), c + Vector2(1, 4), ink, 3.0)
 			"decals":
 				# Estrela (adesivo) com a ponta descolando
 				var pts := PackedVector2Array()

@@ -36,6 +36,11 @@ var _next_id := 1
 var _ready_ok := false
 ## Peers saindo agora (não recebem mais nada).
 var _gone := {}
+## Skins (CarSkin): pasta das imagens, cache em memória (hash -> bytes) e quem espera cada uma.
+var _skin_dir := ""
+var _skin_cache := {}
+var _skin_waiting := {}
+const SKIN_CACHE_MAX := 64
 
 
 func _ready() -> void:
@@ -78,6 +83,8 @@ func _ready() -> void:
 		return
 	_ready_ok = true
 	print("Servidor: ouvindo na porta %d" % cfg["port"])
+	_skin_dir = ProjectSettings.globalize_path(cfg["host_dir"].path_join("skins") if cfg["host_dir"] != "" else "user://server_skins")
+	DirAccess.make_dir_recursive_absolute(_skin_dir)
 	if cfg["host_dir"] != "":
 		host_control = HostControl.new()
 		host_control.name = "HostControl"
@@ -111,6 +118,81 @@ func _config() -> Dictionary:
 		elif a.begins_with("--host-session="):
 			out["session"] = a.substr(15)
 	return out
+
+
+# ---------------------------------------------------------------------------
+# Skins (imagens pintadas pelos jogadores; CarSkin)
+# ---------------------------------------------------------------------------
+func _skin_path(h: String) -> String:
+	return _skin_dir.path_join(h + ".webp")
+
+
+func _skin_bytes(h: String) -> PackedByteArray:
+	if _skin_cache.has(h):
+		return _skin_cache[h]
+	if not CarSkin.valid_hash(h) or not FileAccess.file_exists(_skin_path(h)):
+		return PackedByteArray()
+	var bytes := FileAccess.get_file_as_bytes(_skin_path(h))
+	_skin_remember(h, bytes)
+	return bytes
+
+
+func _skin_remember(h: String, bytes: PackedByteArray) -> void:
+	if _skin_cache.size() >= SKIN_CACHE_MAX:
+		_skin_cache.erase(_skin_cache.keys()[0])
+	_skin_cache[h] = bytes
+
+
+## A conta equipou uma skin que o servidor ainda não tem: pede a imagem ao jogo dela.
+func _ask_skin(peer: int) -> void:
+	var s := _session(peer)
+	if s.is_empty():
+		return
+	var h := str(s["profile"].equipped.get("skin", ""))
+	if CarSkin.valid_hash(h) and _skin_bytes(h).is_empty():
+		print("Servidor: pedindo a skin %s… a %s" % [h.substr(0, 8), s["account"]["name"]])
+		_send(peer, "skin_need", {"hash": h})
+
+
+func _skin_get(peer: int, h: String) -> void:
+	if not CarSkin.valid_hash(h):
+		return
+	var bytes := _skin_bytes(h)
+	if not bytes.is_empty():
+		_send(peer, "skin", {"hash": h, "data": bytes})
+		return
+	# Ainda não tem: guarda o pedido e chama quem está com ela equipada
+	if not _skin_waiting.has(h):
+		_skin_waiting[h] = []
+	if not peer in _skin_waiting[h]:
+		_skin_waiting[h].append(peer)
+	for p: int in sessions:
+		if str(sessions[p]["profile"].equipped.get("skin", "")) == h:
+			_send(p, "skin_need", {"hash": h})
+			break
+
+
+## Imagem mandada pelo dono: só a skin equipada da conta, conferida (hash, tamanho, WebP).
+func _skin_upload(peer: int, data: Dictionary) -> void:
+	var h := str(data.get("hash", ""))
+	var bytes: Variant = data.get("data")
+	var s := _session(peer)
+	if not bytes is PackedByteArray or str(s["profile"].equipped.get("skin", "")) != h:
+		return
+	if not CarSkin.check_net_bytes(h, bytes):
+		_error(peer, data, "Skin inválida (imagem corrompida ou grande demais).")
+		return
+	if _skin_bytes(h).is_empty():
+		var f := FileAccess.open(_skin_path(h), FileAccess.WRITE)
+		if f:
+			f.store_buffer(bytes)
+			f.close()
+		_skin_remember(h, bytes)
+		print("Servidor: skin %s… recebida de %s (%d KB)" % [h.substr(0, 8), s["account"]["name"], bytes.size() / 1024])
+	for p: int in _skin_waiting.get(h, []):
+		if sessions.has(p):
+			_send(p, "skin", {"hash": h, "data": bytes})
+	_skin_waiting.erase(h)
 
 
 # ---------------------------------------------------------------------------
@@ -310,6 +392,10 @@ func on_message(peer: int, type: String, data: Dictionary) -> void:
 			await _ranking(peer, data)
 		"race_cmd":
 			_race_cmd(peer, data)
+		"skin_get":
+			_skin_get(peer, str(data.get("hash", "")))
+		"skin_upload":
+			_skin_upload(peer, data)
 		_:
 			_error(peer, data, "Mensagem desconhecida: %s" % type)
 
@@ -363,6 +449,7 @@ func _hello(peer: int, data: Dictionary) -> void:
 		online[acc["id"]] = []
 	online[acc["id"]].append(peer)
 	_send(peer, "welcome", {"account": _account_payload(sessions[peer])})
+	_ask_skin(peer)
 	if not was_online:
 		await _broadcast_presence(acc["id"], true)
 
@@ -439,6 +526,7 @@ func _equip(peer: int, data: Dictionary) -> void:
 	else:
 		# Só o que a conta tem (clamp_equipped volta o resto para o gratuito)
 		s["profile"].apply_requested_equipped(eq)
+	_ask_skin(peer)
 	await _commit_account(peer)
 
 

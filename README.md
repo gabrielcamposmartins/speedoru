@@ -437,6 +437,32 @@ e a meta de longo prazo). Catálogo e regras em `scripts/economy/shop_catalog.gd
   carroceria (camada `CAR_LAYER`) e tingidos com a cor. Ficam em `equipped["decals"]` (validado
   também pelo servidor); online os outros veem os padrão, os SVGs próprios só aparecem para quem
   tem o arquivo.
+- **Skin (pintura livre)** (aba do Estúdio com o rolo de pintura; `scripts/car/car_skin.gd`,
+  `car_skin_template.gd`, shader `car_paint`): o jogador pinta o carro inteiro num editor de
+  imagem. **Exportar molde…** salva (diálogo do sistema, começa em Documentos/Speedoru) um PNG
+  2048×2048 com o carro **planificado**: lado esquerdo, lado direito, cima (vale também para baixo),
+  frente e trás, do jeito que o carro está (cores, esquema e skin atual), sem luz, só as superfícies
+  pintáveis, com contorno e legendas fora do carro. **Importar skin…** lê o PNG/JPG/WebP pintado por
+  cima (numa thread: uma imagem grande leva alguns segundos e o jogo não pode travar online) e já
+  equipa; o que ficar **transparente** mostra a pintura normal. "Tirar a skin" volta às cores; "Suas
+  skins" lista as importadas (clique usa, botão direito apaga).
+  - **Planificação por projeção** no espaço do carro (todas as peças da carroceria estão nele): cada
+    face pega a vista para a qual mais aponta (maior componente da normal), na caixa X ±1,1 m,
+    Y 0–1,2 m, Z ±3,2 m (cabe em todas as peças), a 300 px/m. Por isso o molde vale para qualquer
+    combinação de peças (um UV por peça quebraria a cada troca). O molde é gerado renderizando o
+    próprio carro com câmeras ortográficas do tamanho exato de cada vista (`CarSkin.face_camera`) e
+    o shader em modo molde (`template_view`: só as faces daquela vista, cor pura pela emissão), então
+    o que se pinta cai exatamente onde aparece; o `skin_test` confere a ida e volta (molde →
+    importado → molde de novo dá a mesma imagem). Peças que se mexem (rodas, volante, piloto, flap
+    do DRS) ficam com a cor do slot.
+  - **Arquivos** (`user://skins/`): `<hash>.hd.webp` (2048 px, de quem importou) e `<hash>.webp` (versão
+    da rede, 1024 px, até 1 MB; se não couber cai para 768/512). O hash SHA-256 dessa versão é o que
+    fica em `equipped["skin"]`.
+  - **Online** todos veem: ao equipar (ou entrar), se o servidor não tem a imagem ele pede ao jogo
+    (`skin_need` → `skin_upload`, só da skin equipada pela conta, conferida: hash, tamanho, WebP
+    quadrado). Quem precisa de uma skin que não tem (carros dos outros na corrida) pede
+    (`skin_get` → `skin`) e o carro troca a pintura quando ela chega; fica guardada no aparelho. O
+    servidor guarda as imagens em `user://server_skins/` (o hospedado, na pasta do host).
 - **Engenharia** (primeira aba do Estúdio, a da chave inglesa, na garagem e no Tab da corrida): o
   comportamento do carro, nunca a aparência. Grupos Aerodinâmica (carga, arrasto, balanço), Freios
   (força, balanço), Pneus (aderência dianteira/traseira, ângulo de pico, queda depois do limite,
@@ -1157,7 +1183,9 @@ godot --headless --path . -s res://tests/compile_check.gd   # carrega todos os s
 godot --headless --path . -s res://tests/ccd_probe.gd       # carro não "para do nada" em zebra/raspão a 320 km/h e não atravessa muros
 godot --headless --path . -s res://tests/highspeed_probe.gd # pneus em alta velocidade: carga, aderência, boost, toque de direção, batente
 godot --headless --path . -s res://tests/net_test.gd        # multiplayer de ponta a ponta, com votações de pausa/voltar/recomeçar (precisa do libSQL local; SPEEDORU_TEST_DB=local usa o banco em arquivo)
-godot --headless --path . -s res://tests/host_test.gd       # endereços IPv4/IPv6, banco local, hospedar (entrar por ::1, status, tirar, fechar, batimento), salvos e histórico (+ -- <Speedoru.exe> = build exportada)
+godot --headless --path . -s res://tests/host_test.gd       # endereços IPv4/IPv6, banco local, hospedar (entrar por ::1, status, tirar, fechar, batimento), skins pela rede, salvos e histórico (+ -- <Speedoru.exe> = build exportada)
+godot --path . -s res://tests/skin_test.gd -- [pasta]        # skin: planificação, importar/arquivos, ida e volta pelo molde, pintar um lado só muda ele (com janela)
+godot --path . -s res://tests/capture_skin.gd -- <pasta> --offline # aba Skin, molde exportado, pintura simulada importada e o carro na garagem
 godot --path . -s res://tests/capture_host.gd -- <pasta> [porta] --offline # aba SERVIDOR: salvos, histórico, hospedando com um amigo, log
 godot --headless --path . -s res://tests/puppet_wheel_test.gd # rodas dos carros da rede: altura do servidor, esterço e giro, sem tremer
 godot --headless --path . -s res://tests/updater_test.gd    # atualizador: versões e download/SHA-256 da última release (internet)

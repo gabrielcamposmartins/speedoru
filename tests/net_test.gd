@@ -307,11 +307,12 @@ func _run() -> void:
 
 
 func _clean_local() -> void:
-	var dir := ProjectSettings.globalize_path(LOCAL_DIR)
-	if DirAccess.dir_exists_absolute(dir):
-		for f in DirAccess.get_files_at(dir):
-			DirAccess.remove_absolute(dir.path_join(f))
-		DirAccess.remove_absolute(dir)
+	for d in [LOCAL_DIR.path_join("skins"), LOCAL_DIR]:
+		var dir := ProjectSettings.globalize_path(d)
+		if DirAccess.dir_exists_absolute(dir):
+			for f in DirAccess.get_files_at(dir):
+				DirAccess.remove_absolute(dir.path_join(f))
+			DirAccess.remove_absolute(dir)
 
 
 func _finish() -> void:

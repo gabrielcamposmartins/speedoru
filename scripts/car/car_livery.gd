@@ -9,6 +9,8 @@ extends RefCounted
 ##
 ## A pintura (Livery_*) usa o shader car_paint: as 3 cores e o ESQUEMA (CarConfig.PAINT_SCHEMES)
 ## que divide as cores pela carroceria. Peças que se mexem usam a variante "#plain" (cor do slot).
+## A SKIN do jogador (CarSkin) vai por cima, no mesmo shader; se a imagem ainda não chegou do
+## servidor, aplica quando chegar (CarSkin.events().skin_ready).
 
 ## Slots de pintura do modelo (cor 1, 2 e 3).
 const LIVERY_SLOTS := ["Livery_Primary", "Livery_Secondary", "Livery_Accent"]
@@ -17,6 +19,9 @@ const PLAIN_PREFIXES := ["Rim", "Driver", "Steering", "DRSFlap"]
 const PAINT_SHADER := preload("res://shaders/car/car_paint.gdshader")
 
 var materials: Dictionary = {}
+## Skin pedida pela configuração ("" = sem) e se a textura já está nos materiais.
+var skin := ""
+var _skin_applied := false
 
 
 func _init() -> void:
@@ -53,11 +58,43 @@ func update_from_config(config: CarConfig) -> void:
 			mat.set_shader_parameter("color_accent", config.accent_color)
 			mat.set_shader_parameter("scheme", clampi(config.paint_scheme, 0, CarConfig.PAINT_SCHEMES.size() - 1))
 			apply_paint_finish(mat, config.paint_finish)
+	set_skin(config.skin)
 	_set_color("Rim", config.rim_color)
 	_set_color("Helmet", config.helmet_color)
 	_set_color("Suit", config.suit_color)
 	_set_color("Tire_Stripe", config.compound_color())
 	apply_rim_finish(materials["Rim"], config.rim_finish)
+
+
+## Liga a skin (hash do CarSkin) nos materiais da pintura; "" desliga.
+func set_skin(h: String) -> void:
+	if h == skin and (_skin_applied or h == ""):
+		return
+	skin = h
+	var tex: Texture2D = CarSkin.texture(h) if h != "" else null
+	_skin_applied = tex != null
+	for slot in LIVERY_SLOTS:
+		for key in [slot, slot + "#plain"]:
+			var mat: ShaderMaterial = materials[key]
+			mat.set_shader_parameter("use_skin", tex != null)
+			mat.set_shader_parameter("skin_tex", tex)
+	if h != "" and tex == null:
+		var ev := CarSkin.events()
+		if not ev.skin_ready.is_connected(_on_skin_ready):
+			ev.skin_ready.connect(_on_skin_ready)
+
+
+func _on_skin_ready(h: String) -> void:
+	if h == skin and not _skin_applied:
+		skin = ""
+		set_skin(h)
+
+
+## Modo molde (CarSkinTemplate): só as faces da vista `view`, sem luz; -1 volta ao normal.
+func set_template_view(view: int) -> void:
+	for slot in LIVERY_SLOTS:
+		for key in [slot, slot + "#plain"]:
+			(materials[key] as ShaderMaterial).set_shader_parameter("template_view", view)
 
 
 ## Troca os materiais importados do .glb pelos materiais toon correspondentes.
@@ -90,6 +127,9 @@ static func _paint(slot: int, plain: bool) -> ShaderMaterial:
 	mat.set_shader_parameter("slot", slot)
 	mat.set_shader_parameter("plain", plain)
 	mat.set_shader_parameter("flake_tex", _flakes())
+	mat.set_shader_parameter("skin_rects", CarSkin.rects_uniform())
+	mat.set_shader_parameter("skin_box_min", CarSkin.BOX_MIN)
+	mat.set_shader_parameter("skin_box_max", CarSkin.BOX_MAX)
 	apply_paint_finish(mat, 0)
 	return mat
 

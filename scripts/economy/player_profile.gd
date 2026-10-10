@@ -74,6 +74,7 @@ static func default_equipped() -> Dictionary:
 		"rim_finish": 0,
 		"setup": {},
 		"decals": {},
+		"skin": "",
 	}
 
 
@@ -421,6 +422,12 @@ func set_finish(kind: String, index: int) -> void:
 		_commit()
 
 
+## Equipa uma skin (hash do CarSkin; "" tira). Online, o servidor pede a imagem se não tiver.
+func set_skin(h: String) -> void:
+	equipped["skin"] = h if CarSkin.valid_hash(h) else ""
+	_commit()
+
+
 func has_neon() -> bool:
 	return not owned_of_type("neon").is_empty()
 
@@ -488,6 +495,11 @@ func clamp_equipped() -> void:
 	equipped["paint_finish"] = clampi(int(equipped.get("paint_finish", 0)), 0, CarConfig.PAINT_FINISHES.size() - 1)
 	equipped["paint_scheme"] = clampi(int(equipped.get("paint_scheme", 0)), 0, CarConfig.PAINT_SCHEMES.size() - 1)
 	equipped["rim_finish"] = clampi(int(equipped.get("rim_finish", 0)), 0, CarConfig.RIM_FINISHES.size() - 1)
+	# Skin: hash válido; no aparelho, só se o arquivo ainda existe (no servidor ele chega depois)
+	var skin := str(equipped.get("skin", ""))
+	if not CarSkin.valid_hash(skin) or (mode == "local" and not CarSkin.has_local(skin)):
+		skin = ""
+	equipped["skin"] = skin
 	equipped["livery"] = _matching_livery()
 
 
@@ -551,5 +563,7 @@ func apply_to_config(config: CarConfig) -> void:
 	if var_to_str(config.decals) != var_to_str(equipped["decals"]):
 		config.decals = (equipped["decals"] as Dictionary).duplicate(true)
 	config.rim_finish = equipped["rim_finish"]
+	if config.skin != str(equipped["skin"]):
+		config.skin = str(equipped["skin"])
 	if equipped["neon"] != "":
 		config.neon_color = Color(equipped["neon"])

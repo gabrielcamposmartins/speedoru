@@ -103,6 +103,12 @@ const RIM_FINISHES := ["Polido", "Cromado", "Acetinado", "Fosco"]
 		decals = value
 		emit_changed()
 
+## Skin pintada pelo jogador (hash do CarSkin; "" = sem skin).
+@export var skin := "":
+	set(value):
+		skin = value
+		emit_changed()
+
 @export_group("Pneus")
 @export var tyre_compound: TyreCompound = TyreCompound.MEDIUM:
 	set(value):

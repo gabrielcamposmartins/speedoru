@@ -378,6 +378,14 @@ func msg(type: String, data: Dictionary) -> void:
 		"error":
 			if not data.has("req"):
 				last_error = str(data.get("error", ""))
+		"skin":
+			CarSkin.receive(str(data.get("hash", "")), data.get("data", PackedByteArray()))
+		"skin_need":
+			# O servidor não tem a imagem da nossa skin: manda (só a que está equipada aqui)
+			var h := str(data.get("hash", ""))
+			var bytes := CarSkin.net_bytes(h)
+			if not bytes.is_empty():
+				send_to_server("skin_upload", {"hash": h, "data": bytes})
 		"kicked":
 			_kicked = true
 			_retry = 0.0

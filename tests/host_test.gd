@@ -13,6 +13,7 @@ extends SceneTree
 
 const PORT := 7361
 const DIR := "user://test_host"
+const SKIN_DIR := "user://test_host_skins"
 
 var failures := 0
 var host: LocalHost
@@ -53,16 +54,18 @@ func _client(tag: String) -> Node:
 
 
 func _clean() -> void:
-	var abs_dir := ProjectSettings.globalize_path(DIR)
-	if DirAccess.dir_exists_absolute(abs_dir):
-		for f in DirAccess.get_files_at(abs_dir):
-			DirAccess.remove_absolute(abs_dir.path_join(f))
-		DirAccess.remove_absolute(abs_dir)
+	for d in [DIR.path_join("skins"), DIR, SKIN_DIR]:
+		var abs_dir := ProjectSettings.globalize_path(d)
+		if DirAccess.dir_exists_absolute(abs_dir):
+			for f in DirAccess.get_files_at(abs_dir):
+				DirAccess.remove_absolute(abs_dir.path_join(f))
+			DirAccess.remove_absolute(abs_dir)
 	for f in ["user://test_host_a.cfg", "user://test_host_b.cfg"]:
 		DirAccess.remove_absolute(ProjectSettings.globalize_path(f))
 
 
 func _run() -> void:
+	CarSkin.dir = SKIN_DIR
 	_clean()
 	_addresses()
 	await _store()
@@ -179,6 +182,7 @@ func _hosting() -> void:
 		_check(a.server_name("10.0.0.9", 7350) == "10.0.0.9:7350", "sem nome, usa o endereço")
 		a.forget_server("10.0.0.9", 7350)
 		_check(a.saved_servers().size() == 1, "remover servidor salvo")
+		await _skins()
 		# Tirar o B
 		var b_id: String = b.account["id"]
 		host.kick(b_id)
@@ -211,6 +215,44 @@ func _hosting() -> void:
 		print("--- log do servidor
 " + "
 ".join(host.log_lines))
+
+
+## Skin pela rede: A equipa, o servidor pede a imagem e A manda; B (sem o arquivo) pede e recebe.
+func _skins() -> void:
+	# Ruído puro: o pior caso de tamanho (a versão da rede tem que caber em 1 MB)
+	var noise := Crypto.new().generate_random_bytes(CarSkin.SIZE * CarSkin.SIZE * 4)
+	var img := Image.create_from_data(CarSkin.SIZE, CarSkin.SIZE, false, Image.FORMAT_RGBA8, noise)
+	var t0 := Time.get_ticks_msec()
+	var res := await CarSkin.import_image_async(img)
+	print("  importar (numa thread, sem travar a conexão): %d ms" % (Time.get_ticks_msec() - t0))
+	_check(a.online, "A continua conectado depois de importar")
+	_check(res.get("ok", false), "skin de ruído importada (%s)" % res.get("error", "ok"))
+	var h: String = res.get("hash", "")
+	var got_need := []
+	a.message.connect(func(type: String, data: Dictionary) -> void:
+		if type == "skin_need":
+			got_need.append(data["hash"]))
+	var eq := PlayerProfile.default_equipped()
+	eq["skin"] = h
+	a.send_to_server("equip", {"equipped": eq})
+	_check(await _wait_for(func() -> bool: return got_need.has(h), 5.0), "servidor pediu a imagem da skin a quem equipou")
+	await create_timer(1.0).timeout
+	var on_server := ProjectSettings.globalize_path(DIR).path_join("skins").path_join(h + ".webp")
+	_check(FileAccess.file_exists(on_server), "servidor guardou a skin")
+	# B não tem o arquivo: pede e recebe
+	var bytes := CarSkin.net_bytes(h)
+	CarSkin.delete(h)
+	var got := []
+	b.message.connect(func(type: String, data: Dictionary) -> void:
+		if type == "skin":
+			got.append(data))
+	b.send_to_server("skin_get", {"hash": h})
+	_check(await _wait_for(func() -> bool: return not got.is_empty(), 5.0), "B recebeu a skin do servidor")
+	_check(CarSkin.has_local(h) and CarSkin.net_bytes(h) == bytes, "skin recebida gravada igual à original (%d KB)" % (bytes.size() / 1024))
+	# Upload de imagem que não é a equipada é ignorado
+	b.send_to_server("skin_upload", {"hash": "0".repeat(64), "data": bytes})
+	await create_timer(0.5).timeout
+	_check(not FileAccess.file_exists(on_server.get_base_dir().path_join("0".repeat(64) + ".webp")), "upload de skin que a conta não equipou é ignorado")
 
 
 func _finish() -> void:
