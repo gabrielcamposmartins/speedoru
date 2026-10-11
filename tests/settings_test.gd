@@ -90,11 +90,11 @@ func _run() -> void:
 
 	# Músicas
 	for t in music.TRACKS:
-		var stream := load(t[0]) as AudioStreamWAV
-		_check(stream != null and stream.loop_mode == AudioStreamWAV.LOOP_FORWARD and stream.get_length() > 40.0,
+		var stream := load(t[0]) as AudioStreamMP3
+		_check(stream != null and stream.loop and stream.get_length() > 40.0,
 			"música \"%s\" em loop (%.0f s)" % [t[1], stream.get_length() if stream else 0.0])
 	settings.set_value("audio", "track", 3)
-	_check(music.current == 2 and music.selection == 3, "faixa fixa: Slipstream")
+	_check(music.current == 2 and music.selection == 3, "faixa fixa: Retro Racer")
 	settings.set_value("audio", "music_on", false)
 	_check(not music.is_enabled(), "música desligada")
 	settings.set_value("audio", "music_on", true)

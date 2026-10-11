@@ -1,20 +1,22 @@
 extends Node
 ## Música de fundo (autoload "Music") no bus "Music"; M liga/desliga.
 ##
-## Quatro faixas originais (tools/generate_music.py e tools/generate_music_extra.py), cada uma
-## fecha em loop sem emenda. O menu principal tem o próprio tema (MENU_TRACK, em loop); na pista
+## Seis faixas (MP3 em assets/audio/music/, importadas em loop). O menu principal tem o próprio
+## tema (MENU_TRACK, em loop); na pista
 ## toca a faixa escolhida em Configurações → Áudio ou a playlist (cada faixa duas vezes, depois a
 ## próxima com crossfade). Trocar de cena troca a música na hora (set_context).
 
 const TRACKS := [
-	["res://assets/audio/music/race_theme.wav", "Tema da corrida", "pop anime"],
-	["res://assets/audio/music/synthwave.wav", "Neon Horizon", "synthwave"],
-	["res://assets/audio/music/drum_and_bass.wav", "Slipstream", "drum & bass"],
-	["res://assets/audio/music/chiptune.wav", "Pixel Grand Prix", "chiptune 8-bit"],
+	["res://assets/audio/music/pista_neon.mp3", "Pista Neon"],
+	["res://assets/audio/music/turbo_disco.mp3", "Turbo Disco"],
+	["res://assets/audio/music/retro_racer.mp3", "Retro Racer"],
+	["res://assets/audio/music/sakura_drift.mp3", "Sakura Drift"],
+	["res://assets/audio/music/dragon_rush.mp3", "Dragon Rush"],
+	["res://assets/audio/music/samba_turbo.mp3", "Samba Turbo"],
 ]
 const LOOPS_PER_TRACK := 2
-## Tema do menu principal (Neon Horizon).
-const MENU_TRACK := 1
+## Tema do menu principal (Pista Neon).
+const MENU_TRACK := 0
 const CROSSFADE := 3.0
 const BASE_DB := -4.0
 
@@ -112,7 +114,7 @@ func is_enabled() -> bool:
 func track_names() -> PackedStringArray:
 	var out := PackedStringArray()
 	for t in TRACKS:
-		out.append("%s (%s)" % [t[1], t[2]])
+		out.append(t[1])
 	return out
 
 
