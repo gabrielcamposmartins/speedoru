@@ -1,19 +1,33 @@
 class_name Retro
 extends RefCounted
-## Tema retrofuturista da interface (synthwave + monitor CRT + HUD de ficção científica).
+## Tema da interface, em dois estilos (escolhidos em Configurações → Tela):
 ##
-## Tudo sai de tokens de cor de uma paleta (c("accent"), c("surface")…); as bordas são o acento
-## com transparência (line(1..3)), o brilho é acento e nunca massa. Fontes: Orbitron (display:
-## títulos, números, rótulos curtos em caixa alta) e Chakra Petch (corpo). Geometria reta: raio
-## de 0 a 3 px, cantoneiras em "L" nos painéis principais, etiquetas chanfradas.
+## * "speedoru" (padrão): pop/anime da paleta_speedoru (magenta, ciano, amarelo, roxo, vermelho
+##   sobre azul-noite). Exo 2 itálica pesada nos títulos e números, formas inclinadas, sombra
+##   dura deslocada no lugar do brilho, triângulos nos cantos, retícula e "///".
+## * "retro": retrofuturista (synthwave + monitor CRT + HUD de ficção científica), com as paletas
+##   de PALETTES. Orbitron nos títulos, brilho de neon, cantoneiras em "L", raio de 0 a 3 px.
+##
+## Tudo sai de tokens de cor (c("accent"), c("surface")…); as bordas são o acento com
+## transparência (line(1..3)). Chakra Petch é o corpo nos dois estilos.
 ##
 ## * theme(): Theme para os Controls (botões, seletores, sliders, painéis, popups). É um objeto
 ##   só, atualizado no lugar quando a paleta muda, então os Controls mudam juntos.
 ## * draw_*(): peças desenhadas à mão pelos HUDs (painel, cantoneiras, etiqueta, barra segmentada,
 ##   texto com halo).
-## * A paleta escolhida fica em user://interface.cfg (as que não são grátis se compram na loja).
+## * O estilo e a paleta do Retrô ficam em user://interface.cfg.
 
 const SETTINGS_PATH := "user://interface.cfg"
+
+const STYLE_ORDER := ["speedoru", "retro"]
+const STYLE_NAMES := {"speedoru": "Speedoru", "retro": "Retrô (synthwave)"}
+## Paleta fixa do estilo Speedoru. "good" é o único tom fora da referência (verde-menta: status
+## bom, recorde pessoal, DRS); "ink" e "paper" são o preto e o branco da paleta.
+const SPEEDORU := {"name": "Speedoru", "bg": "0d0d14", "bg_2": "1e1342", "surface": "17112f", "surface_2": "1e1342",
+	"surface_3": "2e2066", "text": "ffffff", "text_2": "ffb0f0", "muted": "a99bd6", "accent": "ff2bd6",
+	"accent_2": "00e8ff", "accent_3": "a259ff", "good": "3dffa8", "bad": "ff2e66", "warn": "ffe73b",
+	"on_accent": "0d0d14", "horizon": "ff2bd6", "ink": "0d0d14", "paper": "ffffff", "pink_soft": "ffb0f0",
+	"cyan_soft": "6cf3ff"}
 
 const PALETTE_ORDER := ["synthwave", "tron", "vaporwave", "fosforo", "ambar"]
 const PALETTES := {
@@ -42,6 +56,9 @@ const PALETTES := {
 const FASTEST := Color("b14dff")
 
 const ORBITRON := preload("res://assets/fonts/orbitron/Orbitron-Variable.ttf")
+const EXO_ITALIC := preload("res://assets/fonts/exo2/Exo2-Italic-Variable.ttf")
+const RETRO_BACKDROP := preload("res://shaders/ui/retro_backdrop.gdshader")
+const SPEEDORU_BACKDROP := preload("res://shaders/ui/speedoru_backdrop.gdshader")
 const CHAKRA := {
 	400: preload("res://assets/fonts/chakra_petch/ChakraPetch-Regular.ttf"),
 	500: preload("res://assets/fonts/chakra_petch/ChakraPetch-Medium.ttf"),
@@ -49,6 +66,7 @@ const CHAKRA := {
 	700: preload("res://assets/fonts/chakra_petch/ChakraPetch-Bold.ttf"),
 }
 
+static var style := "speedoru"
 static var palette_id := "synthwave"
 static var events := Events.new()
 ## O jogador está usando controle/teclado nos menus (último evento foi de navegação, não do mouse).
@@ -58,6 +76,7 @@ static var _colors := {}
 static var _display := {}
 static var _theme: Theme
 static var _scan_tex: ImageTexture
+static var _dots_tex: ImageTexture
 static var _loaded := false
 
 
@@ -73,9 +92,10 @@ static func c(token: String) -> Color:
 	return _colors.get(token, Color.MAGENTA)
 
 
-## Bordas: acento com 14 / 24 / 42 % (fraca, média, forte).
+## Bordas: acento com 14 / 24 / 42 % (fraca, média, forte); no Speedoru, mais fortes.
 static func line(level := 2) -> Color:
-	return Color(c("accent"), [0.0, 0.14, 0.24, 0.42][clampi(level, 1, 3)])
+	var alphas := [0.0, 0.22, 0.42, 0.8] if is_pop() else [0.0, 0.14, 0.24, 0.42]
+	return Color(c("accent"), alphas[clampi(level, 1, 3)])
 
 
 ## Cor de contexto (equipe, composto…): nas paletas monocromáticas vira o acento.
@@ -84,7 +104,32 @@ static func ctx(color: Color) -> Color:
 
 
 static func is_mono() -> bool:
-	return PALETTES[palette_id].get("mono", false)
+	return _palette().get("mono", false)
+
+
+## Estilo Speedoru (pop) ativo.
+static func is_pop() -> bool:
+	return style == "speedoru"
+
+
+static func _palette() -> Dictionary:
+	return SPEEDORU if is_pop() else PALETTES[palette_id]
+
+
+static func style_names() -> PackedStringArray:
+	var out := PackedStringArray()
+	for id in STYLE_ORDER:
+		out.append(STYLE_NAMES[id])
+	return out
+
+
+static func set_style(id: String) -> void:
+	if not STYLE_NAMES.has(id) or id == style:
+		return
+	style = id
+	_display.clear()
+	_apply()
+	save_settings()
 
 
 static func palette_names() -> PackedStringArray:
@@ -107,12 +152,15 @@ static func load_settings() -> void:
 	if cfg.load(SETTINGS_PATH) == OK:
 		var id := str(cfg.get_value("ui", "palette", "synthwave"))
 		palette_id = id if PALETTES.has(id) else "synthwave"
+		var st := str(cfg.get_value("ui", "style", "speedoru"))
+		style = st if STYLE_NAMES.has(st) else "speedoru"
 	_loaded = true
 	_apply()
 
 
 static func save_settings() -> void:
 	var cfg := ConfigFile.new()
+	cfg.set_value("ui", "style", style)
 	cfg.set_value("ui", "palette", palette_id)
 	cfg.save(SETTINGS_PATH)
 
@@ -125,25 +173,27 @@ static func _ensure() -> void:
 
 
 static func _apply() -> void:
-	var p: Dictionary = PALETTES[palette_id]
+	var p := _palette()
 	_colors.clear()
 	for key in p:
 		if p[key] is String and key != "name":
 			_colors[key] = Color(p[key])
 	if _theme:
-		_fill_theme(_theme)
+		_refill(_theme)
 	events.changed.emit()
 
 
 # ---------------------------------------------------------------------------
 # Fontes
 # ---------------------------------------------------------------------------
-## Orbitron (variável) no peso pedido.
+## Fonte de títulos e números no peso pedido: Exo 2 itálica (Speedoru, um grau mais pesada)
+## ou Orbitron (Retrô), ambas variáveis.
 static func display(weight := 700) -> Font:
 	if not _display.has(weight):
 		var f := FontVariation.new()
-		f.base_font = ORBITRON
-		f.variation_opentype = {TextServerManager.get_primary_interface().name_to_tag("wght"): weight}
+		f.base_font = EXO_ITALIC if is_pop() else ORBITRON
+		var w := mini(weight + 100, 900) if is_pop() else weight
+		f.variation_opentype = {TextServerManager.get_primary_interface().name_to_tag("wght"): w}
 		_display[weight] = f
 	return _display[weight]
 
@@ -159,8 +209,17 @@ static func body(weight := 500) -> Font:
 static func theme() -> Theme:
 	if _theme == null:
 		_theme = Theme.new()
-		_fill_theme(_theme)
+		_refill(_theme)
 	return _theme
+
+
+## Refaz o Theme no lugar (limpa antes: os dois estilos não definem os mesmos itens).
+static func _refill(t: Theme) -> void:
+	t.clear()
+	if is_pop():
+		_fill_theme_pop(t)
+	else:
+		_fill_theme(t)
 
 
 static func _box(bg: Color, border: Color, border_w := 1, radius := 3, shadow := Color(0, 0, 0, 0), shadow_size := 0) -> StyleBoxFlat:
@@ -172,6 +231,8 @@ static func _box(bg: Color, border: Color, border_w := 1, radius := 3, shadow :=
 	s.shadow_color = shadow
 	s.shadow_size = shadow_size
 	s.anti_aliasing = false
+	if is_pop():
+		s.set_corner_radius_all(0)
 	return s
 
 
@@ -187,8 +248,16 @@ static func _gradient_tex(from: Color, to: Color, angle := 0.0) -> GradientTextu
 	return t
 
 
-## Painel padrão (cartão): superfície quase opaca, borda média, brilho difuso de acento.
+## Painel padrão (cartão): superfície quase opaca, borda média, brilho difuso de acento. No
+## Speedoru: faixa magenta grossa à esquerda, filete embaixo e sombra dura deslocada.
 static func panel_style(margin := 16.0, alpha := 0.92) -> StyleBoxFlat:
+	if is_pop():
+		var p := _box(Color(c("surface"), alpha), c("accent"), 0, 0, Color(c("ink"), 0.55 * alpha), 1)
+		p.border_width_left = 4
+		p.border_width_bottom = 2
+		p.shadow_offset = Vector2(8, 8)
+		p.set_content_margin_all(margin)
+		return p
 	var s := _box(Color(c("surface"), alpha), line(2), 1, 3, Color(c("accent"), 0.16), 10)
 	s.set_content_margin_all(margin)
 	return s
@@ -348,12 +417,204 @@ static func _fill_theme(t: Theme) -> void:
 	t.set_font_size("font_size", "RetroMuted", 14)
 
 
+## Theme do Speedoru: botões em paralelogramo (skew), sombra dura deslocada em vez de brilho,
+## cantos retos, Exo 2 itálica nos botões e títulos; foco em amarelo.
+static func _fill_theme_pop(t: Theme) -> void:
+	var text := c("text")
+	var accent := c("accent")
+	var cyan := c("accent_2")
+	var ink := c("ink")
+	var paper := c("paper")
+	var skew := Vector2(0.22, 0)
+	t.default_font = body(500)
+	t.default_font_size = 16
+
+	t.set_color("font_color", "Label", text)
+
+	# Botões comuns: paralelogramo azul-noite com borda roxa; hover magenta com sombra ciano;
+	# apertado (e aba ligada) em ciano com texto escuro
+	var normal := _box(Color(c("surface_2"), 0.92), Color(c("accent_3"), 0.75), 2, 0)
+	normal.skew = skew
+	normal.content_margin_left = 20
+	normal.content_margin_right = 20
+	normal.content_margin_top = 7
+	normal.content_margin_bottom = 7
+	var hover := normal.duplicate() as StyleBoxFlat
+	hover.bg_color = accent
+	hover.border_color = paper
+	hover.shadow_color = cyan
+	hover.shadow_size = 1
+	hover.shadow_offset = Vector2(4, 4)
+	var pressed := normal.duplicate() as StyleBoxFlat
+	pressed.bg_color = cyan
+	pressed.border_color = paper
+	var focus := _box(Color(0, 0, 0, 0), c("warn"), 2, 0)
+	focus.draw_center = false
+	focus.skew = skew
+	focus.set_expand_margin_all(3)
+	var disabled := normal.duplicate() as StyleBoxFlat
+	disabled.bg_color = Color(c("surface"), 0.7)
+	disabled.border_color = Color(c("accent_3"), 0.25)
+	for type in ["Button", "OptionButton", "ColorPickerButton", "MenuButton"]:
+		t.set_stylebox("normal", type, normal)
+		t.set_stylebox("hover", type, hover)
+		t.set_stylebox("pressed", type, pressed)
+		t.set_stylebox("hover_pressed", type, pressed)
+		t.set_stylebox("focus", type, focus)
+		t.set_stylebox("disabled", type, disabled)
+		t.set_color("font_color", type, text)
+		t.set_color("font_hover_color", type, paper)
+		t.set_color("font_pressed_color", type, ink)
+		t.set_color("font_hover_pressed_color", type, ink)
+		t.set_color("font_focus_color", type, text)
+		t.set_color("font_disabled_color", type, c("muted"))
+		t.set_color("icon_normal_color", type, c("text_2"))
+		t.set_color("icon_hover_color", type, paper)
+		t.set_color("icon_pressed_color", type, ink)
+	t.set_font("font", "Button", display(700))
+	# Listas mostram valores: corpo legível, não itálico
+	for type in ["OptionButton", "MenuButton", "ColorPickerButton"]:
+		t.set_font("font", type, body(600))
+
+	# Botão principal: magenta chapado, texto branco, sombra ciano (amarela no hover)
+	t.set_type_variation("PrimaryButton", "Button")
+	var prim := _box(accent, paper, 0, 0, cyan, 1)
+	prim.skew = skew
+	prim.shadow_offset = Vector2(5, 5)
+	prim.content_margin_left = 24
+	prim.content_margin_right = 24
+	prim.content_margin_top = 10
+	prim.content_margin_bottom = 10
+	var prim_hover := prim.duplicate() as StyleBoxFlat
+	prim_hover.bg_color = accent.lightened(0.12)
+	prim_hover.shadow_color = c("warn")
+	var prim_pressed := prim.duplicate() as StyleBoxFlat
+	prim_pressed.bg_color = cyan
+	prim_pressed.shadow_color = accent
+	prim_pressed.shadow_offset = Vector2(2, 2)
+	var prim_disabled := prim.duplicate() as StyleBoxFlat
+	prim_disabled.bg_color = Color(accent, 0.35)
+	prim_disabled.shadow_color = Color(0, 0, 0, 0)
+	t.set_stylebox("normal", "PrimaryButton", prim)
+	t.set_stylebox("hover", "PrimaryButton", prim_hover)
+	t.set_stylebox("pressed", "PrimaryButton", prim_pressed)
+	t.set_stylebox("hover_pressed", "PrimaryButton", prim_pressed)
+	t.set_stylebox("focus", "PrimaryButton", focus)
+	t.set_stylebox("disabled", "PrimaryButton", prim_disabled)
+	for col in ["font_color", "font_hover_color", "font_focus_color"]:
+		t.set_color(col, "PrimaryButton", paper)
+	for col in ["font_pressed_color", "font_hover_pressed_color"]:
+		t.set_color(col, "PrimaryButton", ink)
+	t.set_font("font", "PrimaryButton", display(900))
+	t.set_font_size("font_size", "PrimaryButton", 17)
+
+	# Botão de perigo: borda vermelha; hover vermelho chapado
+	t.set_type_variation("DangerButton", "Button")
+	var danger := normal.duplicate() as StyleBoxFlat
+	danger.border_color = c("bad")
+	var danger_hover := hover.duplicate() as StyleBoxFlat
+	danger_hover.bg_color = c("bad")
+	t.set_stylebox("normal", "DangerButton", danger)
+	t.set_stylebox("hover", "DangerButton", danger_hover)
+	t.set_color("font_color", "DangerButton", c("bad"))
+	t.set_color("font_hover_color", "DangerButton", paper)
+
+	# Popups (lista do OptionButton): borda magenta, sombra dura; item em foco chapado no magenta
+	var popup := _box(Color(c("surface_2"), 0.98), accent, 2, 0, Color(ink, 0.6), 1)
+	popup.shadow_offset = Vector2(6, 6)
+	popup.set_content_margin_all(6)
+	t.set_stylebox("panel", "PopupMenu", popup)
+	t.set_stylebox("hover", "PopupMenu", _box(accent, Color(0, 0, 0, 0), 0, 0))
+	t.set_color("font_color", "PopupMenu", c("text_2"))
+	t.set_color("font_hover_color", "PopupMenu", paper)
+	t.set_color("font_accelerator_color", "PopupMenu", c("muted"))
+	t.set_font("font", "PopupMenu", body(600))
+	t.set_font_size("font_size", "PopupMenu", 15)
+
+	# Painéis
+	t.set_stylebox("panel", "PanelContainer", panel_style())
+	t.set_stylebox("panel", "Panel", panel_style())
+	t.set_stylebox("panel", "PopupPanel", popup)
+
+	# Check
+	for type in ["CheckButton", "CheckBox"]:
+		t.set_color("font_color", type, c("text_2"))
+		t.set_color("font_hover_color", type, paper)
+		t.set_color("font_pressed_color", type, text)
+		t.set_color("font_hover_pressed_color", type, paper)
+		t.set_color("font_focus_color", type, text)
+		var empty := StyleBoxEmpty.new()
+		empty.content_margin_top = 4
+		empty.content_margin_bottom = 4
+		for state in ["normal", "hover", "pressed", "hover_pressed", "focus"]:
+			t.set_stylebox(state, type, empty)
+
+	# Slider: trilho branco a 12 %, parte preenchida no magenta chapado
+	var track := _box(Color(paper, 0.12), Color(0, 0, 0, 0), 0, 0)
+	track.content_margin_top = 3
+	track.content_margin_bottom = 3
+	var fill := _box(accent, Color(0, 0, 0, 0), 0, 0)
+	fill.content_margin_top = 3
+	fill.content_margin_bottom = 3
+	t.set_stylebox("slider", "HSlider", track)
+	t.set_stylebox("grabber_area", "HSlider", fill)
+	t.set_stylebox("grabber_area_highlight", "HSlider", fill)
+
+	# Barras de rolagem: magenta
+	var grab := _box(Color(accent, 0.55), Color(0, 0, 0, 0), 0, 0)
+	grab.content_margin_left = 3
+	grab.content_margin_right = 3
+	var grab_hi := grab.duplicate() as StyleBoxFlat
+	grab_hi.bg_color = accent
+	var scroll_bg := _box(Color(paper, 0.05), Color(0, 0, 0, 0), 0, 0)
+	scroll_bg.content_margin_left = 3
+	scroll_bg.content_margin_right = 3
+	t.set_stylebox("grabber", "VScrollBar", grab)
+	t.set_stylebox("grabber_highlight", "VScrollBar", grab_hi)
+	t.set_stylebox("grabber_pressed", "VScrollBar", grab_hi)
+	t.set_stylebox("scroll", "VScrollBar", scroll_bg)
+
+	# Tooltips padrão
+	var tip := _box(Color(c("surface_2"), 0.98), accent, 0, 0, Color(ink, 0.6), 1)
+	tip.border_width_left = 4
+	tip.shadow_offset = Vector2(5, 5)
+	tip.content_margin_left = 12
+	tip.content_margin_right = 12
+	tip.content_margin_top = 8
+	tip.content_margin_bottom = 8
+	t.set_stylebox("panel", "TooltipPanel", tip)
+	t.set_font("font", "TooltipLabel", body(500))
+	t.set_font_size("font_size", "TooltipLabel", 14)
+	t.set_color("font_color", "TooltipLabel", text)
+	t.set_constant("line_spacing", "TooltipLabel", 3)
+
+	# Rótulos de seção (variações de Label): título com sombra magenta dura
+	t.set_type_variation("RetroKicker", "Label")
+	t.set_font("font", "RetroKicker", display(800))
+	t.set_font_size("font_size", "RetroKicker", 13)
+	t.set_color("font_color", "RetroKicker", cyan)
+	t.set_type_variation("RetroTitle", "Label")
+	t.set_font("font", "RetroTitle", display(900))
+	t.set_font_size("font_size", "RetroTitle", 34)
+	t.set_color("font_color", "RetroTitle", paper)
+	t.set_color("font_shadow_color", "RetroTitle", accent)
+	t.set_constant("shadow_outline_size", "RetroTitle", 0)
+	t.set_constant("shadow_offset_x", "RetroTitle", 3)
+	t.set_constant("shadow_offset_y", "RetroTitle", 3)
+	t.set_type_variation("RetroMuted", "Label")
+	t.set_color("font_color", "RetroMuted", c("muted"))
+	t.set_font_size("font_size", "RetroMuted", 14)
+
+
 # ---------------------------------------------------------------------------
 # Desenho
 # ---------------------------------------------------------------------------
 ## Cartão: degradê vertical surface_2 → surface, borda média, filete de luz no topo, brilho difuso
 ## só perto da borda e uma trama de varredura bem fraca por dentro.
 static func draw_panel(ci: CanvasItem, r: Rect2, alpha := 0.9, glow := true, border_level := 2) -> void:
+	if is_pop():
+		_pop_panel(ci, r, alpha, glow, border_level)
+		return
 	var accent := c("accent")
 	if glow:
 		for k in 3:
@@ -370,6 +631,9 @@ static func draw_panel(ci: CanvasItem, r: Rect2, alpha := 0.9, glow := true, bor
 
 ## Cantoneiras em "L" (superior esquerda e inferior direita) com brilho.
 static func draw_corners(ci: CanvasItem, r: Rect2, color := Color(0, 0, 0, 0), length := 14.0, width := 2.0, all_four := false) -> void:
+	if is_pop():
+		_pop_corners(ci, r, color, length, all_four)
+		return
 	if color.a == 0.0:
 		color = c("accent")
 	var corners := [[r.position, Vector2(1, 1)], [r.end, Vector2(-1, -1)]]
@@ -389,6 +653,8 @@ static func draw_corners(ci: CanvasItem, r: Rect2, color := Color(0, 0, 0, 0), l
 ## Devolve a largura usada.
 static func draw_tag(ci: CanvasItem, pos: Vector2, text: String, font_size := 13, height := 24.0,
 		from := Color(0, 0, 0, 0), to := Color(0, 0, 0, 0), text_color := Color(0, 0, 0, 0)) -> float:
+	if is_pop():
+		return _pop_tag(ci, pos, text, font_size, height, from, text_color)
 	if from.a == 0.0:
 		from = c("accent")
 	if to.a == 0.0:
@@ -407,6 +673,9 @@ static func draw_tag(ci: CanvasItem, pos: Vector2, text: String, font_size := 13
 ## Barra segmentada (cantos retos); segmentos acesos com brilho. [param colors] pode ser uma
 ## Callable(t) -> Color para colorir por posição.
 static func draw_segments(ci: CanvasItem, r: Rect2, value: float, count: int, color: Variant, gap := 3.0, glow := true) -> void:
+	if is_pop():
+		_pop_segments(ci, r, value, count, color, gap)
+		return
 	var w := (r.size.x - gap * (count - 1)) / count
 	var lit := value * count
 	var trackc := Color(c("accent"), 0.13)
@@ -427,10 +696,153 @@ static func draw_glow_text(ci: CanvasItem, font: Font, pos: Vector2, text: Strin
 		width: float, size: int, color: Color, glow := Color(0, 0, 0, 0), glow_strength := 1.0) -> void:
 	if glow.a == 0.0:
 		glow = c("accent")
+	if is_pop():
+		_pop_text(ci, font, pos, text, align, width, size, color, glow, clampf(glow_strength, 0.0, 1.0))
+		return
 	ci.draw_string_outline(font, pos, text, align, width, size, 14, Color(glow, 0.10 * glow_strength))
 	ci.draw_string_outline(font, pos, text, align, width, size, 7, Color(glow, 0.22 * glow_strength))
 	# Contorno escuro fino: legível também sobre o céu claro do jogo
 	ci.draw_string_outline(font, pos, text, align, width, size, 3, Color(c("bg"), 0.75 * color.a))
+	ci.draw_string(font, pos, text, align, width, size, color)
+
+
+# ---------------------------------------------------------------------------
+# Desenho do Speedoru
+# ---------------------------------------------------------------------------
+## Cartão pop: sombra dura deslocada, degradê azul-noite, retícula magenta no canto inferior
+## direito, faixa magenta grossa à esquerda e filete ciano embaixo. [param glow] = destaque
+## (borda magenta inteira).
+static func _pop_panel(ci: CanvasItem, r: Rect2, alpha: float, glow: bool, border_level: int) -> void:
+	var accent := c("accent")
+	ci.draw_rect(Rect2(r.position + Vector2(7, 7), r.size), Color(c("ink"), 0.5 * alpha))
+	var top := Color(c("surface_2"), alpha)
+	var bottom := Color(c("surface"), minf(alpha + 0.04, 1.0))
+	ci.draw_polygon(PackedVector2Array([r.position, Vector2(r.end.x, r.position.y), r.end, Vector2(r.position.x, r.end.y)]),
+		PackedColorArray([top, top, bottom, bottom]))
+	draw_halftone(ci, r.end, Vector2(minf(r.size.x * 0.4, 150.0), minf(r.size.y * 0.6, 110.0)), Color(accent, 0.22 * alpha))
+	ci.draw_rect(r, Color(c("paper"), 0.2 if border_level >= 3 else 0.08), false, 1.0)
+	if glow:
+		ci.draw_rect(r, accent, false, 2.0)
+	ci.draw_rect(Rect2(r.position.x, r.end.y - 2, r.size.x, 2), Color(c("accent_2"), 0.8))
+	ci.draw_rect(Rect2(r.position, Vector2(4, r.size.y)), accent)
+
+
+## Cantos pop: triângulos chapados (magenta em cima à esquerda, ciano embaixo à direita).
+static func _pop_corners(ci: CanvasItem, r: Rect2, color: Color, length: float, all_four: bool) -> void:
+	var size := length * 1.3
+	var corners := [[r.position, Vector2(1, 1), c("accent")], [r.end, Vector2(-1, -1), c("accent_2")]]
+	if all_four:
+		corners += [[Vector2(r.end.x, r.position.y), Vector2(-1, 1), c("accent")],
+			[Vector2(r.position.x, r.end.y), Vector2(1, -1), c("accent_2")]]
+	for corner in corners:
+		var p: Vector2 = corner[0]
+		var d: Vector2 = corner[1]
+		ci.draw_colored_polygon(PackedVector2Array([p, p + Vector2(size * d.x, 0), p + Vector2(0, size * d.y)]),
+			color if color.a > 0.0 else corner[2])
+
+
+## Largura e altura da etiqueta pop (o paralelogramo mais o "///" no fim).
+static func tag_size(text: String, font_size: int, height: float) -> Vector2:
+	var tw := display(800).get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x
+	if is_pop():
+		return Vector2(tw + height * 0.4 + 52.0, height)
+	return Vector2(tw + 32.0, height)
+
+
+## Etiqueta pop: paralelogramo chapado (magenta por padrão) com sombra ciano dura, texto branco em
+## Exo 2 itálica e "///" no fim.
+static func _pop_tag(ci: CanvasItem, pos: Vector2, text: String, font_size: int, height: float, fill: Color,
+		text_color: Color) -> float:
+	var custom := fill.a > 0.0
+	if not custom:
+		fill = c("accent")
+	if text_color.a == 0.0:
+		text_color = c("paper")
+	var font := display(800)
+	var slant := height * 0.4
+	var tw := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x
+	var w := tag_size(text, font_size, height).x
+	var poly := PackedVector2Array([pos + Vector2(slant, 0), pos + Vector2(w, 0), pos + Vector2(w - slant, height), pos + Vector2(0, height)])
+	var shadow := PackedVector2Array()
+	for v in poly:
+		shadow.append(v + Vector2(4, 3))
+	ci.draw_colored_polygon(shadow, Color(c("ink") if custom else c("accent_2"), fill.a))
+	ci.draw_colored_polygon(poly, fill)
+	ci.draw_string(font, pos + Vector2(slant + 8, height * 0.5 + font_size * 0.36), text, HORIZONTAL_ALIGNMENT_LEFT, -1,
+		font_size, text_color)
+	draw_slashes(ci, pos + Vector2(slant + 16 + tw, height * 0.24), height * 0.52, Color(text_color, text_color.a * 0.85))
+	return w
+
+
+## "///": três traços inclinados (canto superior esquerdo do primeiro em [param pos]).
+static func draw_slashes(ci: CanvasItem, pos: Vector2, height: float, color: Color, count := 3, thickness := 3.0) -> void:
+	var lean := height * 0.5
+	for k in count:
+		var x := pos.x + k * (thickness + 3.0)
+		ci.draw_colored_polygon(PackedVector2Array([Vector2(x + lean, pos.y), Vector2(x + lean + thickness, pos.y),
+			Vector2(x + thickness, pos.y + height), Vector2(x, pos.y + height)]), color)
+
+
+## Retícula (meio-tom): pontos que crescem em direção ao canto [param corner]; a área se estende
+## [param area] para dentro (para cima e para a esquerda se o canto for o inferior direito).
+static func draw_halftone(ci: CanvasItem, corner: Vector2, area: Vector2, color: Color, spacing := 9.0) -> void:
+	if area.x < spacing or area.y < spacing:
+		return
+	var nx := int(area.x / spacing)
+	var ny := int(area.y / spacing)
+	for j in ny:
+		for i in nx:
+			# Distância normalizada até o canto (0 no canto, 1 na borda da área)
+			var t := maxf(float(i) / nx, float(j) / ny) * 0.5 + (float(i) / nx + float(j) / ny) * 0.25
+			var rad := spacing * 0.42 * (1.0 - t)
+			if rad < 0.6:
+				continue
+			var off := (spacing * 0.5) if j % 2 == 1 else 0.0
+			ci.draw_circle(corner - Vector2(i * spacing + off + spacing * 0.5, j * spacing + spacing * 0.5), rad, color)
+
+
+## Bandeira quadriculada inclinada em [param r] (duas fileiras), cores alternadas a e b.
+static func draw_checker(ci: CanvasItem, r: Rect2, cells: int, a: Color, b: Color) -> void:
+	var rows := 2
+	var cw := r.size.x / cells
+	var ch := r.size.y / rows
+	var lean := r.size.y * 0.45
+	for j in rows:
+		for i in cells:
+			var x := r.position.x + i * cw + lean * (1.0 - float(j) / rows)
+			var y := r.position.y + j * ch
+			var l := lean / rows
+			ci.draw_colored_polygon(PackedVector2Array([Vector2(x, y), Vector2(x + cw, y), Vector2(x + cw - l, y + ch),
+				Vector2(x - l, y + ch)]), a if (i + j) % 2 == 0 else b)
+
+
+## Barra segmentada pop: segmentos em paralelogramo, sem brilho.
+static func _pop_segments(ci: CanvasItem, r: Rect2, value: float, count: int, color: Variant, gap: float) -> void:
+	var lean := r.size.y * 0.7
+	var w := (r.size.x - lean - gap * (count - 1)) / count
+	var lit := value * count
+	var trackc := Color(c("paper"), 0.1)
+	for k in count:
+		var x := r.position.x + k * (w + gap)
+		var col: Color = color.call((k + 0.5) / count) if color is Callable else color
+		var amount := clampf(lit - k, 0.0, 1.0)
+		ci.draw_colored_polygon(_para(x, w, r.position.y, r.size.y, lean), trackc)
+		if amount > 0.0:
+			ci.draw_colored_polygon(_para(x, w * amount, r.position.y, r.size.y, lean), col)
+
+
+static func _para(x: float, w: float, y: float, h: float, lean: float) -> PackedVector2Array:
+	return PackedVector2Array([Vector2(x + lean, y), Vector2(x + lean + w, y), Vector2(x + w, y + h), Vector2(x, y + h)])
+
+
+## Título pop: sombra dura deslocada na cor [param glow] e contorno escuro (adesivo).
+static func _pop_text(ci: CanvasItem, font: Font, pos: Vector2, text: String, align: HorizontalAlignment, width: float,
+		size: int, color: Color, glow: Color, strength: float) -> void:
+	var off := Vector2.ONE * clampf(size * 0.055, 2.0, 5.0)
+	var ink := c("ink")
+	ci.draw_string_outline(font, pos + off, text, align, width, size, 4, Color(ink, 0.8 * color.a * strength))
+	ci.draw_string(font, pos + off, text, align, width, size, Color(glow, color.a * strength))
+	ci.draw_string_outline(font, pos, text, align, width, size, 4, Color(ink, 0.9 * color.a))
 	ci.draw_string(font, pos, text, align, width, size, color)
 
 
@@ -578,24 +990,28 @@ class TagLabel extends Control:
 	var font_size := 13
 
 	func _ready() -> void:
-		var w := Retro.display(800).get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x + 32.0
-		custom_minimum_size = Vector2(w, font_size + 12)
+		custom_minimum_size = Retro.tag_size(text, font_size, font_size + 12)
 		mouse_filter = Control.MOUSE_FILTER_IGNORE
-		Retro.events.changed.connect(queue_redraw)
+		Retro.events.changed.connect(func() -> void:
+			custom_minimum_size = Retro.tag_size(text, font_size, font_size + 12)
+			queue_redraw())
 
 	func _draw() -> void:
 		Retro.draw_tag(self, Vector2.ZERO, text, font_size, size.y)
 
 
-## Fundo synthwave (céu + sol no horizonte + grade em perspectiva) para menus.
+## Fundo dos menus. Retrô: synthwave (céu + sol no horizonte + grade em perspectiva). Speedoru:
+## azul-noite com linhas de velocidade animadas, retícula magenta e brilhos ciano/magenta.
 static func backdrop(alpha := 0.82) -> ColorRect:
 	var rect := ColorRect.new()
 	rect.set_anchors_preset(Control.PRESET_FULL_RECT)
 	rect.mouse_filter = Control.MOUSE_FILTER_STOP
 	var mat := ShaderMaterial.new()
-	mat.shader = preload("res://shaders/ui/retro_backdrop.gdshader")
 	rect.material = mat
 	var update := func() -> void:
+		mat.shader = SPEEDORU_BACKDROP if is_pop() else RETRO_BACKDROP
+		if is_pop():
+			mat.set_shader_parameter("accent_2", c("accent_2"))
 		mat.set_shader_parameter("bg", c("bg"))
 		mat.set_shader_parameter("bg_2", c("bg_2"))
 		mat.set_shader_parameter("horizon", c("horizon"))

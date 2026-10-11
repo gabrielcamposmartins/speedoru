@@ -3,7 +3,7 @@ extends CanvasLayer
 ## Interface do menu principal (visual retrofuturista): logo, saldo de créditos, botões grandes à
 ## esquerda e as telas Jogar solo (configurar a corrida) e Garagem (Estúdio, Galeria, Loja).
 ## No Estúdio o painel é compacto e fica à direita (o carro vem para o centro-esquerda); Galeria e
-## Loja usam o painel largo à esquerda. Na garagem há o seletor de cenário. Esc volta ao início.
+## Loja usam o painel largo à esquerda. Esc volta ao início.
 ## Multiplayer (MultiplayerPanel): salas, amigos, grupo, ranking e perfil; convites e avisos do
 ## servidor aparecem em qualquer tela.
 
@@ -17,6 +17,8 @@ var _root: Control
 var _body: Control
 var _shade: TextureRect
 var _wallet: Label
+var _logo_node: Control
+var _wallet_node: Control
 var _toast: Label
 var _profile: PlayerProfile
 var _net: Node
@@ -48,8 +50,10 @@ func _ready() -> void:
 	shade.anchor_right = 0.62
 	shade.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_root.add_child(shade)
-	_root.add_child(_logo())
-	_root.add_child(_wallet_panel())
+	_logo_node = _logo()
+	_root.add_child(_logo_node)
+	_wallet_node = _wallet_panel()
+	_root.add_child(_wallet_node)
 	_body = Control.new()
 	_body.set_anchors_preset(Control.PRESET_FULL_RECT)
 	_body.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -81,6 +85,26 @@ func _ready() -> void:
 	var back_to := RaceSettings.return_to
 	RaceSettings.return_to = ""
 	show_screen("multiplayer" if back_to == "multiplayer" and _net and _net.online else "home")
+	Retro.events.changed.connect(_restyle)
+
+
+## Estilo ou paleta da interface trocados (nas configurações): refaz o que guardou cores e
+## fontes do estilo anterior e remonta a tela atual.
+func _restyle() -> void:
+	var g := (_shade.texture as GradientTexture2D).gradient
+	g.colors = PackedColorArray([Color(Retro.c("bg"), 0.92), Color(Retro.c("bg"), 0.7), Color(Retro.c("bg"), 0.0)])
+	for old in [_logo_node, _wallet_node]:
+		old.queue_free()
+	_logo_node = _logo()
+	_root.add_child(_logo_node)
+	_root.move_child(_logo_node, _shade.get_index() + 1)
+	_wallet_node = _wallet_panel()
+	_root.add_child(_wallet_node)
+	_root.move_child(_wallet_node, _logo_node.get_index() + 1)
+	_update_wallet()
+	_toast.add_theme_font_override("font", Retro.display(800))
+	_toast.add_theme_color_override("font_color", Retro.c("warn"))
+	show_screen(screen)
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -502,7 +526,6 @@ func _build_garage() -> void:
 		shop.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		scroll.add_child(shop)
 		shop.setup()
-	_body.add_child(_scene_picker())
 
 
 ## Estúdio e Galeria: painel compacto à direita (abas de ícones + 2 colunas), fundo mais
@@ -556,42 +579,17 @@ func _build_side_panel() -> void:
 		gallery.setup(menu)
 
 
-## Seletor de cenário da garagem (embaixo do logo no Estúdio; embaixo à direita na Galeria/Loja).
-func _scene_picker() -> Control:
-	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 10)
-	var label := Label.new()
-	label.text = "CENÁRIO"
-	label.theme_type_variation = "RetroKicker"
-	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	row.add_child(label)
-	var o := OptionButton.new()
-	o.custom_minimum_size = Vector2(200, 38)
-	var kinds: Array = menu.SCENES
-	for k in kinds.size():
-		o.add_item(kinds[k][1])
-		if kinds[k][0] == menu.scene_kind:
-			o.selected = k
-	o.item_selected.connect(func(i: int) -> void: menu.set_scene(kinds[i][0]))
-	row.add_child(o)
-	if garage_tab in [0, 1]:
-		# Estúdio/Galeria: embaixo do logo (o carro ocupa o centro-esquerda)
-		row.position = Vector2(LEFT, 168)
-	else:
-		# Galeria/Loja ocupam a esquerda: o seletor vai para baixo à direita
-		row.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT, Control.PRESET_MODE_MINSIZE, 30)
-		row.grow_horizontal = Control.GROW_DIRECTION_BEGIN
-		row.grow_vertical = Control.GROW_DIRECTION_BEGIN
-	return row
-
-
 # ---------------------------------------------------------------------------
-## Logo em texto: SPEEDORU em Orbitron com halo + subtítulo.
+## Logo em texto. Retrô: SPEEDORU em Orbitron com halo + subtítulo. Speedoru: Exo 2 itálica com
+## sombras magenta/ciano deslocadas, bandeira quadriculada e a faixa "AM I RIGHT? ///".
 class LogoText extends Control:
 	func _ready() -> void:
 		mouse_filter = Control.MOUSE_FILTER_IGNORE
 
 	func _draw() -> void:
+		if Retro.is_pop():
+			_draw_pop()
+			return
 		var f := Retro.display(900)
 		Retro.draw_glow_text(self, f, Vector2(0, 70), "SPEEDORU", HORIZONTAL_ALIGNMENT_LEFT, -1, 72, Retro.c("text"),
 			Retro.c("accent"), 1.4)
@@ -599,6 +597,40 @@ class LogoText extends Control:
 		draw_rect(Rect2(310, 86, 80, 3), Retro.c("accent_2"))
 		draw_string(Retro.display(700), Vector2(4, 112), "FASTER  /  FURTHER  /  BEYOND", HORIZONTAL_ALIGNMENT_LEFT, -1, 14,
 			Retro.c("accent_2"))
+
+	func _draw_pop() -> void:
+		var f := Retro.display(900)
+		var ink := Retro.c("ink")
+		var size_px := 82
+		var base := Vector2(2, 76)
+		var tw := f.get_string_size("SPEEDORU", HORIZONTAL_ALIGNMENT_LEFT, -1, size_px).x
+		# Bandeira quadriculada atrás do fim da palavra, com rastro amarelo/magenta
+		var flag := Rect2(tw + 8, 16, 110, 40)
+		draw_colored_polygon(PackedVector2Array([flag.position + Vector2(30, 34), flag.end + Vector2(20, -10),
+			flag.end + Vector2(10, 4), flag.position + Vector2(18, 48)]), Retro.c("warn"))
+		Retro.draw_checker(self, flag, 7, Color.WHITE, Retro.c("accent"))
+		# Palavra: sombra dura escura, magenta e ciano deslocados (aberração), branco por cima
+		draw_string_outline(f, base + Vector2(6, 6), "SPEEDORU", HORIZONTAL_ALIGNMENT_LEFT, -1, size_px, 12, ink)
+		draw_string(f, base + Vector2(5, 4), "SPEEDORU", HORIZONTAL_ALIGNMENT_LEFT, -1, size_px, Retro.c("accent"))
+		draw_string(f, base + Vector2(-3, -2), "SPEEDORU", HORIZONTAL_ALIGNMENT_LEFT, -1, size_px, Retro.c("accent_2"))
+		draw_string_outline(f, base, "SPEEDORU", HORIZONTAL_ALIGNMENT_LEFT, -1, size_px, 6, ink)
+		draw_string(f, base, "SPEEDORU", HORIZONTAL_ALIGNMENT_LEFT, -1, size_px, Color.WHITE)
+		# Faixa inclinada "AM I RIGHT? ///"
+		var sub := Retro.display(800)
+		var text := "AM I RIGHT?"
+		var sw := sub.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, 17).x
+		var x0 := 150.0
+		var h := 28.0
+		var w := sw + 92.0
+		var band := PackedVector2Array([Vector2(x0 + 10, 88), Vector2(x0 + w + 10, 88), Vector2(x0 + w, 88 + h), Vector2(x0, 88 + h)])
+		var shadow := PackedVector2Array()
+		for v in band:
+			shadow.append(v + Vector2(5, 4))
+		draw_colored_polygon(shadow, Retro.c("accent"))
+		draw_colored_polygon(band, ink)
+		draw_string(sub, Vector2(x0 + 22, 108), text, HORIZONTAL_ALIGNMENT_LEFT, -1, 17, Color.WHITE)
+		Retro.draw_slashes(self, Vector2(x0 + 32 + sw, 94), 16.0, Retro.c("accent"))
+		draw_rect(Rect2(4, 100, x0 - 14, 4), Retro.c("accent_2"))
 
 
 ## Botão grande do menu: painel chanfrado, título em Orbitron e uma linha de descrição; no hover
@@ -623,6 +655,9 @@ class BigButton extends Button:
 			queue_redraw()
 
 	func _draw() -> void:
+		if Retro.is_pop():
+			_draw_pop()
+			return
 		var x := _hover * 14.0
 		var w := size.x - 40.0
 		var h := size.y
@@ -656,3 +691,46 @@ class BigButton extends Button:
 			draw_rect(chip, Color(Retro.c("warn"), 0.18))
 			draw_rect(chip, Retro.c("warn"), false, 1.0)
 			draw_string(f, chip.position + Vector2(8, 15), "EM BREVE", HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Retro.c("warn"))
+
+	## Speedoru: paralelogramo com sombra dura; aceso (principal ou hover) fica magenta chapado
+	## com sombra ciano (amarela no hover) e "///" no fim.
+	func _draw_pop() -> void:
+		var x := _hover * 14.0
+		var w := size.x - 40.0
+		var h := size.y
+		var lean := 20.0
+		var pts := PackedVector2Array([Vector2(x + lean, 0), Vector2(x + w, 0), Vector2(x + w - lean, h), Vector2(x, h)])
+		var accent := Retro.c("accent")
+		var lit := primary or _hover > 0.0
+		var amount := 1.0 if primary else _hover
+		var shadow_col := Retro.c("accent_2") if primary else Retro.c("warn")
+		var off := Vector2(7, 6) * (amount if lit else 0.0) + Vector2(5, 5) * (1.0 - (amount if lit else 0.0))
+		var shadow := PackedVector2Array()
+		for v in pts:
+			shadow.append(v + off)
+		draw_colored_polygon(shadow, Color(Retro.c("ink"), 0.6).lerp(shadow_col, amount if lit else 0.0))
+		var top := Color(Retro.c("surface_2"), 0.94).lerp(accent, amount if lit else 0.0)
+		var bot := Color(Retro.c("surface"), 0.94).lerp(accent.darkened(0.12), amount if lit else 0.0)
+		draw_polygon(pts, PackedColorArray([top, top, bot, bot]))
+		var border := Color(Retro.c("accent_3"), 0.7).lerp(Color.WHITE, amount if lit else 0.0)
+		draw_polyline(PackedVector2Array([pts[0], pts[1], pts[2], pts[3], pts[0]]), border, 2.0)
+		# Faixa inclinada à esquerda (ciano; branca quando aceso)
+		draw_colored_polygon(PackedVector2Array([pts[0], pts[0] + Vector2(8, 0), pts[3] + Vector2(8, 0), pts[3]]),
+			Retro.c("accent_2").lerp(Color.WHITE, amount if lit else 0.0))
+		var ink := Retro.c("ink")
+		var title_col := Color.WHITE
+		if soon:
+			title_col = Color(title_col, 0.6)
+		var font := Retro.display(900)
+		draw_string_outline(font, Vector2(x + 36, 46), title, HORIZONTAL_ALIGNMENT_LEFT, -1, 31, 5, Color(ink, 0.85))
+		draw_string(font, Vector2(x + 36, 46), title, HORIZONTAL_ALIGNMENT_LEFT, -1, 31, title_col)
+		var sub_col := Color(1, 1, 1, 0.88) if lit and amount > 0.5 else Retro.c("muted")
+		draw_string(Retro.body(600), Vector2(x + 34, 68), subtitle, HORIZONTAL_ALIGNMENT_LEFT, w - 80, 14, sub_col)
+		if lit:
+			Retro.draw_slashes(self, Vector2(x + w - lean - 58, h * 0.3), h * 0.4, Color(1, 1, 1, amount), 3, 5.0)
+		if soon:
+			var f := Retro.display(800)
+			var tw := f.get_string_size("EM BREVE", HORIZONTAL_ALIGNMENT_LEFT, -1, 11).x + 16
+			var chip := Rect2(x + w - lean - tw - 70, 14, tw, 22)
+			draw_rect(chip, Retro.c("warn"))
+			draw_string(f, chip.position + Vector2(8, 15), "EM BREVE", HORIZONTAL_ALIGNMENT_LEFT, -1, 11, ink)

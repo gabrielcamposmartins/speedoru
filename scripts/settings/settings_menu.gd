@@ -366,12 +366,36 @@ func _build_display() -> void:
 	_option("display", "ui_scale", "Escala da interface", ui_items, "valores altos em janela pequena sobrepõem o HUD")
 	_slider("display", "fov", "Campo de visão (câmera de perseguição)", 55.0, 95.0, 1.0,
 		func(x: float) -> String: return "%d°" % roundi(x))
+	var style := OptionButton.new()
+	for name in Retro.style_names():
+		style.add_item(name)
+	style.selected = Retro.STYLE_ORDER.find(Retro.style)
+	# O menu é montado com o estilo da hora: reabre já no novo, na mesma aba
+	style.item_selected.connect(func(i: int) -> void:
+		Retro.set_style(Retro.STYLE_ORDER[i])
+		_reopen.call_deferred())
+	_row("Estilo da interface", style, "Speedoru é o padrão")
 	var palette := OptionButton.new()
 	for name in Retro.palette_names():
 		palette.add_item(name)
 	palette.selected = Retro.PALETTE_ORDER.find(Retro.palette_id)
 	palette.item_selected.connect(func(i: int) -> void: Retro.set_palette(Retro.PALETTE_ORDER[i]))
-	_row("Paleta da interface", palette)
+	palette.disabled = Retro.is_pop()
+	_row("Paleta da interface", palette, "só no estilo Retrô" if Retro.is_pop() else "")
+
+
+## Fecha e abre de novo na mesma aba (depois de trocar o estilo da interface).
+func _reopen() -> void:
+	var settings := _settings
+	var at := tab
+	var paused := was_paused
+	settings._menu = null
+	queue_free()
+	settings.open_menu()
+	var m := settings._menu as SettingsMenu
+	if m:
+		m.was_paused = paused
+		m._show_tab(at)
 
 
 func _build_graphics() -> void:
