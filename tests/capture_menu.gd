@@ -1,5 +1,5 @@
 extends SceneTree
-## Captura o menu principal (com janela): início, Jogar solo, garagem (Estúdio nos 3 cenários,
+## Captura o menu principal (com janela): início, Jogar solo, garagem (Estúdio,
 ## Galeria, Loja) e o resultado de um giro. Usa um perfil de teste com algumas peças.
 ##   godot --path . -s res://tests/capture_menu.gd -- <pasta de saída>
 
@@ -72,11 +72,6 @@ func _run() -> void:
 	profile.set_finish("rim_finish", 0)
 	studio.category = "livery"
 	studio._build()
-	for kind in ["sun", "box"]:
-		scene.set_scene(kind)
-		await _frames(30)
-		await _snap("menu_studio_" + kind)
-	scene.set_scene("neon")
 	ui.garage_tab = 1
 	ui.show_screen("garage")
 	await _frames(20)

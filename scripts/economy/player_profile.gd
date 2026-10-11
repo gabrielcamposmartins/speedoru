@@ -68,7 +68,6 @@ static func default_equipped() -> Dictionary:
 		"helmet": def["helmet"], "suit": def["suit"], "rim": def["rim"], "boost": def["boost"],
 		"neon_on": false, "neon": def["neon"],
 		"parts": {},
-		"scene": "neon",
 		"paint_finish": 0,
 		"paint_scheme": 0,
 		"rim_finish": 0,
