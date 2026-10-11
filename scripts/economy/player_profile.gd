@@ -75,6 +75,9 @@ static func default_equipped() -> Dictionary:
 		"setup": {},
 		"decals": {},
 		"skin": "",
+		# Hora (unix, s) da última mudança feita pelo jogador: decide qual carro vale quando o do
+		# aparelho e o do servidor são diferentes (o mais novo)
+		"edited": 0.0,
 	}
 
 
@@ -133,12 +136,17 @@ func from_dict(d: Dictionary) -> void:
 	for id in d.get("owned", []):
 		if ShopCatalog.ITEMS.has(str(id)):
 			owned[str(id)] = true
-	equipped = default_equipped()
 	var eq: Variant = d.get("equipped", {})
-	if eq is Dictionary:
-		for key in equipped:
-			if eq.has(key):
-				equipped[key] = eq[key]
+	# Conectado: uma resposta do servidor mais velha que a última mudança feita aqui (ainda indo
+	# para ele) não desfaz a mudança
+	var keep_local := mode == "remote" and eq is Dictionary \
+		and float(eq.get("edited", 0.0)) < float(equipped.get("edited", 0.0))
+	if not keep_local:
+		equipped = default_equipped()
+		if eq is Dictionary:
+			for key in equipped:
+				if eq.has(key):
+					equipped[key] = eq[key]
 	var st: Variant = d.get("stats", {})
 	if st is Dictionary:
 		for key in stats:
@@ -385,8 +393,25 @@ func set_decal_value(slot: String, key: String, value: Variant) -> void:
 
 
 
+## Marca a hora da mudança do equipamento (feita pelo jogador).
+func _touch() -> void:
+	equipped["edited"] = Time.get_unix_time_from_system()
+
+
+## Conectado: guarda no aparelho o equipamento que vale no servidor (só ele; créditos e coleção
+## do perfil local ficam como estão). Assim o carro offline é o mesmo, e a próxima conexão não
+## manda um carro mais velho que o do servidor.
+func store_equipped_locally() -> void:
+	var cfg := ConfigFile.new()
+	if cfg.load(save_path) != OK:
+		return
+	cfg.set_value("equipped", "data", equipped.duplicate(true))
+	cfg.save(save_path)
+
+
 ## Grava (e, conectado, manda o equipamento) 0,35 s depois da última mudança seguida.
 func _save_soon() -> void:
+	_touch()
 	if not is_inside_tree():
 		save_profile()
 		return
@@ -443,6 +468,7 @@ func _matching_livery() -> String:
 
 
 func _commit() -> void:
+	_touch()
 	clamp_equipped()
 	save_profile()
 	changed.emit()
@@ -495,6 +521,7 @@ func clamp_equipped() -> void:
 	equipped["paint_finish"] = clampi(int(equipped.get("paint_finish", 0)), 0, CarConfig.PAINT_FINISHES.size() - 1)
 	equipped["paint_scheme"] = clampi(int(equipped.get("paint_scheme", 0)), 0, CarConfig.PAINT_SCHEMES.size() - 1)
 	equipped["rim_finish"] = clampi(int(equipped.get("rim_finish", 0)), 0, CarConfig.RIM_FINISHES.size() - 1)
+	equipped["edited"] = maxf(float(equipped.get("edited", 0.0)), 0.0)
 	# Skin: hash válido; no aparelho, só se o arquivo ainda existe (no servidor ele chega depois)
 	var skin := str(equipped.get("skin", ""))
 	if not CarSkin.valid_hash(skin) or (mode == "local" and not CarSkin.has_local(skin)):
@@ -517,6 +544,7 @@ func set_setup_value(key: String, value: float) -> void:
 		return
 	var setup: Dictionary = equipped["setup"]
 	setup[key] = clampf(value, p[5], p[6])
+	_touch()
 	save_profile()
 	setup_changed.emit()
 	if mode == "remote":
@@ -530,6 +558,7 @@ func reset_setup(key := "") -> void:
 		setup.clear()
 	else:
 		setup.erase(key)
+	_touch()
 	save_profile()
 	setup_changed.emit()
 	if mode == "remote":

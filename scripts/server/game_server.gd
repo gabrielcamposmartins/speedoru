@@ -444,10 +444,13 @@ func _hello(peer: int, data: Dictionary) -> void:
 	var profile := PlayerProfile.new()
 	profile.mode = "server"
 	profile.from_dict(acc["profile"])
-	# O carro do aparelho (skins, peças, engenharia) vale neste servidor.
+	# O carro do aparelho (skins, peças, engenharia) vale neste servidor — se for mais novo que o
+	# guardado (hora da última mudança): senão o do banco fica (mudanças feitas online, que o
+	# aparelho de um jogo antigo não guardou, não se perdem).
 	# PENDENTE (produção): validar que a conta tem as skins e peças (TRUST_CLIENT_CAR = false).
 	var car: Variant = data.get("car")
-	if NetProtocol.TRUST_CLIENT_CAR and car is Dictionary:
+	var stored: Dictionary = (acc["profile"] as Dictionary).get("equipped", {}) if acc["profile"] is Dictionary else {}
+	if NetProtocol.TRUST_CLIENT_CAR and car is Dictionary and float(car.get("edited", 0.0)) > float(stored.get("edited", 0.0)):
 		profile.equipped = PlayerProfile.sanitize_equipped(car)
 		acc["profile"] = profile.to_dict()
 		await store.save_account(acc)

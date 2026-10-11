@@ -41,9 +41,10 @@ var snaps := 0
 var last_error := 0.0
 var max_error := 0.0
 
-## seq -> [posição, rotação, velocidade] previstos logo depois de aplicar o comando seq
+## seq -> [posição, rotação, velocidade] previstos logo depois de aplicar o comando seq, e as
+## sequências na ordem em que entraram (para descartar as mais velhas)
 var _history := {}
-var _oldest := 0
+var _order: Array[int] = []
 var _pending_pos := Vector3.ZERO
 var _pending_rot := Quaternion.IDENTITY
 var _no_ack := 0
@@ -63,12 +64,11 @@ func record(seq: int) -> void:
 	if seq <= 0:
 		return
 	var xf := car.global_transform
+	if not _history.has(seq):
+		_order.append(seq)
 	_history[seq] = [xf.origin + _pending_pos, (_pending_rot * xf.basis.get_rotation_quaternion()).normalized(), car.linear_velocity]
-	if _oldest == 0:
-		_oldest = seq
-	while _history.size() > HISTORY:
-		_history.erase(_oldest)
-		_oldest += 1
+	while _order.size() > HISTORY:
+		_history.erase(_order.pop_front())
 
 
 ## Aplica no carro o mesmo comando que vai para o servidor. `pressed`: ações de toque (NetRaceClient.ACTIONS).
@@ -137,9 +137,10 @@ func reconcile(s: Dictionary, latest_seq: int) -> void:
 		return
 	var ack: int = s["ack"]
 	var pred: Variant = _history.get(ack)
-	while _oldest > 0 and _oldest <= ack and _oldest <= latest_seq:
-		_history.erase(_oldest)
-		_oldest += 1
+	# Descarta o que já ficou para trás (o ack pode até vir à frente do último comando mandado,
+	# depois de um engasgo do jogo: aí não há o que comparar e o histórico esvazia)
+	while not _order.is_empty() and _order[0] <= ack:
+		_history.erase(_order.pop_front())
 	if c["flags"] & NetSnapshot.F_HIDDEN:
 		return
 	if pred == null:
@@ -181,7 +182,7 @@ func _snap(c: Dictionary, ahead: int) -> void:
 	_pending_pos = Vector3.ZERO
 	_pending_rot = Quaternion.IDENTITY
 	_history.clear()
-	_oldest = 0
+	_order.clear()
 
 
 ## O que só o servidor decide (vale do jeito que ele mandou).

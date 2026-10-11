@@ -44,7 +44,29 @@ func _clean() -> void:
 		DirAccess.remove_absolute(ProjectSettings.globalize_path(f))
 
 
+## Registra quadros longos (> 1 s) e quando a conexão cai (diagnóstico de queda na largada).
+class _FrameWatch extends Node:
+	var last := 0
+	var net: Node
+	var was_online := false
+	func _ready() -> void:
+		process_mode = Node.PROCESS_MODE_ALWAYS
+		last = Time.get_ticks_msec()
+	func _process(_d: float) -> void:
+		var now := Time.get_ticks_msec()
+		if now - last > 1000:
+			var sc := get_tree().current_scene
+			print("  [quadro longo] %d ms (cena %s)" % [now - last, sc.name if sc else "-"])
+		last = now
+		if net and net.online != was_online:
+			was_online = net.online
+			print("  [conexão] %s em %d ms" % ["online" if was_online else "CAIU", now])
+
+
 func _run() -> void:
+	var watch := _FrameWatch.new()
+	watch.net = root.get_node("Net")
+	root.add_child(watch)
 	_clean()
 	PlayerProfile.save_path = "user://test_pred_profile.cfg"
 	(root.get_node("Profile") as PlayerProfile).reset_profile()
@@ -114,17 +136,37 @@ func _run() -> void:
 			Input.action_release(phase[0])
 	Input.action_release("accelerate")
 	print("  velocidade máxima %.0f km/h" % car.speed_kmh)
+	var snaps_normal := nc.prediction.snaps if nc.prediction else 0
+	var max_normal := nc.prediction.max_error if nc.prediction else 0.0
+	# Engasgo do jogo (1,5 s sem rodar, como ao carregar algo pesado): o servidor repete o último
+	# comando e o ack passa à frente do jogo. Antes, a limpeza do histórico da predição entrava em
+	# loop infinito aqui e o jogo congelava.
+	Input.action_press("accelerate")
+	await physics_frame
+	OS.delay_msec(1500)
+	var frames_before := Engine.get_physics_frames()
+	var t0 := Time.get_ticks_msec()
+	await create_timer(3.0).timeout
+	Input.action_release("accelerate")
+	var frames_after := Engine.get_physics_frames() - frames_before
+	_check(frames_after > 200 and Time.get_ticks_msec() - t0 < 6000, "jogo continua rodando depois de um engasgo de 1,5 s (%d passos em 3 s)" % frames_after)
+	if nc.prediction:
+		var snaps_before := nc.prediction.snaps
+		var corr_before := nc.prediction.corrections
+		await create_timer(2.0).timeout
+		_check(nc.prediction.corrections > corr_before or nc.prediction.snaps > snaps_before or nc.prediction.last_error < 0.5,
+			"predição se recupera depois do engasgo (erro %.2f m)" % nc.prediction.last_error)
 	if nc.prediction:
 		var p := nc.prediction
 		var sum := 0.0
 		for e in errs:
 			sum += e
 		print("  erro previsto x servidor: médio %.3f m, maior %.3f m; correções %d, saltos %d" % [
-			sum / maxf(errs.size(), 1), p.max_error, p.corrections, p.snaps])
+			sum / maxf(errs.size(), 1), max_normal, p.corrections, p.snaps])
 		var sorted := Array(errs)
 		sorted.sort()
 		var p95: float = sorted[int(sorted.size() * 0.95)] if not sorted.is_empty() else 0.0
-		_check(p.snaps == 0, "nenhum salto andando normalmente (%d)" % p.snaps)
+		_check(snaps_normal == 0, "nenhum salto andando normalmente (%d)" % snaps_normal)
 		# Numa raspada no muro a física de cliente e servidor diverge um pouco (corrigido aos poucos)
 		_check(sum / maxf(errs.size(), 1) < 0.15 and p95 < 0.5, "erro da previsão pequeno (médio %.3f m, 95%% abaixo de %.2f m)" % [
 			sum / maxf(errs.size(), 1), p95])
@@ -138,6 +180,10 @@ func _run() -> void:
 
 
 func _finish() -> void:
+	if failures > 0 and host:
+		print("--- log do servidor
+" + "
+".join(host.log_lines.slice(maxi(host.log_lines.size() - 50, 0))))
 	if host and host.is_active():
 		host.stop()
 		await _wait_for(func() -> bool: return host.state == LocalHost.State.STOPPED, 15.0)

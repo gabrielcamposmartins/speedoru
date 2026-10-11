@@ -91,7 +91,9 @@ func host(port: int, p_handler: Object) -> Error:
 	if err != OK:
 		return err
 	multiplayer.multiplayer_peer = _peer
-	multiplayer.peer_connected.connect(func(id: int) -> void: handler.on_peer_connected(id))
+	multiplayer.peer_connected.connect(func(id: int) -> void:
+		_relax_timeout(id)
+		handler.on_peer_connected(id))
 	multiplayer.peer_disconnected.connect(func(id: int) -> void: handler.on_peer_disconnected(id))
 	return OK
 
@@ -226,8 +228,18 @@ func disconnect_from_server() -> void:
 	_set_online(false)
 
 
+## Mais tolerância antes de dar a conexão por perdida (NetProtocol.PEER_TIMEOUT_*).
+func _relax_timeout(peer_id: int) -> void:
+	if _peer == null:
+		return
+	var p := _peer.get_peer(peer_id)
+	if p:
+		p.set_timeout(32, NetProtocol.PEER_TIMEOUT_MIN, NetProtocol.PEER_TIMEOUT_MAX)
+
+
 func _on_connected() -> void:
 	_connecting = false
+	_relax_timeout(1)
 	var cfg := ConfigFile.new()
 	cfg.load(account_file)
 	var token := str(cfg.get_value("account", "token", ""))
@@ -370,6 +382,7 @@ func msg(type: String, data: Dictionary) -> void:
 				_remember_connection()
 			if profile and account.has("profile"):
 				profile.from_dict(account["profile"])
+				profile.store_equipped_locally()
 			account_changed.emit()
 		"room":
 			room = data.get("room", {})

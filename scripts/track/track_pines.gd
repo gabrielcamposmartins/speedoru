@@ -5,6 +5,8 @@ extends RefCounted
 ## horizonte e encher os arredores da pista. Cor do ambiente (shaders/track/pine_fill.gdshader).
 ## Perto: o modelo de agulhas (~46 mil triângulos); longe: uma versão estilizada com a mesma
 ## silhueta (~130 triângulos), na mesma cor. MultiMesh por bloco para o LOD e o culling funcionarem.
+## Sombra: calculada com a versão estilizada (só sombra, mesma silhueta) até LOD_DISTANCE — o modelo
+## de agulhas desenhado de novo nas cascatas de sombra custava ~7 ms de GPU por quadro (Suzuka).
 
 const MODEL := "res://assets/track/trees/tree_pine_light.glb"
 const CHUNK := 160.0
@@ -69,6 +71,7 @@ static func build(track: RaceTrack, terrain: TrackTerrain, parent: Node3D) -> vo
 		var transforms: Array[Transform3D] = chunks[key][0]
 		var buffer := Grandstands.pack_buffer(transforms, chunks[key][1])
 		count += transforms.size()
+		var far_mm: MultiMesh
 		for lod in 2:
 			var mm := MultiMesh.new()
 			mm.transform_format = MultiMesh.TRANSFORM_3D
@@ -79,15 +82,25 @@ static func build(track: RaceTrack, terrain: TrackTerrain, parent: Node3D) -> vo
 			var mmi := MultiMeshInstance3D.new()
 			mmi.name = "Pines_%d_%d%s" % [key.x, key.y, "" if lod == 0 else "_far"]
 			mmi.multimesh = mm
+			mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 			if lod == 0:
 				mmi.visibility_range_end = LOD_DISTANCE
 				mmi.visibility_range_end_margin = 15.0
 			else:
+				far_mm = mm
 				mmi.material_override = leaf_mat
 				mmi.visibility_range_begin = LOD_DISTANCE
 				mmi.visibility_range_begin_margin = 15.0
-				mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 			root.add_child(mmi)
+		# Sombra dos de perto pela versão estilizada (mesma silhueta), só sombra
+		var shadow := MultiMeshInstance3D.new()
+		shadow.name = "Pines_%d_%d_shadow" % [key.x, key.y]
+		shadow.multimesh = far_mm
+		shadow.material_override = leaf_mat
+		shadow.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY
+		shadow.visibility_range_end = LOD_DISTANCE
+		shadow.visibility_range_end_margin = 15.0
+		root.add_child(shadow)
 	root.set_meta("count", count)
 
 

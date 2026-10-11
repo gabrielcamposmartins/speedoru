@@ -88,6 +88,47 @@ func _run() -> void:
 	var behind_bot: float = bot._traffic(500.0, v, 0.0).y
 	pe.is_player = true
 	_check(behind_player < behind_bot - 0.5, "atrás do jogador o bot freia antes (%.1f m/s contra %.1f atrás de um bot)" % [behind_player, behind_bot])
+	# 5) Ultrapassagem sem medo: 90 m de reta bastam (antes eram 150) com o da frente mais lento
+	var path := bot.track.path
+	var s_pass := -1.0
+	var s_corner := -1.0
+	for k in range(200, int(path.length) - 200, 10):
+		if s_pass < 0.0 and bot._straight_ahead(k, 90.0) and not bot._straight_ahead(k, 150.0):
+			s_pass = k
+		if s_corner < 0.0 and k > s_pass and s_pass > 0.0 and not bot._straight_ahead(k, 40.0):
+			s_corner = k
+	bot.difficulty = BotDriver.Difficulty.MEDIUM
+	bot._passing = null
+	bot._offset_target = 0.0
+	bot_e.progress = 5000.0
+	bot_e.s = s_pass
+	bot_e.lateral = bot.line.lateral_at(s_pass)
+	pe.s = s_pass + 25.0
+	pe.lateral = bot_e.lateral
+	pe.car.linear_velocity = pe.car.global_basis.z * 56.0
+	bot._traffic(s_pass, 60.0, bot_e.lateral)
+	_check(bot._passing == pe, "começa a ultrapassar com 90 m de reta e 4 m/s a mais (s %.0f)" % s_pass)
+	# 6) Já lado a lado chegando na curva: não desiste da ultrapassagem
+	bot_e.s = s_corner
+	bot_e.lateral = bot.line.lateral_at(s_corner) + 3.0
+	pe.s = s_corner + 2.0
+	pe.lateral = bot.line.lateral_at(s_corner)
+	bot._traffic(s_corner, 50.0, bot_e.lateral)
+	_check(bot._passing == pe, "lado a lado na entrada da curva, segue a ultrapassagem (s %.0f)" % s_corner)
+	var inside: float = bot._corner_inside(s_corner, 60.0)
+	_check(bot._pass_side == inside, "ultrapassagem pelo lado de dentro da curva (%+.0f)" % bot._pass_side)
+	# 6b) Lado a lado POR FORA da curva que chega: desiste (por fora, sairia da pista)
+	bot._passing = pe
+	bot._pass_side = -inside
+	bot_e.lateral = bot.line.lateral_at(s_corner) - inside * 3.0
+	bot._traffic(s_corner, 50.0, bot_e.lateral)
+	_check(bot._passing == null, "lado a lado por fora da curva, desiste e encaixa atrás")
+	bot._passing = pe
+	bot._pass_side = inside
+	# 7) Ainda longe (ainda não chegou ao lado) com a curva perto: desiste e segue atrás
+	pe.s = s_corner + 20.0
+	bot._traffic(s_corner, 50.0, bot_e.lateral)
+	_check(bot._passing == null, "longe dele com a curva perto, desiste e segue atrás")
 	DirAccess.remove_absolute(ProjectSettings.globalize_path("user://test_yield_profile.cfg"))
 	print("Falhas: %d" % failures)
 	quit(1 if failures > 0 else 0)

@@ -10,12 +10,11 @@ extends Node
 ##
 ## Comandos dos jogadores (predição no cliente, NetRaceClient): cada comando tem um número de
 ## sequência e entra numa fila; o servidor aplica UM por passo de física, em ordem (o cliente prevê
-## exatamente isso). Se a fila esvazia, o último comando é repetido; se ela cresce (rajada depois
-## de um atraso), os mais velhos são descartados para não acumular atraso. Cada repetição adianta e
-## cada descarte atrasa a simulação em relação à numeração dos comandos (_seq_offset). Cada
-## instantâneo leva, só para o jogador, o "ack" = último comando aplicado + esse deslocamento: o
-## passo do cliente que corresponde ao estado do carro no servidor — o cliente compara com o que
-## previu para aquele passo.
+## exatamente isso). Se a fila esvazia (o jogo engasgou), o último comando é repetido; se ela
+## cresce (rajada depois de um atraso), os mais velhos são descartados para não acumular atraso.
+## Cada instantâneo leva, só para o jogador, o "ack" = último comando aplicado + quantas vezes ele
+## foi repetido desde então (zera a cada comando novo): o passo do cliente que corresponde ao estado
+## do carro no servidor — o cliente compara com o que previu para aquele passo e corrige o carro.
 ##
 ## Votações (comando "vote" {kind, yes}; uma de cada vez; aprovam com a maioria dos humanos ainda
 ## na corrida em até VOTE_TIME s):
@@ -47,12 +46,12 @@ var players: Array = []
 var manager: RaceManager
 var viewport: SubViewport
 
-## Fila de comandos por conta (os mais novos no fim), o último aplicado, a sequência dele e o
-## deslocamento da simulação (repetições − descartes).
+## Fila de comandos por conta (os mais novos no fim), o último aplicado, a sequência dele e quantas
+## vezes ele foi repetido desde que chegou.
 var _inputs := {}
 var _queues := {}
 var _applied_seq := {}
-var _seq_offset := {}
+var _repeats := {}
 var _last_counts := {}
 ## Comandos guardados na fila no máximo (≈ 25 ms a 120 Hz) antes de descartar os mais velhos.
 const INPUT_QUEUE_MAX := 3
@@ -310,7 +309,7 @@ func _physics_process(delta: float) -> void:
 		for pl in players:
 			if _left.has(pl["id"]):
 				continue
-			var ack := int(_applied_seq.get(pl["id"], 0)) + int(_seq_offset.get(pl["id"], 0))
+			var ack := int(_applied_seq.get(pl["id"], 0)) + int(_repeats.get(pl["id"], 0))
 			var tail := PackedByteArray()
 			tail.resize(4)
 			tail.encode_u32(0, clampi(ack, 0, 0xFFFFFFFF))
@@ -344,14 +343,14 @@ func _apply_inputs() -> void:
 		var q: Array = _queues.get(acc_id, [])
 		while q.size() > INPUT_QUEUE_MAX:
 			q.pop_front()
-			_seq_offset[acc_id] = int(_seq_offset.get(acc_id, 0)) - 1
 		var repeat := false
 		if not q.is_empty():
 			_inputs[acc_id] = q.pop_front()
 			_applied_seq[acc_id] = int((_inputs[acc_id] as PackedFloat32Array)[0])
+			_repeats[acc_id] = 0
 		elif _inputs.has(acc_id):
 			repeat = true
-			_seq_offset[acc_id] = int(_seq_offset.get(acc_id, 0)) + 1
+			_repeats[acc_id] = int(_repeats.get(acc_id, 0)) + 1
 		var d: Variant = _inputs.get(acc_id)
 		if d == null:
 			continue

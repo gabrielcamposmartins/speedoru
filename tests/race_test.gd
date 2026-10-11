@@ -2,6 +2,9 @@ extends SceneTree
 ## Corrida de teste (sem janela), com o carro do jogador também pilotado por um bot:
 ##   godot --headless --path . -s res://tests/race_test.gd -- [voltas] [adversários] [dificuldade 0-3] [pista: monza|monaco]
 ## Confere que todos completam as voltas, fazem o pit obrigatório e quase não levam penalidades.
+## Mede também: toques nos boxes (dois carros se sobrepondo na área dos boxes), ultrapassagens na
+## pista (troca de ordem entre dois carros perto, nenhum nos boxes), colisões punidas e, nos bots,
+## quantas vezes deram ré para sair do muro e foram levados de volta à pista.
 
 var scene: Node3D
 var manager: RaceManager
@@ -47,6 +50,16 @@ func _run() -> void:
 	bot.pit_lap = 2
 	pe.bot = bot
 	manager.infraction.connect(func(e: RaceEntry, t: String, d: String, pen: bool) -> void:
+		if pen and (t + d).to_lower().contains("colis"):
+			collisions += 1
+		if t.contains("BATIDA") and e.bot:
+			var near := ""
+			for o in manager.entries:
+				var ds: float = e.bot._ahead(o.s, e.s)
+				if o != e and absf(ds) < 25.0:
+					near += " %s(ds %.1f lat %.1f v %.0f%s)" % [o.code, ds, o.lateral, o.car.speed_kmh, " BOX" if manager._in_pit_area(o) else ""]
+			print("    batida de %s: modo %s, s %.0f lat %.1f, %.0f km/h, nos boxes %s, rodas quebradas %s | perto:%s" % [e.code,
+				BotDriver.Mode.keys()[e.bot.mode], e.s, e.lateral, e.car.speed_kmh, manager._in_pit_area(e), e.car.wheel_broken, near])
 		print("  [%6.1f s] %s %s: %s — %s" % [manager.race_time, e.code, "PENALIDADE" if pen else "aviso", t, d]))
 	while manager.state != RaceManager.State.RACING:
 		await process_frame
@@ -59,6 +72,7 @@ func _run() -> void:
 	while not manager._all_finished() and manager.race_time < limit:
 		await process_frame
 		_watch_stuck()
+		_watch_metrics()
 		if manager.race_time - last_report > 30.0:
 			last_report = manager.race_time
 			var line := "t=%5.0f s:" % manager.race_time
@@ -77,6 +91,8 @@ func _run() -> void:
 			roundi(e.penalty_seconds), ("DSQ " + e.dsq_reason) if e.disqualified else ""])
 		all_pitted = all_pitted and e.pit_count >= 1
 		penalties += e.penalties.size()
+	print("Toques nos boxes: %d · ultrapassagens na pista: %d · colisões punidas: %d · ré para sair do muro: %d · levados de volta à pista: %d" % [
+		pit_touches, overtakes, collisions, _static_count("reversals"), _static_count("put_backs")])
 	_check(manager._all_finished(), "todos terminaram a corrida")
 	_check(all_pitted, "todos fizeram o pit stop obrigatório")
 	_check(penalties <= manager.entries.size(), "poucas penalidades entre os bots (%d)" % penalties)
@@ -86,6 +102,49 @@ func _run() -> void:
 
 var _still := {}
 var _reported := {}
+var pit_touches := 0
+var overtakes := 0
+var collisions := 0
+var _touching := {}
+var _order := {}
+var _dbg := 0
+
+
+## Contador estático do BotDriver (-1 numa versão sem ele).
+func _static_count(name: String) -> int:
+	var v: Variant = (BotDriver as Script).get(name)
+	return int(v) if v != null else -1
+
+
+## Toques nos boxes e ultrapassagens na pista (pares de carros).
+func _watch_metrics() -> void:
+	if manager.state != RaceManager.State.RACING:
+		return
+	var list := manager.entries
+	for i in list.size():
+		for j in range(i + 1, list.size()):
+			var a: RaceEntry = list[i]
+			var b: RaceEntry = list[j]
+			if a.car == null or b.car == null or a.retired or b.retired:
+				continue
+			var key := "%d_%d" % [mini(a.get_instance_id(), b.get_instance_id()), maxi(a.get_instance_id(), b.get_instance_id())]
+			var pit := manager._in_pit_area(a) or manager._in_pit_area(b)
+			if pit:
+				var local := a.car.global_transform.affine_inverse() * b.car.global_position
+				var touch := absf(local.x) < 1.9 and absf(local.z) < 4.6
+				if touch and not _touching.get(key, false):
+					pit_touches += 1
+				_touching[key] = touch
+			else:
+				_touching[key] = false
+			var diff := a.progress - b.progress
+			var sign := diff > 0.0
+			if _order.has(key) and _order[key] != sign and OS.get_environment("RACE_DEBUG") != "" and _dbg < 8:
+				_dbg += 1
+				print("  [troca] %s x %s diff %.1f pit %s fim %s %s" % [a.code, b.code, diff, pit, a.finished, b.finished])
+			if _order.has(key) and _order[key] != sign and absf(diff) < 40.0 and not pit and not a.finished and not b.finished:
+				overtakes += 1
+			_order[key] = sign
 
 
 ## Diagnóstico: bot parado (< 1 km/h, sem terminar) por mais de 15 s imprime o estado completo uma vez.

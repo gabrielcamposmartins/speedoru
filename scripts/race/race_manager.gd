@@ -684,7 +684,7 @@ func _update_pit_ghosts() -> void:
 	var bots: Array[RaceEntry] = []
 	var in_pit: Array[bool] = []
 	for e in entries:
-		if not e.is_player and e.car != null:
+		if not e.is_player and not e.is_human and e.car != null:
 			bots.append(e)
 			in_pit.append(_in_pit_area(e))
 	for i in bots.size():

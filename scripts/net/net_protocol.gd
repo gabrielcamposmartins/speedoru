@@ -20,6 +20,10 @@ const DEFAULT_PORT := 7350
 ## aba SERVIDOR continua nele: o escolhido fica salvo no aparelho.
 const DEFAULT_HOST := "speedoru.padoru.org"
 const MAX_CLIENTS := 64
+## Tolerância da conexão (ENet: mínimo e máximo, ms) antes de dar um jogador por desconectado. O
+## padrão (~5 s) derrubava quem engasgava gerando a pista ao carregar a corrida (PCs mais lentos).
+const PEER_TIMEOUT_MIN := 15000
+const PEER_TIMEOUT_MAX := 30000
 ## Servidores com nome guardados no aparelho e últimas conexões (tela de multiplayer).
 const SAVED_SERVERS_MAX := 20
 const SERVER_HISTORY_MAX := 8
@@ -52,7 +56,8 @@ const RANKING_TAB_POINTS := 1000
 const SNAPSHOT_HZ := 30.0
 const RACE_STATE_HZ := 5.0
 ## Atraso de interpolação no cliente (s): mostra o passado recente, sempre entre dois instantâneos.
-## 0,15 s = 4,5 instantâneos: cobre um passo atrasado no servidor sem o cliente ficar sem dado.
+## Folga inicial (0,15 s = 4,5 instantâneos); depois o cliente a ajusta pela variação medida na
+## chegada dos instantâneos (NetRaceClient, folga adaptativa).
 const INTERP_DELAY := 0.15
 
 # Bits dos botões no comando contínuo (inp)

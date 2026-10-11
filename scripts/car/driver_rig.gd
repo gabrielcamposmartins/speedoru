@@ -70,6 +70,9 @@ func _on_skeleton_updated() -> void:
 	if ik == null or not is_instance_valid(ik):
 		return
 	var skeleton := ik.get_skeleton()
+	# A peça do piloto acabou de ser trocada (montagem do carro): o esqueleto velho já saiu da árvore
+	if skeleton == null or not skeleton.is_inside_tree():
+		return
 	for i in ik.setting_count:
 		hand_poses[i] = skeleton.global_transform * skeleton.get_bone_global_pose(
 			skeleton.find_bone(ik.get_end_bone_name(i)))

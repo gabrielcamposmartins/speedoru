@@ -289,16 +289,23 @@ difícil ou mista) e posição de largada. Tudo em `scripts/race/`:
   (`assets/track/monza/monza_raceline.csv`, TUMFTM) com um perfil de velocidade calculado pela
   aderência lateral/downforce, frenagem e potência (`RacingLine`), escalado pela dificuldade
   (fácil 84% da aderência, médio 91%, difícil 97,5%; reação na largada e ruído de trajetória).
-  Mantêm a faixa do grid na largada, ultrapassam só em retas (escolhem um lado e mantêm até
-  passar), seguem com folga nas curvas, fazem o pit stop numa volta sorteada (80 km/h nos boxes,
-  param no box da equipe, trocam para duro/médio) e se recuperam sozinhos se ficarem presos.
+  Mantêm a faixa do grid na largada e **ultrapassam sem medo**: começam com 90 m de reta à frente
+  e um pouco mais rápidos que o da frente (escolhem um lado e mantêm até passar), seguem perto o
+  bastante para pegar o vácuo e não desistem já lado a lado na entrada da curva; para evitar a
+  batida abrem espaço lado a lado, tiram o pé se sobrepõem e só voltam para a linha 10 m à frente.
+  Fazem o pit stop numa volta sorteada (80 km/h nos boxes, param no box da equipe, trocam para
+  duro/médio). **Presos** (encostados no muro, rodados, sem avançar querendo andar — e sem carro
+  logo à frente, para não confundir com tráfego): dão ré esterçando para apontar de volta à pista
+  (até 3 vezes, cada vez mais longa); se não saírem, são levados de volta à pista num vão do
+  tráfego (`tests/bot_recover_test.gd`).
   Usam os mesmos carros e a mesma física do jogador (sem retrovisores, mais leves). Um bot
   que perde uma roda abandona (DNF). Na corrida o reparo instantâneo (F) fica desligado.
   Com jogadores humanos: todos deixam mais espaço (folga maior atrás de você e uma faixa mais
   larga em volta), sem frear nem desviar instantâneo — a batida continua possível. Bots fácil e
   médio **respeitam ataques**: com você chegando por trás (até 25 m, mais rápido) ou lado a lado,
   abrem para o outro lado e tiram um pouco o pé (10% / 5%); o difícil defende a posição. Sob
-  bandeira amarela ninguém dá passagem (`tests/bot_yield_test.gd`).
+  bandeira amarela ninguém dá passagem (`tests/bot_yield_test.gd`). Na corrida online os humanos
+  de todos os aparelhos contam como jogadores para essas regras.
 - **Pneus:** desgaste por roda conforme a potência dissipada no contato (escorregar, travar,
   patinar, curva no limite) e o composto (macio gasta ~55% mais rápido, duro ~32% mais devagar);
   pneu gasto perde até 32% de aderência. O HUD mostra quanto resta de cada pneu.
@@ -348,8 +355,13 @@ difícil ou mista) e posição de largada. Tudo em `scripts/race/`:
   consertados e a corrida larga do zero (`tests/qualifying_test.gd`, `tests/qualifying_time_test.gd`).
 - **Pausa na largada:** pausar com o semáforo acendendo congela a sequência; ao voltar ela continua
   (`tests/start_pause_test.gd`).
-- **Boxes:** os bots fazem fila indiana na pista dos boxes (seguem quem está entrando, parado ou
-  saindo do box, sem ultrapassar) e só saem do box quando ninguém vem pela faixa rápida.
+- **Boxes:** os bots fazem fila indiana na pista dos boxes e esperam qualquer carro que esteja no
+  caminho que vão fazer (na faixa rápida, entrando ou saindo de uma vaga, ou parado na vaga perto
+  da sua, humanos inclusive); só passam para a faixa da vaga nos últimos 18 m (antes passavam por
+  cima das vagas vizinhas) e só saem do box quando ninguém vem avançando pela faixa rápida.
+  Enroscados saindo do box são postos na faixa rápida logo à frente. Numa corrida de 3 voltas os
+  toques nos boxes caíram de 7 para 0 (`tests/race_test.gd` mede toques nos boxes, ultrapassagens,
+  colisões punidas, ré e voltas à pista).
 - `tests/race_test.gd` roda uma corrida inteira sem janela (o jogador também pilotado por bot) e
   confere que todos terminam e fazem o pit; `tests/capture_race.gd` gera capturas do HUD.
 
@@ -803,7 +815,10 @@ cena: fica no filho `Generated`.
   `edit-assets-workspace/tree/tree_pine`, copiado para `assets/track/trees/`) em quatro fileiras
   logo atrás das cercas e arquibancadas, fechando o horizonte. Cor do ambiente
   (`shaders/track/pine_fill.gdshader`); além de 400 m vira uma versão estilizada leve com a mesma
-  silhueta. `pines` no nó `Track` liga/desliga.
+  silhueta. A **sombra** dos pinheiros de perto é desenhada com essa versão leve (só sombra, mesma
+  silhueta): o modelo de agulhas (~46 mil triângulos) desenhado de novo nas cascatas de sombra
+  custava ~7 ms de GPU por quadro — em Suzuka o pior trecho foi de 61 para ~99 fps, sem mudar o
+  visual (`tests/perf_probe.gd`). `pines` no nó `Track` liga/desliga.
 - **Árvores folhosas** (`track_leaves.gd`): logo atrás das barreiras, com copas de centenas de
   folhas individuais (dupla face, tremulando), soltando folhas que caem girando com o vento
   (`GPUParticles3D`, `shaders/track/leaf.gdshader`; pétalas no sakura). Folhas no chão e na pista em
@@ -1082,7 +1097,12 @@ aceita `host`, `host:porta`, IPv6 puro (`2001:db8::1`, porta padrão) ou com por
 **Conectado** (`Profile.mode = "remote"`): créditos, coleção e equipamento vêm do servidor; o giro
 da loja é feito lá. **O carro do aparelho vale no servidor**: ao conectar, o jogo manda o visual
 (pintura, cores, peças, acabamentos) e a engenharia do perfil local, e o servidor usa esse carro
-nas corridas; a coleção local também conta para montar o carro no Estúdio enquanto conectado.
+nas corridas; a coleção local também conta para montar o carro no Estúdio enquanto conectado. **Qual carro vale**: o equipamento guarda a hora da última mudança do jogador (`equipped.edited`);
+ao conectar, o servidor só troca o do banco pelo do aparelho se o do aparelho for mais novo, e o
+jogo guarda no aparelho o equipamento que vale no servidor (`Profile.store_equipped_locally`). Assim
+o que se configura online (decalques, skin, cores, peças, engenharia) fica salvo no banco e não é
+apagado na próxima conexão pelo carro antigo do aparelho, e o carro offline é o mesmo. Uma resposta
+do servidor mais velha que uma mudança ainda a caminho não desfaz a mudança na tela.
 **PENDENTE (produção):** hoje o servidor aceita o carro sem conferir se a conta tem as skins e
 peças (`NetProtocol.TRUST_CLIENT_CAR = true`, só a estrutura é validada); para o servidor de
 produção, desligar e validar a posse no servidor; a corrida solo manda o resultado e o servidor confere (voltas, tempo plausível, dificuldade
@@ -1118,9 +1138,16 @@ até 10 se a sala usa bots; carros com o visual e a engenharia das contas) e apl
 (penalidades, pit, bandeira amarela, safety car). O cliente manda os comandos a cada passo de
 física (pedais, direção e contadores das ações de toque, que não se perdem); recebe instantâneos
 de todos os carros 30×/s (`NetSnapshot`, 64 bytes por carro; o servidor desconta o intervalo em
-vez de zerar, sem deriva) e o estado da prova 5×/s; desenha os carros 0,15 s no passado
-(`NetProtocol.INTERP_DELAY`), interpolando (`NetRaceClient`; os carros do cliente são marionetes
-cinemáticas, `F1Car.set_puppet`). O relógio do servidor no cliente é o maior "tempo do
+vez de zerar, sem deriva) e o estado da prova 5×/s; desenha os carros um pouco no passado (a
+**folga de interpolação**), interpolando (`NetRaceClient`; os carros do cliente são marionetes
+cinemáticas, `F1Car.set_puppet`). A folga é **adaptativa**: para cada instantâneo o cliente mede o
+quanto ele chegou atrasado em relação ao mais rápido dos últimos ~3 s e usa um intervalo entre
+instantâneos + o percentil 95 desses atrasos + 10 ms (entre 40 e 250 ms; começa em 150 ms), subindo
+rápido quando a rede piora e descendo devagar. Numa rede estável fica em ~55 ms (era 150 fixa);
+com 60 ms de variação, ~100 ms, faltando instantâneo em menos de 1% dos passos
+(`tests/interp_test.gd`, `-- --net-jitter=ms` simula variação). **Conexão**: o ENet tolera 15 a
+30 s sem resposta (`NetProtocol.PEER_TIMEOUT_*`; o padrão de ~5 s derrubava quem engasgava
+gerando a pista ao carregar a corrida). O relógio do servidor no cliente é o maior "tempo do
 instantâneo − hora local" dos últimos 15 instantâneos: sobe na hora e desce aos poucos (~0,5 s),
 então um passo atrasado no servidor (o tempo da simulação fica para trás) não deixa o cliente
 adiante dos instantâneos. Sem instantâneo novo, a última posição é esticada pela velocidade (até
@@ -1131,8 +1158,13 @@ aparelho com o comando aplicado na hora — sem a ida e volta ao servidor nem o 
 interpolação no controle (com 120 ms de ida e volta, o carro respondia em ~370 ms; com predição,
 em ~50 ms, o mesmo de jogar sem rede). O servidor aplica os comandos **um por passo, em ordem**
 (fila curta contra o jitter; repete o último se faltar, descarta os mais velhos se acumular) e
-manda no fim do instantâneo de cada jogador o **ack** (u32: último comando aplicado + repetições −
-descartes; clientes antigos ignoram). O cliente guarda o estado previsto depois de cada comando e,
+manda no fim do instantâneo de cada jogador o **ack** (u32: último comando aplicado + quantas
+vezes ele foi repetido desde que chegou, zerando a cada comando novo; clientes antigos ignoram).
+Na 0.8.1 a repetição adiantava a numeração de vez: depois de um engasgo do jogo (carregando a
+pista, na largada, ao recomeçar) o ack passava à frente do jogo e a limpeza do histórico da
+predição entrava em loop infinito — o jogo congelava na largada. O histórico agora é descartado
+pela ordem das sequências, sem contador (`tests/prediction_test.gd` congela o jogo 1,5 s no meio
+da corrida). O cliente guarda o estado previsto depois de cada comando e,
 quando o instantâneo chega, compara com o estado do servidor para o mesmo comando
 (**reconciliação**): erro pequeno (< 5 cm, 0,3 m/s, 1°) é ignorado; médio corrige a velocidade na
 hora e a posição/rotação aos poucos (25% por passo), corrigindo junto o histórico posterior;
@@ -1237,6 +1269,7 @@ godot --headless --path . -s res://tests/ccd_probe.gd       # carro não "para d
 godot --headless --path . -s res://tests/highspeed_probe.gd # pneus em alta velocidade: carga, aderência, boost, toque de direção, batente
 godot --headless --path . -s res://tests/net_test.gd        # multiplayer de ponta a ponta, com votações de pausa/voltar/recomeçar (precisa do libSQL local; SPEEDORU_TEST_DB=local usa o banco em arquivo)
 godot --headless --path . -s res://tests/track_cache_test.gd -- --server # pista do servidor copiada do cache: mesmos shapes de colisão e raios batendo nas barreiras
+godot --headless --path . -s res://tests/equip_persist_test.gd -- --offline # equipamento (decalques, skin) salvo no banco: online, offline, carro antigo do aparelho, servidor reiniciado
 godot --headless --path . -s res://tests/prediction_test.gd -- --offline [--net-lag=120] [--no-prediction] # predição: resposta ao acelerador, erro previsto x servidor, correções e saltos
 godot --headless --path . -s res://tests/server_load_test.gd # servidor com duas salas: pistas geradas uma vez, a sala correndo não congela quando outra larga, 30 instantâneos/s, relógio da interpolação
 godot --headless --path . -s res://tests/host_test.gd       # endereços IPv4/IPv6, banco local, hospedar (entrar por ::1, status, tirar, fechar, batimento), skins pela rede, salvos e histórico (+ -- <Speedoru.exe> = build exportada)
@@ -1246,7 +1279,11 @@ godot --path . -s res://tests/capture_host.gd -- <pasta> [porta] --offline # aba
 godot --headless --path . -s res://tests/puppet_wheel_test.gd # rodas dos carros da rede: altura do servidor, esterço e giro, sem tremer
 godot --headless --path . -s res://tests/updater_test.gd    # atualizador: versões e download/SHA-256 da última release (internet)
 godot --headless --path . -s res://tests/chase_camera_test.gd # câmera de perseguição: frenagem, aceleração, curva, batida
-godot --headless --path . -s res://tests/bot_yield_test.gd  # bots dão passagem ao jogador (fácil/médio), o difícil defende, amarela
+godot --headless --path . -s res://tests/bot_yield_test.gd  # bots dão passagem ao jogador (fácil/médio), o difícil defende, amarela; ultrapassam com 90 m de reta e não desistem lado a lado
+godot --headless --path . -s res://tests/bot_recover_test.gd # bot preso apontado para o muro sai sozinho (ré esterçando, volta à pista) e segue a corrida
+godot --headless --path . -s res://tests/interp_test.gd -- --offline [--net-lag=ms] [--net-jitter=ms] # folga de interpolação adaptativa: pequena sem variação, sobe só o necessário com variação
+godot --path . -s res://tests/online_restart_test.gd -- --offline [vezes] # corrida online com skins e bots, com janela: largada e recomeços seguidos sem o jogo travar
+godot --path . -s res://tests/perf_probe.gd -- [monza,suzuka] [grupos] [pinheiros] # FPS, CPU/GPU, desenhos e triângulos em pontos da volta; custo de cada grupo da pista
 godot --headless --path . -s res://tests/start_pause_test.gd # pausa na largada congela o semáforo
 godot --headless --path . -s res://tests/drs_rule_test.gd   # DRS livre ou só a até 1 s do carro da frente
 godot --headless --path . -s res://tests/slipstream_test.gd # vácuo: força no rastro e perda de velocidade com e sem

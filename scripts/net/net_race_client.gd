@@ -5,8 +5,8 @@ extends Node
 ## * Manda os comandos do jogador ao servidor a cada passo de física (pedais, direção, botões e
 ##   contadores das ações de toque — trocar marcha, limitador… —, que não se perdem se um pacote
 ##   não chegar, porque o servidor aplica a diferença).
-## * Recebe os instantâneos (30/s) e desenha todos os carros um pouco no passado
-##   (NetProtocol.INTERP_DELAY), interpolando entre dois instantâneos; se faltar um, estica a
+## * Recebe os instantâneos (30/s) e desenha todos os carros um pouco no passado (a FOLGA de
+##   interpolação, interp_delay), interpolando entre dois instantâneos; se faltar um, estica a
 ##   última posição pela velocidade por até 0,25 s e, quando os instantâneos voltam, leva o carro
 ##   até a posição interpolada em alguns passos (EXIT_BLEND_STEPS), sem salto. O relógio da
 ##   interpolação anda um passo de física por vez (corrigindo devagar para o relógio do servidor):
@@ -17,6 +17,11 @@ extends Node
 ##   confiável). Sobe na hora; desce aos poucos (OFFSET_DOWN por instantâneo, ~0,5 s), assim um
 ##   passo atrasado no servidor (o tempo da simulação fica para trás) não deixa o cliente adiante
 ##   dos instantâneos.
+## * Folga adaptativa: para cada instantâneo, o quanto ele chegou atrasado em relação ao mais
+##   rápido da janela (variação da rede e passos atrasados no servidor). A folga é um intervalo
+##   entre instantâneos + o percentil 95 desses atrasos + uma margem (entre INTERP_MIN e
+##   INTERP_MAX): a menor que ainda deixa um instantâneo à frente quase sempre. Sobe rápido quando a
+##   rede piora e desce devagar quando melhora (sem ficar oscilando).
 ## * Repassa o estado da prova (5/s) e os acontecimentos ao RaceManager.
 ## * O carro do próprio jogador não segue os instantâneos: roda a física aqui com o comando na hora
 ##   (predição, NetPrediction) e é corrigido pelo estado do servidor para o mesmo comando
@@ -26,6 +31,15 @@ extends Node
 const ACTIONS := ["shift_up", "shift_down", "toggle_gearbox", "pit_limiter", "toggle_tc", "brake_bias_forward",
 	"brake_bias_rearward", "reset_car", "pass_signal"]
 const MAX_EXTRAPOLATE := 0.25
+## Folga de interpolação adaptativa: limites (s), margem (s), janela de medida (instantâneos, ~3 s),
+## percentil dos atrasos e quanto a folga anda por instantâneo subindo e descendo.
+const INTERP_MIN := 0.04
+const INTERP_MAX := 0.25
+const INTERP_MARGIN := 0.01
+const JITTER_WINDOW := 90
+const JITTER_PERCENTILE := 0.95
+const INTERP_UP := 0.3
+const INTERP_DOWN := 0.03
 ## Janela (instantâneos, ~0,5 s) do relógio do servidor e quanto ele desce por instantâneo.
 const OFFSET_WINDOW := 15
 const OFFSET_DOWN := 0.18
@@ -52,13 +66,23 @@ var _render_t := -1.0
 ## Contadores das ações de toque (um por item de ACTIONS; o servidor aplica a diferença).
 var _counts := PackedFloat32Array()
 var _net: Node
+## Folga de interpolação atual (s) e a que a variação medida permite (s).
+var interp_delay := NetProtocol.INTERP_DELAY
+var interp_target := NetProtocol.INTERP_DELAY
+## Passos em que algum carro dos outros foi esticado (faltou instantâneo) e passos no total.
+var extrapolated_steps := 0
+var interp_steps := 0
+## Atrasos de chegada dos últimos instantâneos (s, em relação ao mais rápido).
+var _late := PackedFloat32Array()
 ## Predição do carro do jogador (null = segue o servidor como os outros).
 var prediction: NetPrediction
 ## Predição ligada (-- --no-prediction desliga, para comparar).
 static var prediction_enabled := true
 ## Atraso de rede simulado (ms, ida e volta; -- --net-lag=ms), só para testes: segura os comandos
-## na ida e os instantâneos na volta por metade disso cada.
+## na ida e os instantâneos na volta por metade disso cada; -- --net-jitter=ms soma um atraso
+## aleatório de 0 a isso a cada instantâneo.
 static var lag_ms := 0
+static var jitter_ms := 0
 var _out_lag: Array = []
 var _in_lag: Array = []
 
@@ -78,6 +102,8 @@ func setup(p_manager: RaceManager) -> void:
 			prediction_enabled = false
 		elif a.begins_with("--net-lag="):
 			lag_ms = maxi(int(a.substr(10)), 0)
+		elif a.begins_with("--net-jitter="):
+			jitter_ms = maxi(int(a.substr(13)), 0)
 	var me := manager.player_entry
 	if me and me.car and not me.car.puppet:
 		if prediction_enabled:
@@ -113,15 +139,18 @@ static func _now() -> float:
 
 
 func _on_snapshot(data: PackedByteArray) -> void:
-	if lag_ms > 0:
-		_in_lag.append([Time.get_ticks_msec() + lag_ms / 2, data])
+	if lag_ms > 0 or jitter_ms > 0:
+		_in_lag.append([Time.get_ticks_msec() + lag_ms / 2 + randi_range(0, jitter_ms), data])
+		_in_lag.sort_custom(func(x: Array, y: Array) -> bool: return x[0] < y[0])
 		return
 	_handle_snapshot(data)
 
 
 func _handle_snapshot(data: PackedByteArray) -> void:
 	var s := NetSnapshot.decode(data)
-	_track_offset(float(s["t"]) - _now())
+	var est := float(s["t"]) - _now()
+	_track_offset(est)
+	_adapt_delay(est)
 	if not _snaps.is_empty() and s["t"] <= _snaps[-1]["t"]:
 		return
 	_snaps.append(s)
@@ -149,6 +178,20 @@ func _track_offset(est: float) -> void:
 		_offset = lerpf(_offset, best, OFFSET_DOWN)
 
 
+## Folga adaptativa: um intervalo entre instantâneos + o percentil dos atrasos de chegada.
+func _adapt_delay(est: float) -> void:
+	_late.append(maxf(_offset - est, 0.0))
+	if _late.size() > JITTER_WINDOW:
+		_late = _late.slice(_late.size() - JITTER_WINDOW)
+	if _late.size() < 10:
+		return
+	var sorted := Array(_late)
+	sorted.sort()
+	var p: float = sorted[mini(int(sorted.size() * JITTER_PERCENTILE), sorted.size() - 1)]
+	interp_target = clampf(1.0 / NetProtocol.SNAPSHOT_HZ + p + INTERP_MARGIN, INTERP_MIN, INTERP_MAX)
+	interp_delay = lerpf(interp_delay, interp_target, INTERP_UP if interp_target > interp_delay else INTERP_DOWN)
+
+
 func _on_state(d: Dictionary) -> void:
 	if d.has("event"):
 		manager.apply_net_event(d)
@@ -166,7 +209,7 @@ func _stop_prediction() -> void:
 
 
 func _physics_process(delta: float) -> void:
-	if lag_ms > 0:
+	if lag_ms > 0 or jitter_ms > 0:
 		var now := Time.get_ticks_msec()
 		while not _in_lag.is_empty() and int(_in_lag[0][0]) <= now:
 			_handle_snapshot(_in_lag.pop_front()[1])
@@ -178,7 +221,8 @@ func _physics_process(delta: float) -> void:
 			_stop_prediction()
 	if prediction:
 		# Pausa da sala: o carro para junto com o servidor
-		prediction.car.freeze = manager.net_paused
+		if prediction.car.freeze != manager.net_paused:
+			prediction.car.freeze = manager.net_paused
 		if not manager.net_paused:
 			prediction.record(_seq)
 			prediction.step()
@@ -187,7 +231,7 @@ func _physics_process(delta: float) -> void:
 		prediction.apply_input(sent[0], sent[1])
 	if _snaps.is_empty():
 		return
-	var target := _now() + _offset - NetProtocol.INTERP_DELAY
+	var target := _now() + _offset - interp_delay
 	if _render_t < 0.0 or absf(target - _render_t) > RENDER_SNAP:
 		_render_t = target
 	else:
@@ -203,6 +247,7 @@ func _physics_process(delta: float) -> void:
 			if k == 0:
 				b = {}
 			break
+	var stretched := false
 	for e in manager.roster:
 		if prediction and e.index == prediction.index:
 			continue
@@ -215,7 +260,11 @@ func _physics_process(delta: float) -> void:
 			var w := clampf((rt - a["t"]) / span, 0.0, 1.0)
 			_apply(e.index, e.car, ca, cb, w, 0.0, delta)
 		else:
+			stretched = true
 			_apply(e.index, e.car, ca, ca, 0.0, clampf(rt - a["t"], 0.0, MAX_EXTRAPOLATE), delta)
+	interp_steps += 1
+	if stretched:
+		extrapolated_steps += 1
 
 
 func _apply(idx: int, car: F1Car, a: Dictionary, b: Dictionary, w: float, extra: float, delta: float) -> void:
