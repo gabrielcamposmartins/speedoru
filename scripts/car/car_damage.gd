@@ -17,6 +17,10 @@ extends Node
 ## Os efeitos na física vão para o F1Car: downforce dianteira/traseira, arrasto, potência e, por
 ## roda, aderência, convergência (carro puxando para um lado) e roda quebrada.
 ## F1Car.repair() reconstrói o carro e zera tudo.
+## No servidor dedicado (que não desenha) as malhas não são copiadas: a zona de cada peça sai da
+## caixa da malha original (metade dela nas peças de dois lados) e a resistência funciona igual;
+## o amassado e os destroços com a malha são coisa dos clientes. Copiar as malhas triângulo a
+## triângulo custava ~60 ms por carro na largada, com a thread das outras salas parada.
 
 signal part_damaged(piece: String, health: float)
 signal part_detached(piece: String)
@@ -137,6 +141,7 @@ func _setup() -> void:
 		p.detachable = info[4]
 		p.phase = randf() * TAU
 		var first := true
+		var lite := NetProtocol.is_server_process()
 		for node in part.find_children("*", "MeshInstance3D", true, false):
 			var mi := node as MeshInstance3D
 			if not (mi.mesh is ArrayMesh) or mi.name.begins_with("Damaged_"):
@@ -146,6 +151,12 @@ func _setup() -> void:
 				if p.side == 0 or (mi.name.ends_with("L") == (p.side > 0)):
 					p.extras.append(mi)
 				continue
+			if lite:
+				var box := _half_aabb(inv * mi.global_transform * mi.get_aabb(), p.side)
+				if box.size != Vector3.ZERO:
+					p.zone = box if first else p.zone.merge(box)
+					first = false
+				continue
 			var copy := _copy_mesh(mi, p.side, inv)
 			if copy.is_empty():
 				continue
@@ -153,7 +164,7 @@ func _setup() -> void:
 			var ab: AABB = inv * copy[0].global_transform * (copy[0] as MeshInstance3D).get_aabb()
 			p.zone = ab if first else p.zone.merge(ab)
 			first = false
-		if p.copies.is_empty():
+		if first:
 			continue
 		# Suspensão: a zona inclui a roda daquele canto (é ela que bate primeiro)
 		if piece_name.begins_with("suspension"):
@@ -174,6 +185,21 @@ func _setup() -> void:
 		health[piece_name] = 1.0
 	health["engine"] = 1.0
 	_apply_to_car()
+
+
+## Metade de uma caixa (espaço do carro) do lado `side` (+1 esquerda, -1 direita, 0 inteira).
+static func _half_aabb(box: AABB, side: int) -> AABB:
+	if side == 0:
+		return box
+	var lo := box.position
+	var hi := box.end
+	if side > 0:
+		lo.x = maxf(lo.x, 0.0)
+	else:
+		hi.x = minf(hi.x, 0.0)
+	if hi.x <= lo.x:
+		return AABB()
+	return AABB(lo, hi - lo)
 
 
 ## Desfaz as cópias de uma montagem anterior (troca de peça na garagem): as originais voltam a
@@ -438,6 +464,11 @@ func _detach(piece_name: String, outward: Vector3, severity: float) -> void:
 		for s in (copy[2] as Array):
 			for v in (s as PackedVector3Array):
 				points.append(local_xf * v)
+	if p.copies.is_empty():
+		# Servidor (sem cópias das malhas): o casco do destroço é a caixa da peça
+		var half := p.zone.size * 0.5
+		for k in 8:
+			points.append(Vector3(half.x * (1 if k & 1 else -1), half.y * (1 if k & 2 else -1), half.z * (1 if k & 4 else -1)))
 	for extra in p.extras:
 		if not is_instance_valid(extra):
 			continue

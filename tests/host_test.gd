@@ -158,6 +158,9 @@ func _hosting() -> void:
 		return
 	_check(host.log_lines.any(func(l: String) -> bool: return l.contains("ouvindo na porta %d" % PORT)), "log do processo chega ao jogo")
 	_check(host.log_lines.any(func(l: String) -> bool: return l.contains("banco local")), "servidor usa o banco local")
+	# O servidor gera as pistas na subida (RaceTrack.prewarm_server); espera para medir o resto
+	_check(await _wait_for(func() -> bool: return host.log_lines.any(func(l: String) -> bool: return l.contains("pistas do servidor prontas")), 120.0),
+		"pistas do servidor geradas na subida")
 	a = _client("A")
 	b = _client("B")
 	a.connect_to_server("127.0.0.1", PORT)
@@ -204,6 +207,8 @@ func _hosting() -> void:
 	# O jogo some (para de bater e o arquivo alive some): o servidor fecha sozinho
 	_check(host.start(PORT + 1), "abriu de novo (outra porta)")
 	if await _wait_for(func() -> bool: return host.is_running(), 60.0):
+		var lines := host.log_lines.size()
+		await _wait_for(func() -> bool: return host.log_lines.slice(lines).any(func(l: String) -> bool: return l.contains("pistas do servidor prontas")), 120.0)
 		host.process_mode = Node.PROCESS_MODE_DISABLED
 		DirAccess.remove_absolute(host.host_dir_abs().path_join(HostControl.ALIVE))
 		await create_timer(3.0).timeout

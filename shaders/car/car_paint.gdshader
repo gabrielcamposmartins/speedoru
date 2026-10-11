@@ -10,8 +10,13 @@
 //
 // SKIN (CarSkin): imagem pintada pelo jogador sobre o molde, por cima das cores (o alfa mostra a
 // pintura normal). Planificação por projeção: cada face pega a vista para a qual mais aponta
-// (lados, cima/baixo, frente, trás), com os retângulos de CarSkin.RECTS. template_view >= 0 é o
-// modo MOLDE (CarSkinTemplate): só as faces daquela vista, sem luz (a cor sai pela emissão).
+// (lados, cima, baixo, frente, trás), em duas camadas: a VISÍVEL daquele lado e a ESCONDIDA (atrás
+// de outra superfície virada para o mesmo lado, pelo mapa de profundidade skin_depth; a de baixo é
+// sempre a escondida). Retângulos de CarSkin.rects_uniform (6 visíveis + 6 escondidos).
+// template_view >= 0 é o modo MOLDE (CarSkinTemplate): só as faces daquela vista e daquela camada
+// (template_layer), sem luz (a cor sai pela emissão). template_out: 0 cor, 1 identificação (R peça,
+// G profundidade, B inclinação; valores exatos de 8 bits depois da conversão para sRGB), 2
+// profundidade em 16 bits (R alto, G baixo) para o mapa.
 shader_type spatial;
 render_mode diffuse_toon, specular_toon;
 
@@ -35,10 +40,16 @@ uniform sampler2D flake_tex : hint_normal, filter_linear_mipmap, repeat_enable;
 // Skin
 uniform bool use_skin = false;
 uniform sampler2D skin_tex : source_color, filter_linear_mipmap_anisotropic, repeat_disable;
-uniform vec4 skin_rects[6];
+uniform vec4 skin_rects[12];
 uniform vec3 skin_box_min = vec3(-1.1, 0.0, -3.2);
 uniform vec3 skin_box_max = vec3(1.1, 1.2, 3.2);
+uniform bool use_skin_depth = false;
+uniform sampler2D skin_depth : filter_nearest, repeat_disable;
+uniform float skin_depth_eps = 0.02;
 uniform int template_view = -1;
+uniform int template_layer = 0;
+uniform int template_out = 0;
+uniform float part_id = 0.0;
 
 varying vec3 car_pos;
 varying vec3 car_nrm;
@@ -126,23 +137,67 @@ int skin_face(vec3 n) {
 	return n.z >= 0.0 ? 4 : 5;
 }
 
-// Mesma conta de CarSkin.face_uv + retângulo da face no molde
-vec2 skin_uv(int f, vec3 p) {
+// Mesma conta de CarSkin.face_uv (0..1 dentro do retângulo da face)
+vec2 skin_face_uv(int f, vec3 p) {
 	vec3 s = skin_box_max - skin_box_min;
 	vec2 uv;
 	if (f == 0) {
 		uv = vec2((skin_box_max.z - p.z) / s.z, (skin_box_max.y - p.y) / s.y);
 	} else if (f == 1) {
 		uv = vec2((p.z - skin_box_min.z) / s.z, (skin_box_max.y - p.y) / s.y);
-	} else if (f == 2 || f == 3) {
+	} else if (f == 2) {
 		uv = vec2((p.z - skin_box_min.z) / s.z, (skin_box_max.x - p.x) / s.x);
+	} else if (f == 3) {
+		uv = vec2((p.z - skin_box_min.z) / s.z, (p.x - skin_box_min.x) / s.x);
 	} else if (f == 4) {
 		uv = vec2((p.x - skin_box_min.x) / s.x, (skin_box_max.y - p.y) / s.y);
 	} else {
 		uv = vec2((skin_box_max.x - p.x) / s.x, (skin_box_max.y - p.y) / s.y);
 	}
-	vec4 r = skin_rects[f];
-	return r.xy + clamp(uv, vec2(0.0), vec2(1.0)) * r.zw;
+	return clamp(uv, vec2(0.0), vec2(1.0));
+}
+
+// Coordenada no molde (0..1) da face na camada (0 visível, 1 escondida)
+vec2 skin_uv(int f, vec3 p, int layer) {
+	vec4 r = skin_rects[f + 6 * layer];
+	return r.xy + skin_face_uv(f, p) * r.zw;
+}
+
+// Quanto o ponto está perto de quem olha a vista (0..1, 1 = colado na câmera)
+float skin_closeness(int f, vec3 p) {
+	vec3 t = (p - skin_box_min) / (skin_box_max - skin_box_min);
+	if (f == 0) return t.x;
+	if (f == 1) return 1.0 - t.x;
+	if (f == 2) return t.y;
+	if (f == 3) return 1.0 - t.y;
+	if (f == 4) return t.z;
+	return 1.0 - t.z;
+}
+
+float skin_axis(int f) {
+	vec3 s = skin_box_max - skin_box_min;
+	return f < 2 ? s.x : (f < 4 ? s.y : s.z);
+}
+
+// Camada do ponto: escondido se está atrás da superfície visível (mapa de profundidade) por mais
+// que a folga; a parte de baixo é sempre a escondida
+int skin_layer(int f, vec3 p) {
+	if (f == 3) {
+		return 1;
+	}
+	if (!use_skin_depth) {
+		return 0;
+	}
+	vec4 d = texture(skin_depth, skin_uv(f, p, 0));
+	if (d.a < 0.5) {
+		return 0;
+	}
+	float front = (round(d.r * 255.0) * 256.0 + round(d.g * 255.0)) / 65535.0;
+	return skin_closeness(f, p) < front - skin_depth_eps / skin_axis(f) ? 1 : 0;
+}
+
+vec3 srgb_to_linear(vec3 c) {
+	return mix(c / 12.92, pow((c + 0.055) / 1.055, vec3(2.4)), step(vec3(0.04045), c));
 }
 
 void fragment() {
@@ -157,17 +212,28 @@ void fragment() {
 		col = mix(mix(c1, c2, w.x), c3, w.y);
 	}
 	int face = skin_face(car_nrm);
+	int layer = skin_layer(face, car_pos);
 	if (use_skin && !plain) {
-		vec4 sk = texture(skin_tex, skin_uv(face, car_pos));
+		vec4 sk = texture(skin_tex, skin_uv(face, car_pos, layer));
 		col = mix(col, sk.rgb, sk.a);
 	}
 	if (template_view >= 0) {
-		// Molde: só as faces desta vista, cor pura (sem luz: a cena do molde não tem luz nenhuma)
-		if (face != template_view || plain) {
+		// Molde: só as faces desta vista e desta camada, cor pura (a cena do molde não tem luz)
+		if (face != template_view || layer != template_layer || plain) {
 			discard;
 		}
 		ALBEDO = vec3(0.0);
-		EMISSION = col;
+		float near = skin_closeness(face, car_pos);
+		if (template_out == 2) {
+			float v = round(near * 65535.0);
+			EMISSION = srgb_to_linear(vec3(floor(v / 256.0) / 255.0, mod(v, 256.0) / 255.0, 0.0));
+		} else if (template_out == 1) {
+			vec3 n = normalize(car_nrm);
+			float tilt = max(abs(n.x), max(abs(n.y), abs(n.z)));
+			EMISSION = srgb_to_linear(vec3(part_id, near, tilt));
+		} else {
+			EMISSION = col;
+		}
 		ROUGHNESS = 1.0;
 		SPECULAR = 0.0;
 	} else {

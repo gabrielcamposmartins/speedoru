@@ -387,6 +387,7 @@ func _spawn_bot(index: int, driver: Array, level: int) -> F1Car:
 	var car := car_scene.instantiate() as F1Car
 	car.name = "Bot%d" % index
 	car.player_controlled = false
+	_strip_server_visuals(car)
 	# Bots não precisam dos retrovisores/display (SubViewports caros)
 	var onboard := car.get_node_or_null("Onboard")
 	if onboard:
@@ -1203,8 +1204,10 @@ func _play_intro() -> void:
 ## (se a sala usa bots). Os carros dos humanos usam o perfil da conta (visual e engenharia), que só o
 ## servidor conhece de verdade. Depois espera o RaceSession chamar net_go().
 func _build_net_grid() -> void:
+	var t0 := Time.get_ticks_usec()
 	laps = int(net_setup.get("laps", 5))
 	line = RacingLine.build(track, track.layout.raceline)
+	var t_line := Time.get_ticks_usec()
 	state = State.GRID
 	player.allow_quick_repair = false
 	var players: Array = net_setup.get("players", []).duplicate()
@@ -1224,6 +1227,13 @@ func _build_net_grid() -> void:
 	var names := DRIVERS.duplicate()
 	names.shuffle()
 	for slot in count:
+		# Um carro por quadro (cada um já no seu lugar do grid): montar os 10 de uma vez prendia a
+		# thread principal e congelava as corridas das outras salas
+		if slot > 0:
+			var prev: RaceEntry = roster[-1]
+			prev.car.global_transform = track.get_grid_transform(prev.grid_slot)
+			prev.car.linear_velocity = Vector3.ZERO
+			await get_tree().process_frame
 		if slot < players.size():
 			var p: Dictionary = players[slot]
 			var car := player if slot == 0 else _spawn_net_car("Human%d" % slot)
@@ -1285,6 +1295,8 @@ func _build_net_grid() -> void:
 		entry.car.reset_physics_interpolation()
 		entry.car.hold = not entry.is_player
 		_init_position(entry)
+	print("Servidor: grid de %d carros montado em %d ms (linha ideal %d ms)" % [entries.size(),
+		(Time.get_ticks_usec() - t0) / 1000, (t_line - t0) / 1000])
 	net_grid_ready.emit()
 
 
@@ -1355,10 +1367,23 @@ static func _code_of(text: String) -> String:
 
 
 ## Carro extra (outro humano na rede): sem retrovisores; no cliente, sem som de motor alto.
+## Servidor: o carro nasce sem o que só serve para desenhar ou tocar (som, efeitos, piloto
+## animado, retrovisores), antes de entrar na árvore (o _ready deles custa tempo na largada).
+func _strip_server_visuals(car: F1Car) -> void:
+	if net != Net.SERVER:
+		return
+	for n in ["Audio", "Effects", "DriverRig", "Onboard"]:
+		var node := car.get_node_or_null(n)
+		if node:
+			car.remove_child(node)
+			node.free()
+
+
 func _spawn_net_car(node_name: String) -> F1Car:
 	var car := car_scene.instantiate() as F1Car
 	car.name = node_name
 	car.player_controlled = false
+	_strip_server_visuals(car)
 	var onboard := car.get_node_or_null("Onboard")
 	if onboard:
 		car.remove_child(onboard)

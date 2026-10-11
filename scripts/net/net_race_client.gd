@@ -7,19 +7,42 @@ extends Node
 ##   não chegar, porque o servidor aplica a diferença).
 ## * Recebe os instantâneos (30/s) e desenha todos os carros um pouco no passado
 ##   (NetProtocol.INTERP_DELAY), interpolando entre dois instantâneos; se faltar um, estica a
-##   última posição pela velocidade por até 0,25 s. O relógio da interpolação anda um passo de
-##   física por vez (corrigindo devagar para o relógio do servidor): com a hora real, dois passos
-##   no mesmo quadro teriam o mesmo instante e o carro andaria aos trancos.
+##   última posição pela velocidade por até 0,25 s e, quando os instantâneos voltam, leva o carro
+##   até a posição interpolada em alguns passos (EXIT_BLEND_STEPS), sem salto. O relógio da
+##   interpolação anda um passo de física por vez (corrigindo devagar para o relógio do servidor):
+##   com a hora real, dois passos no mesmo quadro teriam o mesmo instante e o carro andaria aos
+##   trancos.
+## * Relógio do servidor (_offset): o maior "tempo do instantâneo − hora local" dos últimos
+##   OFFSET_WINDOW instantâneos (o atraso de rede só diminui a conta, então o maior é o mais
+##   confiável). Sobe na hora; desce aos poucos (OFFSET_DOWN por instantâneo, ~0,5 s), assim um
+##   passo atrasado no servidor (o tempo da simulação fica para trás) não deixa o cliente adiante
+##   dos instantâneos.
 ## * Repassa o estado da prova (5/s) e os acontecimentos ao RaceManager.
 
 const ACTIONS := ["shift_up", "shift_down", "toggle_gearbox", "pit_limiter", "toggle_tc", "brake_bias_forward",
 	"brake_bias_rearward", "reset_car", "pass_signal"]
 const MAX_EXTRAPOLATE := 0.25
+## Janela (instantâneos, ~0,5 s) do relógio do servidor e quanto ele desce por instantâneo.
+const OFFSET_WINDOW := 15
+const OFFSET_DOWN := 0.18
+## Diferença do relógio da interpolação que vale um salto em vez de correção suave (s).
+const RENDER_SNAP := 0.5
+## Passos de física para levar o carro da posição esticada até a interpolada.
+const EXIT_BLEND_STEPS := 8
+## Correção maior que isso (m) é um salto de verdade (carro levado de volta à pista): sem suavizar.
+const EXIT_BLEND_MAX := 6.0
 
 var manager: RaceManager
 var _snaps: Array[Dictionary] = []
 var _offset := 0.0
 var _has_offset := false
+## Últimas estimativas do relógio do servidor (ver OFFSET_WINDOW).
+var _estimates := PackedFloat64Array()
+## Por carro (índice): se o último passo foi esticado, a última pose mostrada e a correção em
+## andamento ao sair da extrapolação [erro de posição, erro de rotação, passos restantes].
+var _extrapolated := {}
+var _last_pose := {}
+var _blend := {}
 var _seq := 0
 var _render_t := -1.0
 ## Contadores das ações de toque (um por item de ACTIONS; o servidor aplica a diferença).
@@ -67,18 +90,28 @@ static func _now() -> float:
 
 func _on_snapshot(data: PackedByteArray) -> void:
 	var s := NetSnapshot.decode(data)
-	var est: float = s["t"] - _now()
-	# Relógio do servidor: guarda o menor atraso visto e se ajusta devagar se ele crescer
-	if not _has_offset or est > _offset:
-		_offset = est
-		_has_offset = true
-	else:
-		_offset = lerpf(_offset, est, 0.01)
+	_track_offset(float(s["t"]) - _now())
 	if not _snaps.is_empty() and s["t"] <= _snaps[-1]["t"]:
 		return
 	_snaps.append(s)
 	while _snaps.size() > 40:
 		_snaps.pop_front()
+
+
+## Relógio do servidor nos dois sentidos: o maior valor da janela, subindo na hora e descendo aos
+## poucos (sem pular de uma vez).
+func _track_offset(est: float) -> void:
+	_estimates.append(est)
+	if _estimates.size() > OFFSET_WINDOW:
+		_estimates = _estimates.slice(_estimates.size() - OFFSET_WINDOW)
+	var best := est
+	for v in _estimates:
+		best = maxf(best, v)
+	if not _has_offset or best > _offset:
+		_offset = best
+		_has_offset = true
+	else:
+		_offset = lerpf(_offset, best, OFFSET_DOWN)
 
 
 func _on_state(d: Dictionary) -> void:
@@ -93,7 +126,7 @@ func _physics_process(delta: float) -> void:
 	if _snaps.is_empty():
 		return
 	var target := _now() + _offset - NetProtocol.INTERP_DELAY
-	if _render_t < 0.0 or absf(target - _render_t) > 0.25:
+	if _render_t < 0.0 or absf(target - _render_t) > RENDER_SNAP:
 		_render_t = target
 	else:
 		_render_t += delta + (target - _render_t) * 0.05
@@ -116,16 +149,35 @@ func _physics_process(delta: float) -> void:
 		if cb != null:
 			var span: float = maxf(b["t"] - a["t"], 0.001)
 			var w := clampf((rt - a["t"]) / span, 0.0, 1.0)
-			_apply(e.car, ca, cb, w, 0.0)
+			_apply(e.index, e.car, ca, cb, w, 0.0, delta)
 		else:
-			_apply(e.car, ca, ca, 0.0, clampf(rt - a["t"], 0.0, MAX_EXTRAPOLATE))
+			_apply(e.index, e.car, ca, ca, 0.0, clampf(rt - a["t"], 0.0, MAX_EXTRAPOLATE), delta)
 
 
-func _apply(car: F1Car, a: Dictionary, b: Dictionary, w: float, extra: float) -> void:
+func _apply(idx: int, car: F1Car, a: Dictionary, b: Dictionary, w: float, extra: float, delta: float) -> void:
 	var vel: Vector3 = (a["vel"] as Vector3).lerp(b["vel"], w)
 	var pos: Vector3 = (a["pos"] as Vector3).lerp(b["pos"], w) + vel * extra
 	var rot: Quaternion = (a["rot"] as Quaternion).slerp(b["rot"], w)
-	car.global_transform = Transform3D(Basis(rot), pos)
+	# Saindo de uma extrapolação: a posição esticada e a interpolada não batem; em vez de saltar,
+	# leva o carro até a interpolada em alguns passos
+	if extra <= 0.0 and _extrapolated.get(idx, false) and _last_pose.has(idx):
+		var last: Transform3D = _last_pose[idx]
+		var expected: Vector3 = last.origin + vel * delta
+		var err := expected - pos
+		if err.length() > 0.01 and err.length() < EXIT_BLEND_MAX:
+			_blend[idx] = [err, last.basis.get_rotation_quaternion() * rot.inverse(), EXIT_BLEND_STEPS]
+	_extrapolated[idx] = extra > 0.0
+	if _blend.has(idx):
+		var bl: Array = _blend[idx]
+		var f := float(bl[2]) / (EXIT_BLEND_STEPS + 1)
+		pos += (bl[0] as Vector3) * f
+		rot = Quaternion.IDENTITY.slerp(bl[1], f) * rot
+		bl[2] -= 1
+		if bl[2] <= 0:
+			_blend.erase(idx)
+	var xf := Transform3D(Basis(rot.normalized()), pos)
+	_last_pose[idx] = xf
+	car.global_transform = xf
 	car.linear_velocity = vel
 	var s: Dictionary = b if w >= 0.5 else a
 	car.rpm = lerpf(a["rpm"], b["rpm"], w)

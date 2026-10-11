@@ -85,6 +85,10 @@ func _ready() -> void:
 	print("Servidor: ouvindo na porta %d" % cfg["port"])
 	_skin_dir = ProjectSettings.globalize_path(cfg["host_dir"].path_join("skins") if cfg["host_dir"] != "" else "user://server_skins")
 	DirAccess.make_dir_recursive_absolute(_skin_dir)
+	add_child(ServerStats.new())
+	# Pistas do servidor geradas uma vez, em segundo plano (as salas que largarem antes esperam)
+	var scenes := RaceSettings.TRACKS.map(func(t: Dictionary) -> String: return t["scene"])
+	RaceTrack.prewarm_server(self, scenes)
 	if cfg["host_dir"] != "":
 		host_control = HostControl.new()
 		host_control.name = "HostControl"
@@ -231,6 +235,10 @@ func kick_account(account_id: String) -> bool:
 	for p in peers:
 		get_node("/root/Net").kick(p)
 	return true
+
+
+func _exit_tree() -> void:
+	RaceTrack.clear_server_cache()
 
 
 ## Fecha o servidor gravando tudo (comando "stop" do host ou o jogo que o abriu fechou).

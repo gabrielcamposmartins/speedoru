@@ -4,7 +4,9 @@ extends SceneTree
 ## * importar: tamanho, hash, arquivos, conferência dos bytes da rede, perfil limpa hash inválido;
 ## * ida e volta: molde → importado como skin → molde de novo dá a mesma imagem (o shader lê a
 ##   skin exatamente onde o molde mostra cada face);
-## * pintar o lado esquerdo de magenta só muda o lado esquerdo.
+## * pintar o lado esquerdo de magenta só muda o lado esquerdo — e não pinta o que fica escondido
+##   atrás dele (o monocoque atrás do sidepod, o lado de dentro do outro sidepod: cada superfície
+##   tem o seu lugar); pintar o quadro escondido não muda o visível.
 ##   godot --path . -s res://tests/skin_test.gd -- [pasta para salvar os moldes]
 ## Arquivos de teste: user://test_skins/ (apagada no fim).
 
@@ -64,19 +66,39 @@ func _mapping() -> void:
 	_check(CarSkin.pixel_of(Vector3(0.9, 0.7, 0), Vector3.UP).y < CarSkin.pixel_of(Vector3(-0.9, 0.7, 0), Vector3.UP).y,
 		"em cima, o lado esquerdo do carro fica na parte de cima da vista")
 	var all_inside := true
-	for p in [CarSkin.BOX_MIN, CarSkin.BOX_MAX, Vector3(0, 0.5, 0)]:
-		for n in [Vector3.RIGHT, Vector3.LEFT, Vector3.UP, Vector3.DOWN, Vector3.FORWARD, Vector3.BACK]:
-			var f := CarSkin.face_of(n)
-			all_inside = all_inside and Rect2(CarSkin.RECTS[f]).grow(0.5).has_point(CarSkin.pixel_of(p, n))
-	_check(all_inside, "toda a caixa do carro cai dentro dos retângulos")
-	var rects: Array = CarSkin.RECTS
+	for layer in 2:
+		for p in [CarSkin.BOX_MIN, CarSkin.BOX_MAX, Vector3(0, 0.5, 0)]:
+			for n in [Vector3.RIGHT, Vector3.LEFT, Vector3.UP, Vector3.DOWN, Vector3.FORWARD, Vector3.BACK]:
+				var f := CarSkin.face_of(n)
+				all_inside = all_inside and Rect2(CarSkin.rect_of(f, layer)).grow(0.5).has_point(CarSkin.pixel_of(p, n, layer))
+	_check(all_inside, "toda a caixa do carro cai dentro dos retângulos (visíveis e escondidos)")
+	var rects := _all_rects()
 	var overlap := false
-	for i in [0, 1, 2, 4, 5]:
-		for j in [0, 1, 2, 4, 5]:
-			if i < j and Rect2i(rects[i]).intersects(rects[j]):
+	for i in rects.size():
+		for j in rects.size():
+			if i < j and Rect2i(rects[i]).grow(2).intersects(rects[j]):
 				overlap = true
-		_check(Rect2i(0, 0, CarSkin.SIZE, CarSkin.SIZE).encloses(rects[i]), "vista %d dentro do molde" % i)
-	_check(not overlap, "vistas não se sobrepõem")
+		_check(Rect2i(0, 0, CarSkin.SIZE, CarSkin.SIZE).encloses(rects[i]), "quadro %d dentro do molde" % i)
+	_check(not overlap, "quadros não se sobrepõem (%d)" % rects.size())
+	var aspect_ok := true
+	for layer in 2:
+		for f in CarSkin.ALL_FACES:
+			var rr := CarSkin.rect_of(f, layer)
+			var cam: Array = CarSkin.face_camera(f)
+			var size := CarSkin.BOX_MAX - CarSkin.BOX_MIN
+			var w := size.z if f in [0, 1, 2, 3] else size.x
+			aspect_ok = aspect_ok and absf(float(rr.size.x) / rr.size.y - w / float(cam[3])) < 0.02
+	_check(aspect_ok, "proporção de cada quadro igual à da vista")
+
+
+## Os 11 quadros: 5 visíveis, 5 escondidos e o de baixo.
+func _all_rects() -> Array:
+	var out := []
+	for f in CarSkin.VISIBLE_FACES:
+		out.append(CarSkin.rect_of(f, 0))
+	for f in CarSkin.ALL_FACES:
+		out.append(CarSkin.rect_of(f, 1))
+	return out
 
 
 func _files() -> void:
@@ -120,13 +142,27 @@ func _round_trip() -> void:
 	cfg.accent_color = Color("e5303a")
 	cfg.paint_scheme = 4
 	var t0 := Time.get_ticks_msec()
-	var tpl := await CarSkinTemplate.render(host, cfg)
-	print("  molde em %d ms" % (Time.get_ticks_msec() - t0))
+	var layers := await CarSkinTemplate.render_layers(host, cfg)
+	var tpl: Image = layers["template"]
+	var lines: Image = layers["lines"]
+	print("  molde e linhas em %d ms" % (Time.get_ticks_msec() - t0))
+	# Linhas escuras das peças dentro dos quadros
+	var inside := 0
+	for r: Rect2i in _all_rects():
+		for y in range(r.position.y, r.end.y, 2):
+			for x in range(r.position.x, r.end.x, 2):
+				var lc := lines.get_pixel(x, y)
+				if lc.a > 0.5 and lc.r < 0.3:
+					inside += 1
+	_check(inside > 4000, "linhas das peças dentro das vistas (%d pontos)" % inside)
+	if out_dir != "":
+		lines.save_png(out_dir.path_join("molde_linhas.png"))
 	_check(tpl.get_width() == CarSkin.SIZE, "molde 2048×2048")
 	var cover := []
-	for f in [0, 1, 2, 4, 5]:
-		cover.append(_coverage(tpl, CarSkin.RECTS[f]))
-	_check(cover.all(func(c: float) -> bool: return c > 0.08), "todas as vistas têm carro (%s)" % str(cover.map(func(c: float) -> String: return "%.0f%%" % (c * 100))))
+	for r: Rect2i in _all_rects():
+		cover.append(_coverage(tpl, r))
+	_check(cover.slice(0, 5).all(func(c: float) -> bool: return c > 0.08), "todas as vistas visíveis têm carro (%s)" % str(cover.map(func(c: float) -> String: return "%.0f%%" % (c * 100))))
+	_check(cover.slice(5).all(func(c: float) -> bool: return c > 0.01), "os quadros escondidos e o de baixo têm superfícies")
 	if out_dir != "":
 		tpl.save_png(out_dir.path_join("molde.png"))
 	# Importa o molde sem mexer e gera de novo: tem que dar a mesma coisa
@@ -146,6 +182,15 @@ func _round_trip() -> void:
 	_check(_magenta(tpl3, left) > 0.95, "lado esquerdo virou magenta (%.0f%%)" % (_magenta(tpl3, left) * 100))
 	_check(_magenta(tpl3, CarSkin.RECTS[CarSkin.Face.RIGHT]) < 0.01 and _magenta(tpl3, CarSkin.RECTS[CarSkin.Face.TOP]) < 0.01,
 		"lado direito e cima continuam sem magenta")
+	var hidden_left := CarSkin.rect_of(CarSkin.Face.LEFT, 1)
+	_check(_magenta(tpl3, hidden_left) < 0.01, "o que fica escondido atrás do lado esquerdo não pegou o magenta (%.1f%%)" % (_magenta(tpl3, hidden_left) * 100))
+	# Quadro escondido pintado de magenta: muda as superfícies escondidas, não o lado visível
+	var painted2 := tpl.duplicate() as Image
+	painted2.fill_rect(hidden_left, Color(1, 0, 1))
+	cfg.skin = CarSkin.import_image(painted2)["hash"]
+	var tpl4 := await CarSkinTemplate.render(host, cfg)
+	_check(_magenta(tpl4, hidden_left) > 0.9, "quadro escondido pintado (%.0f%%)" % (_magenta(tpl4, hidden_left) * 100))
+	_check(_magenta(tpl4, left) < 0.01, "o lado esquerdo visível continua sem magenta (%.1f%%)" % (_magenta(tpl4, left) * 100))
 	host.queue_free()
 
 
@@ -165,8 +210,7 @@ func _diff(a: Image, b: Image) -> Vector2:
 	var sum := 0.0
 	var big := 0
 	var n := 0
-	for f in [0, 1, 2, 4, 5]:
-		var r: Rect2i = CarSkin.RECTS[f]
+	for r: Rect2i in _all_rects():
 		for y in range(r.position.y, r.end.y, 3):
 			for x in range(r.position.x, r.end.x, 3):
 				var ca := a.get_pixel(x, y)

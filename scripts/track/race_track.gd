@@ -54,8 +54,17 @@ var pit_width := PackedFloat32Array()
 var footprints: Array[PackedVector2Array] = []
 var start_lights: StartLights
 ## Servidor dedicado: só gera o que tem colisão (pista, barreiras, boxes, objetos, terreno),
-## em etapas de um quadro cada (sem pausar as outras salas).
+## em etapas de um quadro cada. Cada pista é gerada UMA vez (na subida do servidor, prewarm) e
+## guardada em _server_cache; cada sala copia os nós (duplicate, ~20 ms: os shapes de colisão são
+## compartilhados, cada sala tem os próprios corpos no seu mundo de física) em vez de gerar de novo
+## (3 a 5 s com a thread principal presa, o que congelava as corridas das outras salas).
 static var server_mode := false
+## Servidor: chave da pista -> {root (cópia fora da árvore), dados calculados, caminho das luzes}.
+static var _server_cache := {}
+## Pistas sendo geradas para o cache agora (as salas que pedem a mesma pista esperam).
+static var _warming := {}
+## Esta instância é a que gera a pista para o cache (não espera por ela mesma).
+var _for_cache := false
 const SERVER_SKIP := ["arquibancadas", "atrações", "árvores", "folhas", "pinheiros", "cenário", "grama", "prédios", "túnel", "porto",
 	"jardins", "entorno", "navios", "detalhes", "vitrine"]
 
@@ -101,9 +110,18 @@ func rebuild(staged := false) -> void:
 		_root = null
 	if layout == null or layout.centerline.is_empty():
 		return
+	if server_mode and not Engine.is_editor_hint():
+		var key := _cache_key()
+		while _warming.has(key) and not _for_cache:
+			await get_tree().process_frame
+		if _server_cache.has(key):
+			_from_cache(_server_cache[key])
+			return
+		_warming[key] = true
 	var t0 := Time.get_ticks_msec()
 	path = TrackPath.from_csv(layout.centerline, 2.0, layout.width_scale, layout.min_half_width, layout.start_offset)
 	if path == null:
+		_warming.erase(_cache_key())
 		return
 	_root = Node3D.new()
 	_root.name = "Generated"
@@ -168,12 +186,111 @@ func rebuild(staged := false) -> void:
 		timings.append("%s %d ms" % [st[0], Time.get_ticks_msec() - ts])
 		done += st[2]
 	print("RaceTrack: %.0f m gerados em %d ms (%s)" % [path.length, Time.get_ticks_msec() - t0, ", ".join(timings)])
+	if server_mode and not Engine.is_editor_hint():
+		_store_cache()
 	if staged:
 		LoadingScreen.report_progress(0.95, "Preparando")
 		tree.paused = was_paused
 	is_built = true
 	built.emit()
 	_apply_current_mood()
+
+
+# ---------------------------------------------------------------------------
+# Cache do servidor
+# ---------------------------------------------------------------------------
+func _cache_key() -> String:
+	return "%s#%d" % [layout.resource_path, terrain_seed]
+
+
+## Guarda a pista recém-gerada: uma cópia dos nós (fora da árvore) e os dados calculados.
+func _store_cache() -> void:
+	var key := _cache_key()
+	_server_cache[key] = {
+		"root": _root.duplicate(),
+		"lights": _root.get_path_to(start_lights) if start_lights else NodePath(),
+		"path": path, "kerb": kerb, "gravel": gravel, "barrier": barrier, "barrier_kind": barrier_kind,
+		"pit_width": pit_width, "footprints": footprints, "terrain": terrain, "city": city,
+	}
+	_warming.erase(key)
+
+
+## Monta a pista a partir do cache (servidor): copia os nós e reusa os dados (só leitura).
+func _from_cache(c: Dictionary) -> void:
+	var t0 := Time.get_ticks_usec()
+	path = c["path"]
+	kerb = c["kerb"]
+	gravel = c["gravel"]
+	barrier = c["barrier"]
+	barrier_kind = c["barrier_kind"]
+	pit_width = c["pit_width"]
+	footprints = (c["footprints"] as Array[PackedVector2Array]).duplicate()
+	terrain = c["terrain"]
+	city = c["city"]
+	leaves = null
+	_root = (c["root"] as Node3D).duplicate()
+	add_child(_root)
+	# As luzes de largada guardam as lâmpadas e os sons em variáveis (a cópia não leva): monta
+	# outras no mesmo lugar
+	start_lights = null
+	var old := _root.get_node_or_null(c["lights"]) as Node3D if c["lights"] != NodePath() else null
+	if old:
+		var parent := old.get_parent()
+		var xf := old.transform
+		var node_name := old.name
+		parent.remove_child(old)
+		old.free()
+		var lights := StartLights.new()
+		lights.name = node_name
+		parent.add_child(lights)
+		lights.setup()
+		lights.transform = xf
+		start_lights = lights
+	print("RaceTrack: %.0f m copiados do cache em %.1f ms" % [path.length, (Time.get_ticks_usec() - t0) / 1000.0])
+	is_built = true
+	built.emit()
+	_apply_current_mood()
+
+
+## Servidor: gera a versão de servidor de cada pista uma vez (na subida), antes das salas usarem.
+## `host` é um nó na árvore (as pistas ficam penduradas nele enquanto são geradas).
+static func prewarm_server(host: Node, scenes: Array) -> void:
+	var t0 := Time.get_ticks_msec()
+	for scene_path: String in scenes:
+		var scene := (load(scene_path) as PackedScene).instantiate()
+		var track: RaceTrack = null
+		for t in scene.find_children("*", "RaceTrack", true, false):
+			track = t
+		if track == null or track.layout == null:
+			scene.free()
+			continue
+		if _server_cache.has(track._cache_key()):
+			scene.free()
+			continue
+		# Só a pista: sem a cena em volta (corrida, carros, câmera, HUD, céu)
+		track.get_parent().remove_child(track)
+		track.owner = null
+		scene.free()
+		track._for_cache = true
+		_warming[track._cache_key()] = true
+		var world := SubViewport.new()
+		world.own_world_3d = true
+		world.render_target_update_mode = SubViewport.UPDATE_DISABLED
+		world.size = Vector2i(2, 2)
+		host.add_child(world)
+		world.add_child(track)
+		if not track.is_built:
+			await track.built
+		world.queue_free()
+		await host.get_tree().process_frame
+	print("RaceTrack: pistas do servidor prontas em %d ms" % (Time.get_ticks_msec() - t0))
+
+
+static func clear_server_cache() -> void:
+	for c: Dictionary in _server_cache.values():
+		if is_instance_valid(c["root"]):
+			(c["root"] as Node).free()
+	_server_cache.clear()
 
 
 # ---------------------------------------------------------------------------

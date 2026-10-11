@@ -22,6 +22,9 @@ var materials: Dictionary = {}
 ## Skin pedida pela configuração ("" = sem) e se a textura já está nos materiais.
 var skin := ""
 var _skin_applied := false
+## Peças do carro (CarSkin.parts_key) e se o mapa de profundidade delas já está nos materiais.
+var _depth_key := ""
+var _depth_applied := false
 
 
 func _init() -> void:
@@ -59,6 +62,7 @@ func update_from_config(config: CarConfig) -> void:
 			mat.set_shader_parameter("scheme", clampi(config.paint_scheme, 0, CarConfig.PAINT_SCHEMES.size() - 1))
 			apply_paint_finish(mat, config.paint_finish)
 	set_skin(config.skin)
+	_sync_depth(config)
 	_set_color("Rim", config.rim_color)
 	_set_color("Helmet", config.helmet_color)
 	_set_color("Suit", config.suit_color)
@@ -88,13 +92,41 @@ func _on_skin_ready(h: String) -> void:
 	if h == skin and not _skin_applied:
 		skin = ""
 		set_skin(h)
+		if _skin_applied and _depth_key != "" and not _depth_applied:
+			_set_depth(CarSkinTemplate._depth.get(_depth_key))
 
 
-## Modo molde (CarSkinTemplate): só as faces da vista `view`, sem luz; -1 volta ao normal.
-func set_template_view(view: int) -> void:
+## Mapa de profundidade das peças (separa o visível do escondido na skin): só com skin; se ainda
+## não existe, é feito uma vez por combinação de peças e chega por CarSkin.events().depth_ready.
+func _sync_depth(config: CarConfig) -> void:
+	if not _skin_applied:
+		if _depth_applied:
+			_set_depth(null)
+		return
+	var key := CarSkin.parts_key(config)
+	if key == _depth_key and _depth_applied:
+		return
+	_depth_key = key
+	var tex := CarSkinTemplate.depth_texture(config)
+	_set_depth(tex)
+	if tex == null:
+		var ev := CarSkin.events()
+		if not ev.depth_ready.is_connected(_on_depth_ready):
+			ev.depth_ready.connect(_on_depth_ready)
+
+
+func _on_depth_ready(key: String) -> void:
+	if key == _depth_key and _skin_applied:
+		_set_depth(CarSkinTemplate._depth.get(key))
+
+
+func _set_depth(tex: Texture2D) -> void:
+	_depth_applied = tex != null
 	for slot in LIVERY_SLOTS:
-		for key in [slot, slot + "#plain"]:
-			(materials[key] as ShaderMaterial).set_shader_parameter("template_view", view)
+		for k in [slot, slot + "#plain"]:
+			var mat: ShaderMaterial = materials[k]
+			mat.set_shader_parameter("use_skin_depth", tex != null)
+			mat.set_shader_parameter("skin_depth", tex)
 
 
 ## Troca os materiais importados do .glb pelos materiais toon correspondentes.
@@ -130,6 +162,7 @@ static func _paint(slot: int, plain: bool) -> ShaderMaterial:
 	mat.set_shader_parameter("skin_rects", CarSkin.rects_uniform())
 	mat.set_shader_parameter("skin_box_min", CarSkin.BOX_MIN)
 	mat.set_shader_parameter("skin_box_max", CarSkin.BOX_MAX)
+	mat.set_shader_parameter("skin_depth_eps", CarSkin.DEPTH_EPS)
 	apply_paint_finish(mat, 0)
 	return mat
 

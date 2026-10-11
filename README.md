@@ -442,19 +442,34 @@ e a meta de longo prazo). Catálogo e regras em `scripts/economy/shop_catalog.gd
   imagem. **Exportar molde…** salva (diálogo do sistema, começa em Documentos/Speedoru) um PNG
   2048×2048 com o carro **planificado**: lado esquerdo, lado direito, cima (vale também para baixo),
   frente e trás, do jeito que o carro está (cores, esquema e skin atual), sem luz, só as superfícies
-  pintáveis, com contorno e legendas fora do carro. **Importar skin…** lê o PNG/JPG/WebP pintado por
+  pintáveis, com contorno e legendas fora do carro, e ao lado o **`_linhas.png`** (guia, para usar
+  como camada de cima e esconder antes de exportar): o contorno de cada peça e de cada parte dela,
+  as bordas onde uma superfície passa por cima de outra (elementos da asa dianteira, sidepods sobre
+  o assoalho, cobertura do motor sobre o monocoque), **hachura vermelha nas áreas muito inclinadas**
+  para a vista (o desenho estica ali) e o nome das peças em cada região; linhas pretas com contorno
+  branco, visíveis sobre qualquer cor (uma passada de identificação por quadro: peça, profundidade e
+  inclinação, com as linhas achadas por um shader 2D onde esses valores mudam). **Importar skin…** lê o PNG/JPG/WebP pintado por
   cima (numa thread: uma imagem grande leva alguns segundos e o jogo não pode travar online) e já
   equipa; o que ficar **transparente** mostra a pintura normal. "Tirar a skin" volta às cores; "Suas
   skins" lista as importadas (clique usa, botão direito apaga).
   - **Planificação por projeção** no espaço do carro (todas as peças da carroceria estão nele): cada
     face pega a vista para a qual mais aponta (maior componente da normal), na caixa X ±1,1 m,
-    Y 0–1,2 m, Z ±3,2 m (cabe em todas as peças), a 300 px/m. Por isso o molde vale para qualquer
-    combinação de peças (um UV por peça quebraria a cada troca). O molde é gerado renderizando o
-    próprio carro com câmeras ortográficas do tamanho exato de cada vista (`CarSkin.face_camera`) e
-    o shader em modo molde (`template_view`: só as faces daquela vista, cor pura pela emissão), então
-    o que se pinta cai exatamente onde aparece; o `skin_test` confere a ida e volta (molde →
-    importado → molde de novo dá a mesma imagem). Peças que se mexem (rodas, volante, piloto, flap
-    do DRS) ficam com a cor do slot.
+    Y 0–1,2 m, Z ±3,2 m (cabe em todas as peças). O molde vale para qualquer combinação de peças
+    (um UV por peça quebraria a cada troca; e cada peça é uma malha só, a asa dianteira inteira
+    inclusive). **Duas camadas por vista**, para nenhuma superfície dividir a pintura com outra:
+    os quadros **visíveis** (250 px/m: o que se vê de cada lado) e os **escondidos** (120 px/m: o
+    que fica atrás de outra superfície virada para o mesmo lado — o monocoque atrás do sidepod, a
+    face de dentro do outro sidepod, os elementos de baixo da asa), mais o quadro de **baixo**.
+    Quem é escondido sai do **mapa de profundidade** (`CarSkinTemplate.depth_texture`): em cada
+    vista, a profundidade (16 bits) da superfície visível, renderizada uma vez por combinação de
+    peças e guardada; o shader compara a profundidade do ponto com a do mapa (folga de 2 cm). Sem
+    isso, um desenho na lateral aparecia repetido em tudo que estava atrás dela. O molde é
+    renderizado com câmeras ortográficas do tamanho exato de cada quadro (`CarSkin.face_camera`)
+    e o shader em modo molde (`template_view`/`template_layer`/`template_out`), com o mesmo mapa,
+    então o que se pinta cai exatamente onde aparece; o `skin_test` confere a ida e volta (molde →
+    importado → molde de novo dá a mesma imagem) e que pintar o visível não pinta o escondido e
+    vice-versa. Peças que se mexem (rodas, volante, piloto, flap do DRS) ficam com a cor do slot.
+    Skins feitas na 0.7.0 (layout antigo, sem as camadas) precisam ser pintadas de novo.
   - **Arquivos** (`user://skins/`): `<hash>.hd.webp` (2048 px, de quem importou) e `<hash>.webp` (versão
     da rede, 1024 px, até 1 MB; se não couber cai para 768/512). O hash SHA-256 dessa versão é o que
     fica em `equipped["skin"]`.
@@ -1102,9 +1117,29 @@ próprio (cada sala tem a sua física) e só o que tem colisão (sem árvores, f
 até 10 se a sala usa bots; carros com o visual e a engenharia das contas) e aplica todas as regras
 (penalidades, pit, bandeira amarela, safety car). O cliente manda os comandos a cada passo de
 física (pedais, direção e contadores das ações de toque, que não se perdem); recebe instantâneos
-de todos os carros 30×/s (`NetSnapshot`, 64 bytes por carro) e o estado da prova 5×/s; desenha os
-carros 0,1 s no passado, interpolando (`NetRaceClient`; os carros do cliente são marionetes
-cinemáticas, `F1Car.set_puppet`). Avisos e penalidades chegam só para o piloto envolvido; cada batida
+de todos os carros 30×/s (`NetSnapshot`, 64 bytes por carro; o servidor desconta o intervalo em
+vez de zerar, sem deriva) e o estado da prova 5×/s; desenha os carros 0,15 s no passado
+(`NetProtocol.INTERP_DELAY`), interpolando (`NetRaceClient`; os carros do cliente são marionetes
+cinemáticas, `F1Car.set_puppet`). O relógio do servidor no cliente é o maior "tempo do
+instantâneo − hora local" dos últimos 15 instantâneos: sobe na hora e desce aos poucos (~0,5 s),
+então um passo atrasado no servidor (o tempo da simulação fica para trás) não deixa o cliente
+adiante dos instantâneos. Sem instantâneo novo, a última posição é esticada pela velocidade (até
+0,25 s) e, quando eles voltam, o carro vai até a posição interpolada em 8 passos, sem salto.
+
+**Servidor sem travar as salas**: a thread principal do servidor roda a física, os bots e a rede
+de todas as salas a 120 Hz, então nada pode prendê-la por muito tempo.
+- **Pistas geradas uma vez**: na subida, `RaceTrack.prewarm_server` gera a versão de servidor de
+  cada pista (só colisão, sem o visual de `SERVER_SKIP`; ~10 a 15 s, em etapas) e guarda uma cópia
+  dos nós e os dados calculados. Cada sala só copia os nós (`duplicate`, ~50 ms; os shapes de colisão
+  são compartilhados e cada sala monta os próprios corpos no seu mundo de física) e monta luzes de
+  largada novas. Uma sala que larga antes de a pista ficar pronta espera por ela. O log mostra
+  `RaceTrack: ... copiados do cache` em vez de `gerados em`.
+- **Carros do servidor**: nascem sem som, efeitos, piloto animado e retrovisores, e o dano não copia
+  as malhas (a zona de cada peça sai da caixa da malha; o amassado é coisa dos clientes). O grid entra
+  **um carro por quadro**, cada um já no seu lugar. Antes, uma largada prendia a thread uns 5 s (pista
+  ~3,5 s + carros ~1,3 s) e as outras salas congelavam e depois davam um salto.
+- **Medidor** (`ServerStats`): a cada minuto o log mostra quantos passos de física passaram de 8,3 ms,
+  o pior passo e quantas salas estavam correndo. Avisos e penalidades chegam só para o piloto envolvido; cada batida
 (ponto, direção, força e a resistência de todas as peças) e as peças arrancadas vão para todos:
 o carro amassa no lugar certo em todas as telas e o diagrama/"DANO %" do HUD mostra o dano
 calculado no servidor (`CarDamage.hit_applied` → evento `hit` → `CarDamage.remote_hit`). Esc abre o menu sem parar o jogo (os pedais soltam). **Votações** (protocolo
@@ -1183,6 +1218,7 @@ godot --headless --path . -s res://tests/compile_check.gd   # carrega todos os s
 godot --headless --path . -s res://tests/ccd_probe.gd       # carro não "para do nada" em zebra/raspão a 320 km/h e não atravessa muros
 godot --headless --path . -s res://tests/highspeed_probe.gd # pneus em alta velocidade: carga, aderência, boost, toque de direção, batente
 godot --headless --path . -s res://tests/net_test.gd        # multiplayer de ponta a ponta, com votações de pausa/voltar/recomeçar (precisa do libSQL local; SPEEDORU_TEST_DB=local usa o banco em arquivo)
+godot --headless --path . -s res://tests/server_load_test.gd # servidor com duas salas: pistas geradas uma vez, a sala correndo não congela quando outra larga, 30 instantâneos/s, relógio da interpolação
 godot --headless --path . -s res://tests/host_test.gd       # endereços IPv4/IPv6, banco local, hospedar (entrar por ::1, status, tirar, fechar, batimento), skins pela rede, salvos e histórico (+ -- <Speedoru.exe> = build exportada)
 godot --path . -s res://tests/skin_test.gd -- [pasta]        # skin: planificação, importar/arquivos, ida e volta pelo molde, pintar um lado só muda ele (com janela)
 godot --path . -s res://tests/capture_skin.gd -- <pasta> --offline # aba Skin, molde exportado, pintura simulada importada e o carro na garagem

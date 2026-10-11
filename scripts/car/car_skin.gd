@@ -4,13 +4,24 @@ extends RefCounted
 ##
 ## Planificação por projeção nas vistas do carro, no espaço do carro (+Z frente, +X esquerda, Y para
 ## cima; todas as peças da carroceria ficam nesse espaço). Cada face da pintura pega a vista para a
-## qual mais aponta (a maior componente da normal): lado esquerdo, lado direito, cima (a parte de
-## baixo usa a mesma vista), frente e trás. Assim o molde vale para qualquer combinação de peças.
-## O shader car_paint faz a mesma conta (skin_uv) com os retângulos de rects_uniform().
+## qual mais aponta (a maior componente da normal): lado esquerdo, lado direito, cima, baixo, frente
+## e trás. Assim o molde vale para qualquer combinação de peças.
 ##
-## * Molde (CarSkinTemplate): o carro como está (cores, esquema, skin atual) em cada vista, sem
-##   luz, só as superfícies pintáveis, com contorno e legendas fora do carro. Pintar por cima e
-##   importar: o que ficar transparente mostra a pintura normal (cores e esquema).
+## Duas camadas por vista, para nenhuma superfície dividir a pintura com outra:
+## * VISÍVEL (RECTS, 250 px/m): a superfície mais perto de quem olha daquele lado — o carro como se
+##   vê. É onde vai o desenho principal.
+## * ESCONDIDA (RECTS_HIDDEN, 120 px/m): o que fica atrás de outra superfície virada para o mesmo
+##   lado (o monocoque atrás do sidepod, a face de dentro do sidepod do outro lado, os elementos de
+##   baixo da asa). A parte de baixo do carro inteira também fica aqui (BOTTOM).
+## Quem é escondido sai do MAPA DE PROFUNDIDADE do carro (CarSkinTemplate.depth_texture: em cada
+## vista, a profundidade da superfície visível, renderizada para a combinação de peças): o shader
+## car_paint compara a profundidade do ponto com a do mapa (folga DEPTH_EPS). O molde é renderizado
+## com o mesmo mapa, então o que se pinta cai exatamente onde aparece.
+##
+## * Molde (CarSkinTemplate): o carro como está (cores, esquema, skin atual) em cada quadro, sem
+##   luz, só as superfícies pintáveis, e a camada de linhas (peças, saltos de profundidade, áreas
+##   muito inclinadas, nomes) à parte. Pintar por cima e importar: o que ficar transparente mostra a
+##   pintura normal (cores e esquema).
 ## * Arquivos (user://skins/): <hash>.webp = versão da rede (1024 px, o hash é dela) e
 ##   <hash>.hd.webp = versão cheia (2048 px) de quem importou. Skins de outros jogadores, baixadas
 ##   do servidor, ficam no mesmo lugar (só a versão da rede).
@@ -18,25 +29,48 @@ extends RefCounted
 ##   (pede a quem tem com "skin_need") e entrega a quem precisa ("skin_get").
 
 signal skin_ready(hash: String)
+## Mapa de profundidade pronto para uma combinação de peças (CarSkinTemplate.depth_texture).
+signal depth_ready(key: String)
 
 ## Lado do molde (px) e da versão da rede.
 const SIZE := 2048
 const NET_SIZE := 1024
-## Escala do molde (px por metro) e caixa do carro (m) que cabe em todas as peças.
-const SCALE := 300.0
+## Mapa de profundidade: metade da resolução do molde (mesmo layout, retângulos visíveis / 2).
+const DEPTH_SIZE := 1024
+## Escalas (px por metro) das camadas visível e escondida, e caixa do carro (m) que cabe em todas
+## as peças.
+const SCALE := 250.0
+const SCALE_HIDDEN := 120.0
 const BOX_MIN := Vector3(-1.1, 0.0, -3.2)
 const BOX_MAX := Vector3(1.1, 1.2, 3.2)
+## Uma superfície atrás da visível por mais que isso (m) é escondida.
+const DEPTH_EPS := 0.02
 ## Faces (vistas): índice usado no shader.
 enum Face { LEFT, RIGHT, TOP, BOTTOM, FRONT, BACK }
-const FACE_NAMES := ["LADO ESQUERDO", "LADO DIREITO", "CIMA (vale também para baixo)", "", "FRENTE", "TRÁS"]
-## Retângulos (px) das vistas no molde. A de baixo usa o retângulo de cima.
+const FACE_NAMES := ["LADO ESQUERDO", "LADO DIREITO", "CIMA", "BAIXO", "FRENTE", "TRÁS"]
+const HIDDEN_NAMES := ["ESCONDIDO · LADO ESQ.", "ESCONDIDO · LADO DIR.", "ESCONDIDO · CIMA", "BAIXO (EMBAIXO DO CARRO)",
+	"ESCONDIDO · FRENTE", "ESCONDIDO · TRÁS"]
+## Vistas com camada visível (a de baixo só tem a escondida).
+const VISIBLE_FACES := [Face.LEFT, Face.RIGHT, Face.TOP, Face.FRONT, Face.BACK]
+const ALL_FACES := [Face.LEFT, Face.RIGHT, Face.TOP, Face.BOTTOM, Face.FRONT, Face.BACK]
+## Retângulos (px) da camada visível. Lado esquerdo: frente à esquerda; lado direito e cima: frente
+## à direita (em cima, o lado esquerdo do carro fica no alto). A de baixo aponta para a escondida.
 const RECTS := [
-	Rect2i(64, 60, 1920, 360),    # lado esquerdo: frente à esquerda
-	Rect2i(64, 456, 1920, 360),   # lado direito: frente à direita
-	Rect2i(64, 852, 1920, 660),   # cima: frente à direita, lado esquerdo em cima
-	Rect2i(64, 852, 1920, 660),   # baixo (mesmo de cima)
-	Rect2i(64, 1548, 660, 360),   # frente
-	Rect2i(804, 1548, 660, 360),  # trás
+	Rect2i(40, 40, 1600, 300),
+	Rect2i(40, 376, 1600, 300),
+	Rect2i(40, 712, 1600, 550),
+	Rect2i(1220, 1298, 768, 264),
+	Rect2i(40, 1298, 550, 300),
+	Rect2i(630, 1298, 550, 300),
+]
+## Retângulos (px) da camada escondida (e da parte de baixo).
+const RECTS_HIDDEN := [
+	Rect2i(40, 1634, 768, 144),
+	Rect2i(40, 1814, 768, 144),
+	Rect2i(848, 1634, 768, 264),
+	Rect2i(1220, 1298, 768, 264),
+	Rect2i(1680, 40, 264, 144),
+	Rect2i(1680, 220, 264, 144),
 ]
 ## Tamanho máximo dos arquivos aceitos (bytes): importado e recebido pela rede.
 const MAX_IMPORT_BYTES := 32 * 1024 * 1024
@@ -88,25 +122,34 @@ static func face_uv(face: int, p: Vector3) -> Vector2:
 			return Vector2((BOX_MAX.z - p.z) / size.z, (BOX_MAX.y - p.y) / size.y)
 		Face.RIGHT:
 			return Vector2((p.z - BOX_MIN.z) / size.z, (BOX_MAX.y - p.y) / size.y)
-		Face.TOP, Face.BOTTOM:
+		Face.TOP:
 			return Vector2((p.z - BOX_MIN.z) / size.z, (BOX_MAX.x - p.x) / size.x)
+		Face.BOTTOM:
+			return Vector2((p.z - BOX_MIN.z) / size.z, (p.x - BOX_MIN.x) / size.x)
 		Face.FRONT:
 			return Vector2((p.x - BOX_MIN.x) / size.x, (BOX_MAX.y - p.y) / size.y)
 	return Vector2((BOX_MAX.x - p.x) / size.x, (BOX_MAX.y - p.y) / size.y)
 
 
-## Pixel do molde para o ponto p com normal n.
-static func pixel_of(p: Vector3, n: Vector3) -> Vector2:
+## Retângulo da face numa camada (0 visível, 1 escondida; a de baixo é sempre a escondida).
+static func rect_of(face: int, layer := 0) -> Rect2i:
+	return RECTS_HIDDEN[face] if layer == 1 or face == Face.BOTTOM else RECTS[face]
+
+
+## Pixel do molde para o ponto p com normal n, na camada dada.
+static func pixel_of(p: Vector3, n: Vector3, layer := 0) -> Vector2:
 	var f := face_of(n)
-	var r: Rect2i = RECTS[f]
+	var r := rect_of(f, layer)
 	return Vector2(r.position) + face_uv(f, p) * Vector2(r.size)
 
 
-## Retângulos normalizados (x, y, largura, altura) para o shader.
+## Retângulos normalizados (x, y, largura, altura) para o shader: os 6 visíveis e os 6 escondidos.
 static func rects_uniform() -> PackedVector4Array:
 	var out := PackedVector4Array()
-	for r: Rect2i in RECTS:
-		out.append(Vector4(r.position.x, r.position.y, r.size.x, r.size.y) / float(SIZE))
+	for layer in 2:
+		for f in 6:
+			var r := rect_of(f, layer)
+			out.append(Vector4(r.position.x, r.position.y, r.size.x, r.size.y) / float(SIZE))
 	return out
 
 
@@ -121,9 +164,19 @@ static func face_camera(face: int) -> Array:
 			return [Vector3(BOX_MIN.x - 5.0, c.y, c.z), c, Vector3.UP, size.y]
 		Face.TOP:
 			return [Vector3(c.x, BOX_MAX.y + 5.0, c.z), c, Vector3(1, 0, 0), size.x]
+		Face.BOTTOM:
+			return [Vector3(c.x, BOX_MIN.y - 5.0, c.z), c, Vector3(-1, 0, 0), size.x]
 		Face.FRONT:
 			return [Vector3(c.x, c.y, BOX_MAX.z + 5.0), c, Vector3.UP, size.y]
 	return [Vector3(c.x, c.y, BOX_MIN.z - 5.0), c, Vector3.UP, size.y]
+
+
+## Chave da combinação de peças de um carro (o mapa de profundidade é um por combinação).
+static func parts_key(config: CarConfig) -> String:
+	var parts := []
+	for slot in CarPartCatalog.SLOTS:
+		parts.append(config.get_part(slot))
+	return ",".join(parts)
 
 
 # ---------------------------------------------------------------------------

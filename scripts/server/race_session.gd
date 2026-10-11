@@ -73,11 +73,12 @@ func start(p_server: GameServer, p_room: String, p_settings: Dictionary, p_playe
 	viewport.size = Vector2i(2, 2)
 	add_child(viewport)
 	var scene := (load(RaceSettings.track_scene(str(settings.get("track", "monza")))) as PackedScene).instantiate()
-	# Nada de câmera, HUD nem céu no servidor
-	for n in ["HUD", "RaceCamera", "Daylight"]:
+	# Nada de câmera, HUD nem céu no servidor; o carro da cena nasce sem som, efeitos, piloto
+	# animado e retrovisores (como os outros do grid, RaceManager._strip_server_visuals)
+	for n in ["HUD", "RaceCamera", "Daylight", "F1Car/Audio", "F1Car/Effects", "F1Car/DriverRig", "F1Car/Onboard"]:
 		var node := scene.get_node_or_null(n)
 		if node:
-			scene.remove_child(node)
+			node.get_parent().remove_child(node)
 			node.free()
 	manager = scene.get_node("RaceManager") as RaceManager
 	var list := []
@@ -90,7 +91,9 @@ func start(p_server: GameServer, p_room: String, p_settings: Dictionary, p_playe
 	manager.net_grid_ready.connect(_on_grid_ready)
 	manager.net_event.connect(_broadcast_event)
 	manager.infraction.connect(_on_infraction)
+	var t0 := Time.get_ticks_usec()
 	viewport.add_child(scene)
+	print("Servidor: sala %s: cena da corrida montada em %d ms" % [room_id, (Time.get_ticks_usec() - t0) / 1000])
 
 
 func _peers() -> Array:
@@ -278,7 +281,9 @@ func _physics_process(delta: float) -> void:
 		_apply_inputs()
 	_snap_acc += delta
 	if _snap_acc >= 1.0 / NetProtocol.SNAPSHOT_HZ and not manager.roster.is_empty():
-		_snap_acc = 0.0
+		# Desconta o intervalo (não zera): 30 por segundo certinhos, sem deriva; depois de um atraso
+		# manda no máximo um a mais para alcançar
+		_snap_acc = minf(_snap_acc - 1.0 / NetProtocol.SNAPSHOT_HZ, 1.0 / NetProtocol.SNAPSHOT_HZ)
 		var bytes := NetSnapshot.encode(_t, manager.roster)
 		for peer in _peers():
 			_net.snap.rpc_id(peer, bytes)

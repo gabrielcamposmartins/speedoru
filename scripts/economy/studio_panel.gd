@@ -348,7 +348,7 @@ func _build_decals() -> void:
 func _build_skin() -> void:
 	var current := str(_profile.equipped.get("skin", ""))
 	var help := Label.new()
-	help.text = "1. Exporte o molde: o seu carro planificado (lados, cima, frente e trás).\n2. Pinte por cima num editor de imagem (Krita, Photoshop, GIMP…), em camadas se quiser.\n3. Importe a imagem (PNG). O que ficar transparente mostra as cores e o esquema."
+	help.text = "1. Exporte o molde: o seu carro planificado (lados, cima, frente e trás) e, ao lado, o _linhas.png com o contorno e o nome de cada peça.\n2. Pinte por cima num editor de imagem (Krita, Photoshop, GIMP…), com as linhas numa camada de cima como guia.\n3. Esconda as linhas e importe a imagem (PNG). O que ficar transparente mostra as cores e o esquema."
 	help.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	help.custom_minimum_size = Vector2(TILE.x * 2 + 8, 0)
 	help.add_theme_font_size_override("font_size", 12)
@@ -358,7 +358,7 @@ func _build_skin() -> void:
 	var export := Button.new()
 	export.text = "Exportar molde…"
 	export.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	export.tooltip_text = "Salva um PNG 2048×2048 com o carro como está agora (cores, esquema e skin atual)."
+	export.tooltip_text = "Salva um PNG 2048×2048 com o carro como está agora (cores, esquema e skin atual) e o _linhas.png (guia das peças)."
 	export.pressed.connect(_export_template)
 	row.add_child(export)
 	var import := Button.new()
@@ -444,16 +444,20 @@ func _export_template() -> void:
 		PackedStringArray(["*.png ; Imagem PNG"]), func(path: String) -> void: export_template_to(path))
 
 
-## Gera o molde do carro e salva em `path` (PNG). Devolve o erro (OK se salvou).
+## Gera o molde do carro e salva em `path` (PNG), com as linhas em <nome>_linhas.png ao lado.
+## Devolve o erro (OK se salvou).
 func export_template_to(path: String, show := true) -> Error:
 	if car == null or car.config == null:
 		return ERR_UNCONFIGURED
 	_note.text = "gerando o molde…"
-	var img := await CarSkinTemplate.render(self, car.config)
+	var layers := await CarSkinTemplate.render_layers(self, car.config)
 	if path.get_extension().to_lower() != "png":
 		path += ".png"
-	var err := img.save_png(path)
-	_note.text = ("molde salvo em %s" % path) if err == OK else "não deu para salvar o molde (%d)" % err
+	var lines_path := path.get_basename() + "_linhas.png"
+	var err: Error = (layers["template"] as Image).save_png(path)
+	if err == OK:
+		err = (layers["lines"] as Image).save_png(lines_path)
+	_note.text = ("molde salvo em %s (e as linhas em %s)" % [path, lines_path.get_file()]) if err == OK else "não deu para salvar o molde (%d)" % err
 	if err == OK and show:
 		OS.shell_show_in_file_manager(path)
 	return err

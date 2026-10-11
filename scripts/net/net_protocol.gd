@@ -52,7 +52,8 @@ const RANKING_TAB_POINTS := 1000
 const SNAPSHOT_HZ := 30.0
 const RACE_STATE_HZ := 5.0
 ## Atraso de interpolação no cliente (s): mostra o passado recente, sempre entre dois instantâneos.
-const INTERP_DELAY := 0.1
+## 0,15 s = 4,5 instantâneos: cobre um passo atrasado no servidor sem o cliente ficar sem dado.
+const INTERP_DELAY := 0.15
 
 # Bits dos botões no comando contínuo (inp)
 const BTN_DRS := 1
