@@ -1,5 +1,5 @@
 class_name TrackOffshore
-extends Node3D
+extends TrackOffshoreCore
 ## Movimento ao largo de um circuito de rua (dados da TrackCity): navios grandes cruzando o mar
 ## (cruzeiro, porta-contêineres, petroleiro e balsa, com rastro de espuma) em rotas paralelas à
 ## costa; balões de ar quente passando com o vento sobre o porto e a orla, perto do circuito e
@@ -10,6 +10,8 @@ extends Node3D
 ## A costa fora da área dos dados é a reta entre as duas saídas (coast_exits), como no entorno
 ## (TrackCity.build_backdrop): as rotas ficam do lado do mar dela e, dentro da área, longe da
 ## costa de verdade (conferido na textura da costa).
+## O movimento roda no código nativo (TrackOffshoreCore, native/src/scenery.rs): as listas abaixo
+## vão para lá no fim da montagem.
 
 enum Ship { CRUISE, CONTAINER, TANKER, FERRY }
 
@@ -62,7 +64,6 @@ const GLASS := Color(0.12, 0.16, 0.22)
 var _ships: Array = []     # [nó, rastro, base (x, y), direção (x, y), t, velocidade, fase]
 var _balloons: Array = []  # [nó, base (x, y), direção do vento, t, velocidade, altura, fase]
 var _blimps: Array = []    # [nó, centro (x, y), eixo ao longo, eixo para o mar, raios, velocidade, ângulo, altura]
-var _t := 0.0
 
 
 static func build(track: RaceTrack, city: TrackCity, parent: Node3D) -> void:
@@ -112,6 +113,7 @@ func _view_blimps(track: RaceTrack, city: TrackCity) -> void:
 		# Elipse achatada ao longo da pista (vai e volta ~40 m, quase sem sair do corredor)
 		_blimps.append([node, Vector2(at.x, -at.z), fwd, Vector2(-fwd.y, fwd.x), Vector2(40.0, 6.0), 3.0 if k % 2 == 0 else -3.0,
 			float(k) * 1.3, h])
+	_core_setup(_ships, _balloons, _blimps)
 	_update(0.0)
 
 
@@ -199,6 +201,7 @@ func _setup(city: TrackCity, track_center: Vector2) -> void:
 		add_child(node)
 		_blimps.append([node, track_center + to_sea * float(spec[5]), along, to_sea, Vector2(spec[3], spec[4]), float(spec[6]),
 			rng.randf() * TAU, float(spec[2])])
+	_core_setup(_ships, _balloons, _blimps)
 	_update(0.0)
 
 
@@ -217,54 +220,6 @@ static func _route_clear(img: Image, city: TrackCity, base: Vector2, along: Vect
 		if pix.r < 0.99 or pix.g > 0.05:
 			return false
 	return true
-
-
-func _process(delta: float) -> void:
-	_update(delta)
-
-
-func _update(delta: float) -> void:
-	_t += delta
-	for sh in _ships:
-		sh[4] = float(sh[4]) + float(sh[5]) * delta
-		if sh[4] > ROUTE_HALF:
-			sh[4] = -ROUTE_HALF
-		var base: Vector2 = sh[2]
-		var dir: Vector2 = sh[3]
-		var p: Vector2 = base + dir * float(sh[4])
-		var heading := atan2(dir.y, dir.x)
-		var ph: float = sh[6]
-		# Balanço leve no mar
-		var basis := Basis(Vector3.UP, heading) * Basis(Vector3.RIGHT, sin(_t * 0.35 + ph) * 0.012)
-		var pos := TrackCity.to_world(p.x, p.y, sin(_t * 0.5 + ph) * 0.25)
-		(sh[0] as Node3D).transform = Transform3D(basis, pos)
-		var wake: Node3D = sh[1]
-		wake.transform = Transform3D(Basis(Vector3.UP, heading).scaled(wake.get_meta("scale")), TrackCity.to_world(p.x, p.y, 0.12))
-	for b in _balloons:
-		b[3] = float(b[3]) + float(b[4]) * delta
-		if b[3] > BALLOON_HALF:
-			b[3] = -BALLOON_HALF
-		var base: Vector2 = b[1]
-		var wind: Vector2 = b[2]
-		var ph: float = b[6]
-		var p: Vector2 = base + wind * float(b[3]) + Vector2(-wind.y, wind.x) * sin(_t * 0.02 + ph) * 60.0
-		var node: Node3D = b[0]
-		node.position = TrackCity.to_world(p.x, p.y, float(b[5]) + sin(_t * 0.25 + ph) * 6.0)
-		node.rotation.y = _t * 0.03 + ph
-	for bl in _blimps:
-		var radii: Vector2 = bl[4]
-		var speed: float = bl[5]
-		# Velocidade ~constante ao longo da elipse (raio médio)
-		bl[6] = float(bl[6]) + delta * speed / ((radii.x + radii.y) * 0.5)
-		var ang: float = bl[6]
-		var u: Vector2 = bl[2]
-		var v: Vector2 = bl[3]
-		var center: Vector2 = bl[1]
-		var p: Vector2 = center + u * cos(ang) * radii.x + v * sin(ang) * radii.y
-		var tangent: Vector2 = (-u * sin(ang) * radii.x + v * cos(ang) * radii.y) * signf(speed)
-		var pos := TrackCity.to_world(p.x, p.y, float(bl[7]) + sin(_t * 0.2 + ang) * 5.0)
-		var dir := TrackCity.to_world(tangent.x, tangent.y, 0.0).normalized()
-		(bl[0] as Node3D).global_transform = Transform3D(Basis.looking_at(-dir), pos)
 
 
 # ---------------------------------------------------------------------------

@@ -1,5 +1,5 @@
 class_name CarDamage
-extends Node
+extends CarDamageCore
 ## Dano e destruição do carro.
 ##
 ## Peças com resistência própria (asa dianteira esquerda/direita, bico, asa traseira, sidepods,
@@ -21,18 +21,17 @@ extends Node
 ## caixa da malha original (metade dela nas peças de dois lados) e a resistência funciona igual;
 ## o amassado e os destroços com a malha são coisa dos clientes. Copiar as malhas triângulo a
 ## triângulo custava ~60 ms por carro na largada, com a thread das outras salas parada.
+##
+## A cada passo, o código nativo (CarDamageCore, native/src/damage.rs) junta os contatos em golpes
+## (chama _hit), solta as faíscas, mede a raspada (scrape_level → som) e balança as peças soltas
+## (a lista vem de _refresh_loose). Exportados de lá: impulse_threshold, impulse_full_damage,
+## damage_scale.
 
 signal part_damaged(piece: String, health: float)
 signal part_detached(piece: String)
 ## Uma batida aplicada (servidor → clientes: amassado, faíscas e a resistência de cada peça).
 signal hit_applied(local: Vector3, dir: Vector3, severity: float)
 
-## Impulso (N·s) abaixo do qual o contato não causa dano (toques, raspadas leves).
-@export var impulse_threshold := 550.0
-## Impulso que tira 100% de uma peça de fragilidade 1 no ponto de impacto.
-@export var impulse_full_damage := 7500.0
-## Multiplicador geral (0 = indestrutível).
-@export_range(0.0, 3.0) var damage_scale := 1.0
 ## Máximo de destroços na pista (os mais antigos somem).
 @export var max_debris := 40
 
@@ -63,19 +62,14 @@ var car: F1Car
 ## Resistência por peça (1 = intacta, 0 = destruída); "engine" incluído.
 var health := {}
 var detached := {}
-var scrape_level := 0.0
 
 static var _debris: Array[Node3D] = []
 
 var _pieces := {}  # nome -> Piece
-var _contacts: Array = []
 var _sparks: GPUParticles3D
 var _smoke: CPUParticles3D
 var _wheel_defaults: Array = []
 var _signature := []
-var _time := 0.0
-var _prev_velocity := Vector3.ZERO
-var _prev_position := Vector3.ZERO
 
 
 class Piece:
@@ -279,55 +273,6 @@ func _copy_mesh(mi: MeshInstance3D, side: int, inv: Transform3D) -> Array:
 # ---------------------------------------------------------------------------
 # Contatos e dano
 # ---------------------------------------------------------------------------
-## Chamado por F1Car._integrate_forces para cada contato do corpo do carro.
-func add_contact(world_pos: Vector3, impulse: Vector3, normal: Vector3, collider: Object, rel_speed: float) -> void:
-	_contacts.append([world_pos, impulse, normal, collider, rel_speed])
-
-
-func _physics_process(delta: float) -> void:
-	if car == null:
-		return
-	var scrape := 0.0
-	var inv := car.global_transform.affine_inverse()
-	# O impulso reportado pela física às vezes vem zerado no passo da batida: estima também pela
-	# variação de velocidade do carro na direção da normal do contato (Δv · n × massa).
-	var dv := car.linear_velocity - _prev_velocity
-	var teleported := car.global_position.distance_to(_prev_position) > 5.0 		or Engine.get_physics_frames() - car.reset_frame < 3
-	_prev_velocity = car.linear_velocity
-	_prev_position = car.global_position
-	var hits := {}  # agrupa contatos próximos (uma batida = um golpe)
-	for c in _contacts:
-		var pos: Vector3 = c[0]
-		var impulse: Vector3 = c[1]
-		var normal: Vector3 = c[2]
-		var surface := TrackSurface.of_body(c[3])
-		var ground := normal.y > 0.6 and surface != TrackSurface.Type.BARRIER
-		var slide: float = c[4]
-		# Raspando (barreira ou assoalho no chão) em velocidade: faíscas e som
-		if slide > 4.0:
-			scrape = maxf(scrape, clampf(slide / 30.0, 0.15, 1.0) * (0.5 if ground else 1.0))
-			if randf() < 0.5:
-				_spark_burst(pos, normal, 2 if ground else 4, slide)
-		if teleported:
-			continue
-		var j := maxf(impulse.length(), car.mass * maxf(dv.dot(normal), 0.0))
-		var threshold := impulse_threshold * (5.0 if ground else 1.0)
-		if j > threshold and damage_scale > 0.0:
-			var key := Vector3i((inv * pos / 0.5).round())
-			if not hits.has(key) or hits[key][2] < j:
-				hits[key] = [pos, normal, j, threshold]
-	# Contatos do mesmo golpe dividem o impulso
-	for key in hits:
-		var h: Array = hits[key]
-		var severity: float = (float(h[2]) - float(h[3])) / impulse_full_damage * damage_scale / sqrt(float(hits.size()))
-		_hit(inv * (h[0] as Vector3), inv.basis * (-(h[1] as Vector3)), severity, h[0], h[1])
-	_contacts.clear()
-	scrape_level = move_toward(scrape_level, scrape, delta * 6.0)
-	var audio := car.get_node_or_null("Audio") as CarAudio
-	if audio:
-		audio.scrape_level = scrape_level
-
-
 ## Batida vinda do servidor (multiplayer): amassa e solta faíscas como a original e copia a
 ## resistência das peças calculada lá (as peças arrancadas chegam pelo evento "detach").
 func remote_hit(local: Vector3, dir: Vector3, severity: float, new_health: Dictionary) -> void:
@@ -429,6 +374,7 @@ static func _distance_to_aabb(p: Vector3, box: AABB) -> float:
 func detach_piece(piece_name: String) -> void:
 	if piece_name != "" and car:
 		_detach(piece_name, car.global_basis.x * (1.0 if randf() < 0.5 else -1.0) + Vector3.UP * 0.5, 0.6)
+		_refresh_loose()
 
 
 func _detach(piece_name: String, outward: Vector3, severity: float) -> void:
@@ -553,14 +499,12 @@ func _apply_to_car() -> void:
 		# Braço torto: a roda aponta para um lado (o carro puxa)
 		car.wheel_toe[p.wheel] = (1.0 - h) * 0.05 * signf(p.axis.x)
 	_smoke.emitting = float(health.get("engine", 1.0)) < 0.6
+	_refresh_loose()
 
 
-func _process(delta: float) -> void:
-	if car == null:
-		return
-	_time += delta
-	var speed := car.linear_velocity.length()
-	# Peças soltas caem e balançam com o vento
+## Peças muito danificadas (resistência ≤ 0,6) e ainda presas: o CarDamageCore as balança.
+func _refresh_loose() -> void:
+	var list := []
 	for piece_name in _pieces:
 		if detached.has(piece_name):
 			continue
@@ -568,16 +512,11 @@ func _process(delta: float) -> void:
 		if h > 0.6:
 			continue
 		var p: Piece = _pieces[piece_name]
-		var loose := (0.6 - h) / 0.6
-		var droop := loose * 0.18 + sin(_time * (18.0 + p.phase) + p.phase) * loose * minf(speed / 60.0, 1.0) * 0.04
-		var rot := Transform3D(Basis(p.axis, droop), Vector3.ZERO)
+		var copies := []
 		for copy in p.copies:
-			var mi: MeshInstance3D = copy[0]
-			var rest: Transform3D = copy[1]
-			var parent_inv := (car.global_transform.affine_inverse() * (mi.get_parent() as Node3D).global_transform).affine_inverse()
-			# Gira em volta do ponto de fixação (espaço do carro) e volta para o espaço do pai
-			var around := Transform3D(Basis(), p.pivot) * rot * Transform3D(Basis(), -p.pivot)
-			mi.transform = parent_inv * around * parent_inv.affine_inverse() * rest
+			copies.append([copy[0], copy[1]])
+		list.append([p.pivot, p.axis, p.phase, (0.6 - h) / 0.6, copies])
+	_core_set_loose(list)
 
 
 func _create_effects() -> void:
@@ -647,16 +586,7 @@ func _create_effects() -> void:
 	_smoke.emitting = false
 	_smoke.position = Vector3(0, 0.95, -1.5)
 	car.add_child.call_deferred(_smoke)
-
-
-## Faíscas (emitidas uma a uma, com velocidade espalhada em volta da normal + arrasto do carro).
-func _spark_burst(pos: Vector3, normal: Vector3, count: int, speed: float) -> void:
-	var base := car.linear_velocity * 0.6
-	for k in count:
-		var dir := (normal + Vector3(randf_range(-1, 1), randf_range(-0.2, 1.0), randf_range(-1, 1))).normalized()
-		var v := base + dir * randf_range(2.0, 4.0 + speed * 0.25)
-		_sparks.emit_particle(Transform3D(Basis(), pos), v, Color.WHITE, Color.WHITE,
-			GPUParticles3D.EMIT_FLAG_POSITION | GPUParticles3D.EMIT_FLAG_VELOCITY)
+	_core_setup(car, _sparks)
 
 
 ## Lascas de fibra de carbono (pedacinhos pretos que voam e caem).

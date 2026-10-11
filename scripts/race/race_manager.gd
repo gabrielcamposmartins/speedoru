@@ -1,5 +1,5 @@
 class_name RaceManager
-extends Node
+extends RaceManagerCore
 ## Modo de jogo: corrida (N voltas, pit obrigatório, bots) ou treino livre.
 ##
 ## * Grid e largada: carros no grid, luzes de largada; bots largam com tempo de reação da
@@ -13,6 +13,11 @@ extends Node
 ##   colisão causada (+5/+10 s), largada queimada (+10 s), excesso de velocidade nos boxes
 ##   (+5 s), pit stop obrigatório não cumprido (desclassificação).
 ## O HUD da corrida (RaceModeHud) lê tudo daqui.
+##
+## A cada passo de física, o código nativo (RaceManagerCore, native/src/manager.rs) atualiza cada
+## carro (posição na pista, voltas, marcas de progresso, boxes, limites de pista, contramão), os
+## carros-fantasma, as posições, a regra do DRS e as colisões punidas; daqui ficam as regras que só
+## acontecem às vezes (_on_line_crossed, _penalize, _notify, pit stop do jogador), chamadas de lá.
 ##
 ## Rede (servidor autoritativo): no servidor dedicado (net = SERVER) a corrida roda inteira aqui,
 ## com os carros dos humanos comandados pelas entradas que chegam pela rede (RaceSession); no
@@ -64,16 +69,9 @@ var hud: RaceModeHud
 
 var _profiles := {}
 var _grid_positions := {}
-var _contact_cooldown := {}
 var _crew: MultiMeshInstance3D
 var _crew_cars := {}
-var _wrong_way_cooldown := 0.0
 var _box_marker: MeshInstance3D
-## Pares de bots sem colisão entre si na largada (até a saída da 1ª chicane).
-var _ghost_pairs: Array = []
-const GHOST_UNTIL := 950.0
-## Pares de bots sem colisão entre si nos boxes (chave "idA_idB" -> [a, b]).
-var _pit_ghosts := {}
 var _loading_base := -1.0
 ## Linha ideal (setas no chão) do jogador.
 var line_guide: RacingLineGuide
@@ -325,7 +323,7 @@ func _start_race() -> void:
 			if a.is_player or b.is_player or a.get_instance_id() >= b.get_instance_id():
 				continue
 			a.car.add_collision_exception_with(b.car)
-			_ghost_pairs.append([a, b])
+			_add_ghost_pair(a, b)
 	if RaceSettings.quali_laps > 0:
 		if LoadingScreen.is_loading():
 			await _loading_step(1.0, "Pronto")
@@ -465,58 +463,21 @@ func _physics_process(delta: float) -> void:
 	var racing := state == State.RACING or state == State.FINISHED or state == State.PRACTICE or state == State.QUALIFYING
 	if racing:
 		race_time += delta
-	_wrong_way_cooldown -= delta
-	for key in _contact_cooldown.keys():
-		_contact_cooldown[key] -= delta
-		if _contact_cooldown[key] <= 0.0:
-			_contact_cooldown.erase(key)
-	for entry in entries:
-		_update_entry(entry, delta, racing)
+	# Posição na pista, voltas, boxes, limites de pista e contramão de cada carro (código nativo)
+	_native_update_entries(delta, racing)
 	if state == State.GRID:
 		_check_jump_start()
 	if state == State.QUALIFYING:
 		quali.physics_update(delta)
 	else:
-		_update_ghosts()
-	_update_positions()
-	_update_drs_rule()
+		_native_update_ghosts()
+	_native_update_positions()
+	_native_update_drs_rule()
 	_update_give_backs()
 	Slipstream.update_all(_cars(), delta)
 	if control:
 		control.physics_update(delta)
 	_restored.clear()
-
-
-func _update_entry(e: RaceEntry, delta: float, racing: bool) -> void:
-	if e.retired:
-		return
-	var p := track.path
-	var length := p.length
-	var car := e.car
-	var pr := p.project(car.global_position)
-	var prev_s := e.s
-	e.s = pr.x
-	e.lateral = pr.y
-	e.race_time = race_time
-	# Linha de chegada
-	if prev_s > length * 0.75 and e.s < length * 0.25:
-		e.crossings += 1
-		if racing:
-			_on_line_crossed(e)
-	elif prev_s < length * 0.25 and e.s > length * 0.75:
-		e.crossings -= 1
-	e.progress = (e.crossings - 1) * length + e.s
-	if racing and not e.finished:
-		var index := int(floor((e.progress + length) / CHECKPOINT))
-		while e.checkpoint_times.size() <= index:
-			e.checkpoint_times.append(race_time)
-	if not racing:
-		return
-	_update_pit(e, delta)
-	if state != State.FINISHED or not e.finished:
-		_update_track_limits(e, delta)
-	if e.is_player:
-		_update_wrong_way(e, delta)
 
 
 func _on_line_crossed(e: RaceEntry) -> void:
@@ -616,25 +577,6 @@ func _all_finished() -> bool:
 	return true
 
 
-func _update_positions() -> void:
-	var length := track.path.length
-	var sorted := entries.duplicate()
-	sorted.sort_custom(func(a: RaceEntry, b: RaceEntry) -> bool:
-		return _rank_key(a, length) > _rank_key(b, length))
-	for k in sorted.size():
-		(sorted[k] as RaceEntry).position = k + 1
-	entries.assign(sorted)
-
-
-## DRS por regra: a até DRS_GAP s do carro da frente (tempo nas marcas de progresso, as mesmas
-## dos intervalos); o líder e quem está nos boxes não têm. Livre / treino: sempre permitido.
-func _update_drs_rule() -> void:
-	var active := drs_rule == 1 and state != State.PRACTICE and state != State.QUALIFYING
-	for e in entries:
-		e.car.drs_rule_active = active
-		e.car.drs_allowed = not active or drs_gap_ok(e)
-
-
 func drs_gap_ok(e: RaceEntry) -> bool:
 	if e.position <= 1 or e.in_pit or e.retired or e.position - 2 >= entries.size():
 		return false
@@ -646,81 +588,6 @@ func drs_gap_ok(e: RaceEntry) -> bool:
 		return false
 	var gap := e.checkpoint_times[index] - ahead.checkpoint_times[index]
 	return gap >= 0.0 and gap <= DRS_GAP
-
-
-func _update_ghosts() -> void:
-	_update_pit_ghosts()
-	if _ghost_pairs.is_empty():
-		return
-	var keep: Array = []
-	for pair in _ghost_pairs:
-		var a: RaceEntry = pair[0]
-		var b: RaceEntry = pair[1]
-		var done := (a.progress > GHOST_UNTIL or a.retired) and (b.progress > GHOST_UNTIL or b.retired)
-		if done and a.car.global_position.distance_to(b.car.global_position) > 6.0:
-			a.car.remove_collision_exception_with(b.car)
-		else:
-			keep.append(pair)
-	_ghost_pairs = keep
-
-
-## Pista dos boxes: as vagas ficam a ~12 m uma da outra e um bot entrando na dele cruza a frente
-## de quem está parado na vaga vizinha. Como na maioria dos jogos de corrida, bots não colidem entre
-## si enquanto um deles está nos boxes (seguem fazendo fila e liberação segura); o jogador colide
-## com todos normalmente.
-func _update_pit_ghosts() -> void:
-	# Saem os pares que já deixaram os boxes e se afastaram
-	for key in _pit_ghosts.keys():
-		var pair: Array = _pit_ghosts[key]
-		var a: RaceEntry = pair[0]
-		var b: RaceEntry = pair[1]
-		if a.car == null or b.car == null or _in_pit_area(a) or _in_pit_area(b):
-			continue
-		if a.car.global_position.distance_to(b.car.global_position) > 8.0:
-			if not _is_start_ghost(a, b):
-				a.car.remove_collision_exception_with(b.car)
-			_pit_ghosts.erase(key)
-	# Entram os pares de bots com um deles nos boxes, a menos de 40 m
-	var bots: Array[RaceEntry] = []
-	var in_pit: Array[bool] = []
-	for e in entries:
-		if not e.is_player and not e.is_human and e.car != null:
-			bots.append(e)
-			in_pit.append(_in_pit_area(e))
-	for i in bots.size():
-		for j in range(i + 1, bots.size()):
-			if not (in_pit[i] or in_pit[j]):
-				continue
-			var a := bots[i]
-			var b := bots[j]
-			if a.car.global_position.distance_squared_to(b.car.global_position) >= 1600.0:
-				continue
-			# Chave na mesma ordem sempre (a lista de entradas é reordenada pela posição)
-			var ia := a.get_instance_id()
-			var ib := b.get_instance_id()
-			var key := "%d_%d" % [mini(ia, ib), maxi(ia, ib)]
-			if not _pit_ghosts.has(key):
-				a.car.add_collision_exception_with(b.car)
-				_pit_ghosts[key] = [a, b]
-
-
-func _in_pit_area(e: RaceEntry) -> bool:
-	return e.in_pit or e.in_pit_stop or (e.bot != null and e.bot.mode != BotDriver.Mode.RACE)
-
-
-func _is_start_ghost(a: RaceEntry, b: RaceEntry) -> bool:
-	for pair in _ghost_pairs:
-		if (pair[0] == a and pair[1] == b) or (pair[0] == b and pair[1] == a):
-			return true
-	return false
-
-
-func _rank_key(e: RaceEntry, length: float) -> float:
-	if e.retired:
-		return -1e6 + e.progress
-	if e.finished:
-		return (laps + 2) * length + 1e5 - e.finish_time
-	return e.progress
 
 
 ## Intervalo (texto) para o carro da frente.
@@ -748,46 +615,6 @@ func interval_text(e: RaceEntry) -> String:
 # ---------------------------------------------------------------------------
 # Boxes
 # ---------------------------------------------------------------------------
-func _update_pit(e: RaceEntry, delta: float) -> void:
-	# Pit stop do jogador em andamento (conta mesmo se a vaga ficar fora da detecção da pista dos boxes)
-	if e.is_player and e.in_pit_stop:
-		e.pit_timer -= delta
-		player_pit_timer = e.pit_timer
-		if e.pit_timer <= 0.0:
-			_end_player_pit(e)
-	var lay := track.layout
-	var p := track.path
-	var i := p.index_at(e.s)
-	var side := lay.pit_side
-	var beyond := e.lateral * side - p.half_width(i, side)
-	var was_in := e.in_pit
-	# Dentro da pista dos boxes de verdade (além do muro onde ele existe)
-	e.in_pit = lay.has_pit and track.pit_width[i] > 2.0 and beyond > minf(2.2, track.pit_width[i] * 0.3)
-	if not e.in_pit:
-		if was_in:
-			e.pit_speeding_flagged = false
-			e.pit_served = false
-		if e.is_player and _box_marker:
-			_box_marker.visible = false
-		return
-	# Limite de velocidade entre as linhas pintadas
-	var after_entry := _ahead(lay.pit_entry_s + lay.pit_taper, e.s) < 0.0
-	var before_exit := _ahead(lay.pit_exit_s - lay.pit_taper, e.s) > 0.0
-	var speed := e.car.linear_velocity.length()
-	var full := track.pit_width[i] >= (RaceTrack.PIT_WALL_STRIP + lay.pit_lane_width) * 0.95
-	if after_entry and before_exit and full and speed > PIT_LIMIT + 0.8 and not e.pit_speeding_flagged:
-		e.pit_speeding_flagged = true
-		_penalize(e, 5.0, "VELOCIDADE NOS BOXES", "%d km/h no limite de 80 km/h" % roundi(speed * 3.6))
-	# Pit stop do jogador: parar no box da equipe
-	if e.is_player and _box_marker:
-		_box_marker.visible = not e.in_pit_stop
-	# Uma parada por passagem: parado na vaga depois do pit stop não começa outro
-	if e.is_player and not e.in_pit_stop and not e.pit_served:
-		var box := track.get_pit_box_transform(e.garage)
-		if e.car.global_position.distance_to(box.origin) < 3.0 and speed < 1.5:
-			_begin_player_pit(e)
-
-
 ## Coluna de luz sobre o box do jogador (aparece na pista dos boxes).
 ## Vaga do jogador nos boxes: o retângulo pintado ganha uma borda luminosa discreta (linha no chão e
 ## um véu baixo de luz, pulsando), visível ao entrar nos boxes.
@@ -966,98 +793,11 @@ func _show_crew(e: RaceEntry, show: bool) -> void:
 # ---------------------------------------------------------------------------
 # Penalidades
 # ---------------------------------------------------------------------------
-func _update_track_limits(e: RaceEntry, delta: float) -> void:
-	if e.in_pit or e.car.hold:
-		e.off_time = 0.0
-		return
-	if e.off_time <= 0.0:
-		e.off_ahead = []
-	var on_track := 0
-	var in_contact := 0
-	for k in e.car.tire_surface.size():
-		if e.car.tire_state[k] == F1Car.TireState.AIR:
-			continue
-		in_contact += 1
-		var surf := e.car.tire_surface[k]
-		if surf == TrackSurface.Type.ASPHALT or surf == TrackSurface.Type.KERB:
-			on_track += 1
-	var speed := e.car.linear_velocity.length()
-	if in_contact >= 2 and on_track == 0:
-		if e.off_time <= 0.0:
-			e.off_start_progress = e.progress
-			e.off_distance = 0.0
-			# Quem estava logo à frente ao sair da pista (para saber quem ele passou por fora)
-			e.off_ahead = []
-			for o in entries:
-				if o != e and not o.retired and o.progress > e.progress and o.progress - e.progress < 80.0:
-					e.off_ahead.append(o)
-		e.off_time += delta
-		e.off_distance += speed * delta
-	elif on_track >= 2 and e.off_time > 0.0:
-		var gained := (e.progress - e.off_start_progress) - e.off_distance
-		if e.off_time > 0.25 and speed > 5.0:
-			var passed: RaceEntry = null
-			for o: RaceEntry in e.off_ahead:
-				if o.progress < e.progress and not o.in_pit and not o.retired:
-					passed = o
-			if passed and (e.is_player or e.is_human) and state == State.RACING:
-				# Passou alguém por fora da pista: dá para devolver a posição antes da penalidade
-				request_give_back(e, passed, 5.0, "VANTAGEM INDEVIDA", "Passou %s por fora da pista" % passed.code)
-			elif gained > 10.0:
-				_penalize(e, 5.0, "VANTAGEM INDEVIDA", "Cortou a pista e ganhou %.0f m" % gained)
-			else:
-				e.track_limit_warnings += 1
-				if e.track_limit_warnings > 3:
-					_penalize(e, 5.0, "LIMITES DE PISTA", "Infração %d — penalidade" % e.track_limit_warnings)
-				else:
-					_notify(e, "LIMITES DE PISTA", "Aviso %d/3" % e.track_limit_warnings, false)
-		e.off_time = 0.0
-
-
-func _update_wrong_way(e: RaceEntry, delta: float) -> void:
-	var tangent := track.path.tangent_at(e.s)
-	var v := e.car.linear_velocity
-	if v.length() > 5.0 and v.normalized().dot(tangent) < -0.4 and not e.in_pit:
-		e.wrong_way_time += delta
-		if e.wrong_way_time > 1.5 and _wrong_way_cooldown <= 0.0:
-			_wrong_way_cooldown = 5.0
-			_notify(e, "CONTRAMÃO", "Vire o carro no sentido da pista", false)
-	else:
-		e.wrong_way_time = 0.0
-
-
 func _check_jump_start() -> void:
 	for e in entries:
 		if e.is_player and _grid_positions.has(e) and not e.penalties.has("LARGADA QUEIMADA"):
 			if e.car.global_position.distance_to(_grid_positions[e]) > 0.8:
 				_penalize(e, 10.0, "LARGADA QUEIMADA", "Se moveu antes de as luzes apagarem")
-
-
-func _on_car_contact(other: F1Car, impulse: float, e: RaceEntry) -> void:
-	if state != State.RACING:
-		return
-	var o := _entry_of(other)
-	if o == null or o.retired or e.retired:
-		return
-	var key := "%d-%d" % [mini(e.get_instance_id(), o.get_instance_id()), maxi(e.get_instance_id(), o.get_instance_id())]
-	if _contact_cooldown.has(key) or impulse < 2600.0:
-		return
-	_contact_cooldown[key] = 4.0
-	# Culpado: quem está atrás e chegou mais rápido
-	var behind := e if e.progress < o.progress else o
-	var front := o if behind == e else e
-	var dir := (front.car.global_position - behind.car.global_position).normalized()
-	var closing := behind.car.linear_velocity.dot(dir) - front.car.linear_velocity.dot(dir)
-	if closing > 2.5 and front.progress - behind.progress > 0.8:
-		var seconds := 10.0 if impulse > 7000.0 else 5.0
-		_penalize(behind, seconds, "COLISÃO", "Causou um acidente com %s" % front.code)
-
-
-func _entry_of(car: F1Car) -> RaceEntry:
-	for e in entries:
-		if e.car == car:
-			return e
-	return null
 
 
 func _penalize(e: RaceEntry, seconds: float, title: String, detail: String) -> void:
@@ -1287,7 +1027,7 @@ func _build_net_grid() -> void:
 			if a.is_player or b.is_player or a.get_instance_id() >= b.get_instance_id():
 				continue
 			a.car.add_collision_exception_with(b.car)
-			_ghost_pairs.append([a, b])
+			_add_ghost_pair(a, b)
 	for entry in entries:
 		entry.car.global_transform = track.get_grid_transform(entry.grid_slot)
 		entry.car.linear_velocity = Vector3.ZERO

@@ -248,7 +248,7 @@ func _finish() -> void:
 		e.penalties.clear()
 		e.penalty_log.clear()
 		e.track_limit_warnings = 0
-		e.checkpoint_times.clear()
+		e.checkpoint_times = PackedFloat32Array()
 		e.pit_count = 0
 		e.compounds_used.clear()
 		e.pit_served = false
@@ -269,10 +269,9 @@ func _set_collisions() -> void:
 				continue
 			if collisions:
 				# Com colisão: tira os "fantasmas" da largada entre bots (voltam depois)
-				for pair in m._ghost_pairs:
-					if (pair[0] == a and pair[1] == b) or (pair[0] == b and pair[1] == a):
-						a.car.remove_collision_exception_with(b.car)
-						_removed_ghosts.append([a, b])
+				if m._is_start_ghost(a, b):
+					a.car.remove_collision_exception_with(b.car)
+					_removed_ghosts.append([a, b])
 			else:
 				a.car.add_collision_exception_with(b.car)
 				_added_exceptions.append([a, b])
@@ -282,11 +281,7 @@ func _restore_collisions() -> void:
 	for pair in _added_exceptions:
 		var a: RaceEntry = pair[0]
 		var b: RaceEntry = pair[1]
-		var ghost := false
-		for g in manager._ghost_pairs:
-			if (g[0] == a and g[1] == b) or (g[0] == b and g[1] == a):
-				ghost = true
-		if not ghost:
+		if not manager._is_start_ghost(a, b):
 			a.car.remove_collision_exception_with(b.car)
 	for pair in _removed_ghosts:
 		(pair[0] as RaceEntry).car.add_collision_exception_with((pair[1] as RaceEntry).car)

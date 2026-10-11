@@ -54,6 +54,8 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 [Files]
 Source: "..\build\windows\Speedoru.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\build\windows\Speedoru.console.exe"; DestDir: "{app}"; Flags: ignoreversion
+; Código nativo (física do carro, bots e pista: native/, godot-rust)
+Source: "..\build\windows\speedoru_native.dll"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\server.cfg.example"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\assets\ui\speedoru_icon.ico"; DestDir: "{app}"; Flags: ignoreversion
 

@@ -52,15 +52,7 @@ static func source_for(me: F1Car, cars: Array) -> Array:
 	return [best, src]
 
 
-## Atualiza o vácuo de todos os carros (com suavização).
+## Atualiza o vácuo de todos os carros (com suavização): a mesma conta de source_for, no código
+## nativo (RaceNative.update_slipstream, native/src/race.rs, com as mesmas constantes).
 static func update_all(cars: Array, delta: float) -> void:
-	for o in cars:
-		var car := o as F1Car
-		if car == null:
-			continue
-		var r := source_for(car, cars)
-		car.slipstream = move_toward(car.slipstream, float(r[0]), delta * RATE)
-		if r[1] != null:
-			car.slipstream_source = r[1]
-		elif car.slipstream <= 0.0:
-			car.slipstream_source = null
+	RaceNative.update_slipstream(cars, delta)

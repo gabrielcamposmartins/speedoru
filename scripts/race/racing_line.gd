@@ -23,6 +23,8 @@ var margin := EDGE_MARGIN
 var lateral := PackedFloat32Array()
 var positions := PackedVector3Array()
 var curvature := PackedFloat32Array()
+## Cópia nativa (Rust, native/src/path.rs), feita no fim da montagem: os bots em Rust usam direto.
+var native: LineCore
 
 
 static func build(track: RaceTrack, csv_path: String) -> RacingLine:
@@ -31,6 +33,8 @@ static func build(track: RaceTrack, csv_path: String) -> RacingLine:
 	line.margin = track.layout.line_margin if track.layout else EDGE_MARGIN
 	line._compute_lateral(csv_path)
 	line._compute_geometry()
+	line.native = LineCore.new()
+	line.native.setup(line.path.native, line.lateral, line.curvature)
 	return line
 
 
@@ -74,10 +78,14 @@ func speed_profile(grip_scale: float, brake_scale: float, accel_scale := 1.0) ->
 
 
 func position_at(s: float, extra_lateral := 0.0) -> Vector3:
+	if native:
+		return native.position_at(s, extra_lateral)
 	return path.position_at(s, lateral_at(s) + extra_lateral)
 
 
 func lateral_at(s: float) -> float:
+	if native:
+		return native.lateral_at(s)
 	var f := fposmod(s, path.length) / path.spacing
 	var i := int(floor(f))
 	var n := path.size()
@@ -85,6 +93,8 @@ func lateral_at(s: float) -> float:
 
 
 static func sample(arr: PackedFloat32Array, path: TrackPath, s: float) -> float:
+	if path.native:
+		return path.native.sample(arr, s)
 	var f := fposmod(s, path.length) / path.spacing
 	var i := int(floor(f))
 	var n := arr.size()

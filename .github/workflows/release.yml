@@ -90,6 +90,19 @@ jobs:
           cp "$RUNNER_TEMP"/godot/templates/* "$dest/"
           echo "GODOT=$RUNNER_TEMP/godot/Godot_v${GODOT_TAG}_win64_console.exe" >> "$GITHUB_ENV"
 
+      # Física do carro, bots e pista (native/, godot-rust): a versão do Rust vem do
+      # native/rust-toolchain.toml (o rustup instala sozinho)
+      - name: Rust em cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: native
+
+      - name: Compila o código nativo
+        run: |
+          cd native
+          cargo build --release
+          ls -la target/release/speedoru_native.dll
+
       - name: Importa o projeto
         run: '"$GODOT" --headless --path . --import'
 
@@ -107,6 +120,7 @@ jobs:
           mkdir -p build/windows
           "$GODOT" --headless --path . --export-release "Windows Desktop" build/windows/Speedoru.exe
           test -f build/windows/Speedoru.exe || { echo "::error::A exportação não gerou o Speedoru.exe"; exit 1; }
+          test -f build/windows/speedoru_native.dll || { echo "::error::A exportação não copiou o speedoru_native.dll"; exit 1; }
           ls -la build/windows
 
       - name: Monta o instalador

@@ -28,6 +28,9 @@ const CROSS_ZONE := 90.0
 
 var _grid := {}
 const GRID_CELL := 40.0
+## Cópia nativa (Rust, native/src/path.rs) dos dados, feita no fim da montagem: projeção, posição e
+## direção rodam lá. Os dados não mudam depois de montados.
+var native: PathCore
 
 
 ## Lê um CSV "x_m,y_m,w_tr_right_m,w_tr_left_m[,z_m]" (formato do TUMFTM racetrack-database,
@@ -118,6 +121,9 @@ func _build(raw: Array[Vector4], heights: PackedFloat32Array, sample_spacing: fl
 		curvature[i] = -ang / (6.0 * spacing)
 	_build_grid()
 	_find_crossings()
+	native = PathCore.new()
+	native.setup(points, tangents, lefts, width_left, width_right, curvature, spacing, length, _cross_zone,
+		not crossings.is_empty())
 
 
 func size() -> int:
@@ -142,6 +148,8 @@ func s_at(i: int) -> float:
 
 ## Ponto sobre a pista (interpolado) com deslocamento lateral (+ = esquerda).
 func position_at(s: float, lateral := 0.0) -> Vector3:
+	if native:
+		return native.position_at(s, lateral)
 	var f := fposmod(s, length) / spacing
 	var i := int(floor(f))
 	var t := f - i
@@ -151,6 +159,8 @@ func position_at(s: float, lateral := 0.0) -> Vector3:
 
 
 func tangent_at(s: float) -> Vector3:
+	if native:
+		return native.tangent_at(s)
 	var f := fposmod(s, length) / spacing
 	var i := int(floor(f))
 	return tangents[i % points.size()].slerp(tangents[(i + 1) % points.size()], f - i).normalized()
@@ -159,6 +169,8 @@ func tangent_at(s: float) -> Vector3:
 ## Referencial sobre a pista, igual ao do carro: +Z = sentido da pista (inclinado com a rampa),
 ## +X = esquerda (sempre horizontal: a pista não tem inclinação lateral), +Y = cima.
 func frame_at(s: float, lateral := 0.0, height := 0.0) -> Transform3D:
+	if native:
+		return native.frame_at(s, lateral, height)
 	var fwd := tangent_at(s)
 	var left := Vector3(fwd.z, 0.0, -fwd.x).normalized()
 	var up := fwd.cross(left)
@@ -179,6 +191,8 @@ func half_width(i: int, side: int) -> float:
 ## Com exhaustive = false, pontos a mais de ~120 m da pista retornam Vector2(-1, INF) (rápido).
 ## Perto de um cruzamento a altura de `pos` escolhe o nível (use_height = false: só o plano).
 func project(pos: Vector3, exhaustive := true, use_height := true) -> Vector2:
+	if native:
+		return native.project(pos, exhaustive, use_height)
 	var height := use_height and not crossings.is_empty()
 	var key := Vector2i(floori(pos.x / GRID_CELL), floori(pos.z / GRID_CELL))
 	var best := -1
@@ -216,6 +230,8 @@ func project(pos: Vector3, exhaustive := true, use_height := true) -> Vector2:
 
 ## Projeção só entre as amostras a até `reach` m de s0 (um trecho, num cruzamento): Vector2(s, lateral).
 func project_near(pos: Vector3, s0: float, reach: float) -> Vector2:
+	if native:
+		return native.project_near(pos, s0, reach)
 	var i0 := index_at(s0)
 	var k := int(reach / spacing)
 	var best := i0

@@ -48,5 +48,5 @@ mesh = SubResource("OutlineQuad")
 car_path = NodePath("../F1Car")
 camera_path = NodePath("../RaceCamera")
 
-[node name="RaceManager" type="Node" parent="."]
+[node name="RaceManager" type="RaceManagerCore" parent="."]
 script = ExtResource("9_race")

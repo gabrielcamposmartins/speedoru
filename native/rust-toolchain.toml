@@ -1,0 +1,5 @@
+# Versão do Rust do código nativo (godot-rust 0.5.5 pede 1.94+). O rustup instala sozinho ao
+# compilar nesta pasta; o CI e o Docker usam a mesma.
+[toolchain]
+channel = "1.94.0"
+profile = "minimal"

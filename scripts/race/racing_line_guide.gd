@@ -1,9 +1,11 @@
 class_name RacingLineGuide
-extends MultiMeshInstance3D
+extends RacingLineGuideCore
 ## Linha ideal no chão: setas em "V" ao longo da trajetória à frente do carro do jogador, coloridas
 ## pela velocidade atual comparada à ideal em cada trecho (perfil do bot difícil):
 ##   verde = abaixo do ideal (pode acelerar) · amarelo = no limite · vermelho = acima (frear).
 ## Modo (Configurações → Jogo, ou L na pista): 0 desligada, 1 só nas frenagens e curvas, 2 completa.
+## A cada quadro roda no código nativo (RacingLineGuideCore, native/src/guide.rs, com as mesmas
+## constantes): `mode` e `suppressed` (escondida por fora) também são de lá.
 
 const COUNT := 48
 const SPACING := 7.0
@@ -17,20 +19,12 @@ const GLOW := 2.4
 var car: F1Car
 var line: RacingLine
 var profile: PackedFloat32Array
-var mode := 2
-
-var _path: TrackPath
-var _s := 0.0
-## Altura do asfalto em relação à linha (m), por metro de pista: os raios saem só uma vez por
-## trecho, e não 48 por quadro.
-var _ground_dy := {}
 
 
 func setup(p_car: F1Car, p_line: RacingLine, p_profile: PackedFloat32Array) -> void:
 	car = p_car
 	line = p_line
 	profile = p_profile
-	_path = line.path
 	cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	var mm := MultiMesh.new()
 	mm.transform_format = MultiMesh.TRANSFORM_3D
@@ -46,7 +40,7 @@ func setup(p_car: F1Car, p_line: RacingLine, p_profile: PackedFloat32Array) -> v
 	mat.render_priority = 2
 	mat.disable_fog = true
 	material_override = mat
-	_s = _path.project(car.global_position).x
+	_core_setup(car, line.native, profile)
 
 
 ## "V" apontando para a frente (+Z): 2,2 m de largura, braços de 42 cm, quase deitado no asfalto
@@ -71,81 +65,3 @@ static func _chevron_mesh() -> ArrayMesh:
 		st.add_vertex(quad[2])
 		st.add_vertex(quad[3])
 	return st.commit()
-
-
-## Escondida por fora (apresentação antes da largada).
-var suppressed := false
-
-
-func _process(_delta: float) -> void:
-	if car == null or multimesh == null:
-		return
-	visible = mode > 0 and not suppressed
-	if not visible:
-		return
-	# Posição do carro ao longo da pista; as setas começam alguns metros à frente
-	var proj := _path.project(car.global_position)
-	_s = proj.x
-	var v := car.linear_velocity.length()
-	for k in COUNT:
-		var s := _s + START + k * SPACING
-		var ideal := RacingLine.sample(profile, _path, s)
-		var p0 := line.position_at(s)
-		var p1 := line.position_at(s + 1.0)
-		var fwd := (p1 - p0)
-		fwd.y = 0.0
-		if fwd.length_squared() < 1e-6:
-			fwd = Vector3.FORWARD
-		fwd = fwd.normalized()
-		var basis := Basis(Vector3.UP.cross(fwd).normalized(), Vector3.UP, fwd)
-		var xf := Transform3D(basis, _ground_at(s, p0) + Vector3.UP * LIFT)
-		var col := _speed_color(v, ideal)
-		# Some suave perto do carro e no fim da linha
-		var fade := clampf(float(k) / 3.0, 0.0, 1.0) * clampf(float(COUNT - k) / 12.0, 0.0, 1.0)
-		if mode == 1 and not _matters(s, ideal):
-			fade = 0.0
-		col.a *= fade
-		# Cor em HDR (acima de 1) para atravessar o tonemap sem ficar pálida
-		col = Color(col.r * GLOW, col.g * GLOW, col.b * GLOW, col.a)
-		multimesh.set_instance_transform(k, xf)
-		multimesh.set_instance_color(k, col)
-
-
-## Ponto no asfalto (a linha central do traçado não acompanha o relevo da pista), pelo cache por
-## metro de pista; só guarda o que bateu no cenário (não em outro carro passando por ali).
-func _ground_at(s: float, p: Vector3) -> Vector3:
-	var key := int(fposmod(s, _path.length))
-	if _ground_dy.has(key):
-		return p + Vector3.UP * float(_ground_dy[key])
-	var q := PhysicsRayQueryParameters3D.create(p + Vector3.UP * 4.0, p + Vector3.DOWN * 4.0)
-	q.exclude = [car.get_rid()]
-	var hit := car.get_world_3d().direct_space_state.intersect_ray(q)
-	if not hit.has("position"):
-		_ground_dy[key] = 0.0
-		return p
-	if not hit["collider"] is RigidBody3D:
-		_ground_dy[key] = (hit["position"] as Vector3).y - p.y
-	return hit["position"]
-
-
-## Cor pela diferença entre a velocidade atual e a ideal naquele ponto.
-static func _speed_color(v: float, ideal: float) -> Color:
-	var diff := v - ideal
-	var green := Color(0.1, 1.0, 0.35, 0.92)
-	var yellow := Color(1.0, 0.8, 0.0, 0.95)
-	var red := Color(1.0, 0.08, 0.1, 0.95)
-	if diff < -6.0:
-		return green
-	if diff < 0.0:
-		return green.lerp(yellow, (diff + 6.0) / 6.0)
-	if diff < 5.0:
-		return yellow.lerp(red, diff / 5.0)
-	return red
-
-
-## Modo "só nas frenagens e curvas": onde a velocidade ideal cai ou a curvatura é alta.
-func _matters(s: float, ideal: float) -> bool:
-	var before := RacingLine.sample(profile, _path, s - 60.0)
-	if before - ideal > 4.0:
-		return true
-	return absf(RacingLine.sample(line.curvature, _path, s)) > 1.0 / 450.0

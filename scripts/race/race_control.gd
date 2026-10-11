@@ -185,7 +185,7 @@ func _teleport_to_box(e: RaceEntry) -> void:
 	# Marcas de progresso (intervalos) da parte que vai ser refeita são apagadas
 	var index := int(floor((e.progress + length) / RaceManager.CHECKPOINT))
 	if index < e.checkpoint_times.size():
-		e.checkpoint_times.resize(maxi(index + 1, 0))
+		e.checkpoint_times = e.checkpoint_times.slice(0, maxi(index + 1, 0))
 
 
 ## Fim de um pit stop (chamado pelo RaceManager): se era um envolvido, sai da lista.

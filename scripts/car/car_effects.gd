@@ -1,5 +1,5 @@
 class_name CarEffects
-extends Node3D
+extends CarEffectsCore
 ## Efeitos visuais do carro ligados à pilotagem:
 ##  * Sombra de contato: um Decal escuro sob o carro (sempre visível, também à noite e com o sol
 ##    baixo; a sombra do sol continua por cima). O carro fica só na camada CAR_LAYER para o
@@ -11,15 +11,15 @@ extends Node3D
 ##    luzes sob o assoalho e tubos de neon nas laterais; bem mais forte à noite.
 ##  * Luz traseira de F1 (lanterna central + LEDs das placas da asa): pisca quando o carro freia
 ##    (recuperando energia para a bateria); apagada/fraca no resto do tempo.
+## A cada quadro roda no código nativo (CarEffectsCore, native/src/fx.rs); aqui são montados os
+## nós, materiais e texturas.
 
-## Marcas: velocidade mínima (m/s) e vida (s).
-@export var skid_min_speed := 7.0
+## Marcas: vida (s); a velocidade mínima é skid_min_speed (CarEffectsCore).
 @export var skid_lifetime := 45.0
 @export var skid_width := 0.3
 @export var shadow_opacity := 0.6
 
 var car: F1Car
-var glow := 0.0
 var _skids: Array[TrailRibbon] = []
 var _trails: Array[TrailRibbon] = []
 var _dust: Array[GPUParticles3D] = []
@@ -28,22 +28,14 @@ var _decal: Decal
 var _trail_material: StandardMaterial3D
 var _dust_material: StandardMaterial3D
 var _color := Color.WHITE
-var _time := 0.0
 var _neon_decal: Decal
 var _neon_lights: Array[OmniLight3D] = []
 var _neon_tubes: MeshInstance3D
 var _neon_material: StandardMaterial3D
-var _neon := 0.0
 var _brake_material: StandardMaterial3D
 var _brake_light: OmniLight3D
-var _brake_glow := 0.0
 var _brake_flares: Array[MeshInstance3D] = []
 var _flare_material: StandardMaterial3D
-
-
-var _ready_done := false
-## Materiais das rodas ainda com o brilho do boost (para apagá-lo uma vez quando ele acaba).
-var _glow_shown := true
 
 
 func _ready() -> void:
@@ -111,90 +103,13 @@ func _setup() -> void:
 	_build_brake_light()
 	car.parts_ready.connect(_on_parts_ready.call_deferred)
 	_on_parts_ready.call_deferred()
-	_ready_done = true
+	_core_setup(car, _skids, _trails, _dust, _lights, _dust_material, _neon_decal, _neon_lights, _neon_tubes,
+		_neon_material, _brake_material, _brake_light, _brake_flares, _flare_material)
 
 
 func _on_parts_ready() -> void:
 	_retag_layers()
 	_assign_brake_material()
-
-
-func _process(delta: float) -> void:
-	if car == null or not _ready_done:
-		return
-	_time += delta
-	var target := 1.0 if car.boost_active else 0.0
-	glow = move_toward(glow, target, delta * (6.0 if target > glow else 2.5))
-	var c: Color = car.config.boost_color if car.config else Color.CYAN
-	if c != _color and _dust_material:
-		_color = c
-		_dust_material.albedo_color = c
-	if glow > 0.0 or _glow_shown:
-		_update_wheel_materials(c)
-		_glow_shown = glow > 0.0
-	_update_neon(delta)
-	_update_brake_light(delta)
-	var wheels := car.get_wheels()
-	var speed := car.linear_velocity.length()
-	var forward := car.global_basis.z
-	for i in wheels.size():
-		var wheel := wheels[i]
-		var hub := wheel.global_position
-		# Boost: luz, rastro e pó mágico (apagados não são mexidos)
-		_lights[i].visible = glow > 0.01
-		if glow > 0.01:
-			_lights[i].global_position = hub
-			_lights[i].light_color = c
-			_lights[i].light_energy = glow * (1.6 + 0.4 * sin(_time * 18.0 + i))
-		var dusting := car.boost_active and speed > 2.0
-		if dusting or _dust[i].emitting:
-			_dust[i].global_position = hub
-			_dust[i].emitting = dusting
-		if car.boost_active and speed > 1.0:
-			_trails[i].color = Color(c.r, c.g, c.b, 0.9)
-			_trails[i].add_point(hub - car.global_basis.y * 0.1, car.global_basis.y, forward)
-		else:
-			_trails[i].stop()
-		# Marcas de pneu
-		if _skidding(i, wheel, speed):
-			var n := wheel.get_contact_normal()
-			_skids[i].add_point(wheel.get_contact_point() + n * 0.012, n, forward)
-		else:
-			_skids[i].stop()
-
-
-func _skidding(i: int, wheel: VehicleWheel3D, speed: float) -> bool:
-	if not wheel.is_in_contact() or speed < skid_min_speed or car.wheel_broken[i]:
-		return false
-	var surface := car.tire_surface[i]
-	if surface != TrackSurface.Type.ASPHALT and surface != TrackSurface.Type.KERB:
-		return false
-	var state := car.tire_state[i]
-	if state == F1Car.TireState.LOCK or state == F1Car.TireState.SPIN:
-		return true
-	if state == F1Car.TireState.SLIDE and absf(car.tire_slip_deg[i]) > car.peak_slip_angle_deg * 1.5:
-		return true
-	return car.brake_input > 0.6 and car.tire_usage[i] > 0.93
-
-
-## Brilho das rodas: emissão no pneu e no aro (materiais compartilhados do carro).
-func _update_wheel_materials(c: Color) -> void:
-	var mats: Dictionary = car.assembly.livery.materials
-	var pulse := glow * (0.85 + 0.15 * sin(_time * 14.0))
-	var tyre := mats.get("Tire") as StandardMaterial3D
-	if tyre:
-		tyre.emission_enabled = pulse > 0.001
-		tyre.emission = c
-		tyre.emission_energy_multiplier = pulse * 1.1
-	var stripe := mats.get("Tire_Stripe") as StandardMaterial3D
-	if stripe:
-		stripe.emission_enabled = pulse > 0.001
-		stripe.emission = c
-		stripe.emission_energy_multiplier = pulse * 9.0
-	var rim := mats.get("Rim") as ShaderMaterial
-	if rim:
-		rim.set_shader_parameter("glow_color", c)
-		rim.set_shader_parameter("glow", pulse * 4.0)
 
 
 # ---------------------------------------------------------------------------
@@ -256,30 +171,6 @@ func _build_neon() -> void:
 	_neon_tubes.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	_neon_tubes.visible = false
 	add_child(_neon_tubes)
-
-
-func _update_neon(delta: float) -> void:
-	var enabled: bool = car.config != null and car.config.neon_enabled
-	_neon = move_toward(_neon, 1.0 if enabled else 0.0, delta * 3.0)
-	var on := _neon > 0.001
-	_neon_decal.visible = on
-	_neon_tubes.visible = on
-	for light in _neon_lights:
-		light.visible = on
-	if not on:
-		return
-	var c: Color = car.config.neon_color
-	var night: float = Daylight.current_night
-	var flicker := 0.95 + 0.05 * sin(_time * 50.0) * sin(_time * 7.3)
-	var level := _neon * flicker
-	_neon_decal.modulate = c
-	_neon_decal.emission_energy = level * lerpf(0.9, 4.0, night)
-	for light in _neon_lights:
-		light.light_color = c
-		light.light_energy = level * lerpf(0.5, 2.6, night)
-	_neon_material.albedo_color = c
-	_neon_material.emission = c
-	_neon_material.emission_energy_multiplier = level * lerpf(1.5, 4.0, night)
 
 
 ## Brilho oval e suave (mais largo que o carro).
@@ -354,24 +245,6 @@ func _assign_brake_material() -> void:
 			var active := mi.get_active_material(s)
 			if (src and src.resource_name == "Light_Red") or active == livery_red or active == _brake_material:
 				mi.set_surface_override_material(s, _brake_material)
-
-
-func _update_brake_light(delta: float) -> void:
-	var night: float = Daylight.current_night
-	var braking := car.brake_input > 0.1 and car.linear_velocity.length() > 2.0
-	# Pisca como na F1 (recuperação de energia): ~4 Hz, pulsos curtos
-	var target := 0.0
-	if braking:
-		target = 1.0 if fmod(_time * 4.0, 1.0) < 0.55 else 0.08
-	_brake_glow = target if target > _brake_glow else move_toward(_brake_glow, target, delta * 25.0)
-	_brake_material.emission_energy_multiplier = 0.15 + _brake_glow * lerpf(12.0, 16.0, night)
-	_brake_light.visible = _brake_glow > 0.05 and night > 0.05
-	_brake_light.light_energy = _brake_glow * night * 2.0
-	_flare_material.albedo_color = Color(1.0, 0.12, 0.08, _brake_glow)
-	for flare in _brake_flares:
-		flare.visible = _brake_glow > 0.02 and not car.get_node("Damage").detached.has("rear_wing")
-	if _brake_flares.size() > 0:
-		_brake_flares[0].visible = _brake_glow > 0.02
 
 
 # ---------------------------------------------------------------------------

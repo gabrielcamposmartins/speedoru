@@ -1,0 +1,12 @@
+; Código nativo do jogo (Rust, pasta native/). Compile com:  cargo build --release --manifest-path native/Cargo.toml
+; O editor e os testes também usam o build de release (o de debug do Rust é lento demais para a física).
+[configuration]
+entry_symbol = "gdext_rust_init"
+compatibility_minimum = 4.7
+reloadable = false
+
+[libraries]
+windows.debug.x86_64 = "res://native/target/release/speedoru_native.dll"
+windows.release.x86_64 = "res://native/target/release/speedoru_native.dll"
+linux.debug.x86_64 = "res://native/target/release/libspeedoru_native.so"
+linux.release.x86_64 = "res://native/target/release/libspeedoru_native.so"

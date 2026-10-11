@@ -20,10 +20,18 @@ RUN curl -sSfL -o /tmp/godot.zip \
  && chmod +x /usr/local/bin/godot \
  && rm /tmp/godot.zip
 
+# --- código nativo (física do carro, bots e pista: native/, godot-rust) -----
+# A mesma versão do native/rust-toolchain.toml
+FROM rust:1.94-slim-bookworm AS native
+WORKDIR /native
+COPY native/ .
+RUN cargo build --release
+
 # --- importa os recursos (cria o .godot/) -----------------------------------
 FROM godot AS import
 WORKDIR /app
 COPY . .
+COPY --from=native /native/target/release/libspeedoru_native.so native/target/release/
 RUN godot --headless --path . --import
 
 # --- imagem final -----------------------------------------------------------

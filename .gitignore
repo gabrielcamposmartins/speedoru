@@ -8,3 +8,5 @@ build/
 server.cfg
 # Python
 __pycache__/
+# Rust: saída da compilação do código nativo
+native/target/

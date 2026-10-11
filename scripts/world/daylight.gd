@@ -143,6 +143,7 @@ func _apply_mood() -> void:
 	RenderingServer.global_shader_parameter_set(&"petals", b.petals)
 	RenderingServer.global_shader_parameter_set(&"night", night)
 	current_night = night
+	CarEffectsCore.set_night(night)
 	_apply()
 	if not Engine.is_editor_hint():
 		get_tree().call_group("mood_aware", "apply_mood", time_of_day, biome)
