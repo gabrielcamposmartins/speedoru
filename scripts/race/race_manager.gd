@@ -1460,7 +1460,8 @@ func _start_net_client() -> void:
 		else:
 			car = _spawn_net_car("Car%d" % int(d["idx"]))
 		if d.has("profile"):
-			_apply_profile(car, d["profile"], false)
+			# O próprio carro roda a física aqui (predição): com a engenharia da conta, como no servidor
+			_apply_profile(car, d["profile"], mine)
 		elif d.has("colors"):
 			var c: Array = d["colors"]
 			var cfg := car.config
@@ -1473,7 +1474,10 @@ func _start_net_client() -> void:
 			cfg.car_name = str(d["name"])
 			cfg.tyre_compound = int(d.get("compound", 1)) as CarConfig.TyreCompound
 			cfg.changed.emit()
-		car.set_puppet(true)
+		if mine:
+			car.player_controlled = false
+		else:
+			car.set_puppet(true)
 		var entry := _make_entry(car, mine, int(d["slot"]), int(d["garage"]))
 		entry.is_human = str(d.get("id", "")) != ""
 		entry.net_id = str(d.get("id", ""))

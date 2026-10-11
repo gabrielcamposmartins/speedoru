@@ -18,6 +18,10 @@ extends Node
 ##   passo atrasado no servidor (o tempo da simulação fica para trás) não deixa o cliente adiante
 ##   dos instantâneos.
 ## * Repassa o estado da prova (5/s) e os acontecimentos ao RaceManager.
+## * O carro do próprio jogador não segue os instantâneos: roda a física aqui com o comando na hora
+##   (predição, NetPrediction) e é corrigido pelo estado do servidor para o mesmo comando
+##   (reconciliação). Com servidor antigo (sem ack), depois da bandeirada ou se o carro abandonar,
+##   volta a seguir o servidor como os outros.
 
 const ACTIONS := ["shift_up", "shift_down", "toggle_gearbox", "pit_limiter", "toggle_tc", "brake_bias_forward",
 	"brake_bias_rearward", "reset_car", "pass_signal"]
@@ -48,6 +52,15 @@ var _render_t := -1.0
 ## Contadores das ações de toque (um por item de ACTIONS; o servidor aplica a diferença).
 var _counts := PackedFloat32Array()
 var _net: Node
+## Predição do carro do jogador (null = segue o servidor como os outros).
+var prediction: NetPrediction
+## Predição ligada (-- --no-prediction desliga, para comparar).
+static var prediction_enabled := true
+## Atraso de rede simulado (ms, ida e volta; -- --net-lag=ms), só para testes: segura os comandos
+## na ida e os instantâneos na volta por metade disso cada.
+static var lag_ms := 0
+var _out_lag: Array = []
+var _in_lag: Array = []
 
 
 func _init() -> void:
@@ -60,6 +73,17 @@ func setup(p_manager: RaceManager) -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	process_physics_priority = -10
 	_net = get_node_or_null("/root/Net")
+	for a in OS.get_cmdline_user_args():
+		if a == "--no-prediction":
+			prediction_enabled = false
+		elif a.begins_with("--net-lag="):
+			lag_ms = maxi(int(a.substr(10)), 0)
+	var me := manager.player_entry
+	if me and me.car and not me.car.puppet:
+		if prediction_enabled:
+			prediction = NetPrediction.new(me.car, me.index)
+		else:
+			me.car.set_puppet(true)
 	if _net:
 		_net.race_snapshot.connect(_on_snapshot)
 		_net.race_state.connect(_on_state)
@@ -89,6 +113,13 @@ static func _now() -> float:
 
 
 func _on_snapshot(data: PackedByteArray) -> void:
+	if lag_ms > 0:
+		_in_lag.append([Time.get_ticks_msec() + lag_ms / 2, data])
+		return
+	_handle_snapshot(data)
+
+
+func _handle_snapshot(data: PackedByteArray) -> void:
 	var s := NetSnapshot.decode(data)
 	_track_offset(float(s["t"]) - _now())
 	if not _snaps.is_empty() and s["t"] <= _snaps[-1]["t"]:
@@ -96,6 +127,10 @@ func _on_snapshot(data: PackedByteArray) -> void:
 	_snaps.append(s)
 	while _snaps.size() > 40:
 		_snaps.pop_front()
+	if prediction:
+		prediction.reconcile(s, _seq)
+		if not prediction.active:
+			_stop_prediction()
 
 
 ## Relógio do servidor nos dois sentidos: o maior valor da janela, subindo na hora e descendo aos
@@ -121,8 +156,35 @@ func _on_state(d: Dictionary) -> void:
 		manager.apply_net_state(d)
 
 
+## O carro do jogador volta a seguir o servidor (marionete, interpolado como os outros).
+func _stop_prediction() -> void:
+	if prediction == null:
+		return
+	prediction.car.net_predicted = false
+	prediction.car.set_puppet(true)
+	prediction = null
+
+
 func _physics_process(delta: float) -> void:
-	_send_input()
+	if lag_ms > 0:
+		var now := Time.get_ticks_msec()
+		while not _in_lag.is_empty() and int(_in_lag[0][0]) <= now:
+			_handle_snapshot(_in_lag.pop_front()[1])
+		while not _out_lag.is_empty() and int(_out_lag[0][0]) <= now:
+			_net.inp.rpc_id(1, _out_lag.pop_front()[1])
+	if prediction:
+		var me := manager.player_entry
+		if me == null or me.finished or me.retired or manager.state == RaceManager.State.FINISHED:
+			_stop_prediction()
+	if prediction:
+		# Pausa da sala: o carro para junto com o servidor
+		prediction.car.freeze = manager.net_paused
+		if not manager.net_paused:
+			prediction.record(_seq)
+			prediction.step()
+	var sent := _send_input()
+	if prediction and not manager.net_paused and not sent.is_empty():
+		prediction.apply_input(sent[0], sent[1])
 	if _snaps.is_empty():
 		return
 	var target := _now() + _offset - NetProtocol.INTERP_DELAY
@@ -142,6 +204,8 @@ func _physics_process(delta: float) -> void:
 				b = {}
 			break
 	for e in manager.roster:
+		if prediction and e.index == prediction.index:
+			continue
 		var ca: Variant = a["cars"].get(e.index)
 		if ca == null:
 			continue
@@ -222,13 +286,17 @@ func _apply(idx: int, car: F1Car, a: Dictionary, b: Dictionary, w: float, extra:
 		car.puppet_wheel_drop[k] = lerpf(da[k], db[k], w)
 
 
-## Comandos do jogador para o servidor. Com o menu de pausa aberto, solta os pedais.
-func _send_input() -> void:
+## Comandos do jogador para o servidor. Com o menu de pausa aberto, solta os pedais. Devolve
+## [comando, ações apertadas agora] (o mesmo comando vai para a predição) ou [] sem conexão.
+func _send_input() -> Array:
 	if _net == null or not _net.online:
-		return
+		return []
 	var blocked: bool = manager.hud != null and manager.hud.pause_menu != null
+	var pressed := []
 	for k in ACTIONS.size():
-		if not blocked and Input.is_action_just_pressed(ACTIONS[k]):
+		var hit := not blocked and Input.is_action_just_pressed(ACTIONS[k])
+		pressed.append(hit)
+		if hit:
 			_counts[k] += 1.0
 	_seq += 1
 	var buttons := 0
@@ -245,4 +313,8 @@ func _send_input() -> void:
 		buttons,
 	])
 	d.append_array(_counts)
-	_net.inp.rpc_id(1, d)
+	if lag_ms > 0:
+		_out_lag.append([Time.get_ticks_msec() + lag_ms / 2, d])
+	else:
+		_net.inp.rpc_id(1, d)
+	return [d, pressed]

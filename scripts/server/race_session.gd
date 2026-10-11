@@ -8,6 +8,15 @@ extends Node
 ## saem os instantâneos (30/s), o estado da prova (5/s) e os acontecimentos; no fim, os resultados
 ## voltam ao GameServer, que paga e registra.
 ##
+## Comandos dos jogadores (predição no cliente, NetRaceClient): cada comando tem um número de
+## sequência e entra numa fila; o servidor aplica UM por passo de física, em ordem (o cliente prevê
+## exatamente isso). Se a fila esvazia, o último comando é repetido; se ela cresce (rajada depois
+## de um atraso), os mais velhos são descartados para não acumular atraso. Cada repetição adianta e
+## cada descarte atrasa a simulação em relação à numeração dos comandos (_seq_offset). Cada
+## instantâneo leva, só para o jogador, o "ack" = último comando aplicado + esse deslocamento: o
+## passo do cliente que corresponde ao estado do carro no servidor — o cliente compara com o que
+## previu para aquele passo.
+##
 ## Votações (comando "vote" {kind, yes}; uma de cada vez; aprovam com a maioria dos humanos ainda
 ## na corrida em até VOTE_TIME s):
 ## * "restart": a corrida é descartada (sem resultado nem prêmio) e o GameServer larga uma nova
@@ -38,8 +47,15 @@ var players: Array = []
 var manager: RaceManager
 var viewport: SubViewport
 
+## Fila de comandos por conta (os mais novos no fim), o último aplicado, a sequência dele e o
+## deslocamento da simulação (repetições − descartes).
 var _inputs := {}
+var _queues := {}
+var _applied_seq := {}
+var _seq_offset := {}
 var _last_counts := {}
+## Comandos guardados na fila no máximo (≈ 25 ms a 120 Hz) antes de descartar os mais velhos.
+const INPUT_QUEUE_MAX := 3
 var _loaded := {}
 var _left := {}
 var _phase := "loading"
@@ -131,7 +147,12 @@ func _go() -> void:
 
 func set_input(acc_id: String, data: PackedFloat32Array) -> void:
 	if data.size() >= 14:
-		_inputs[acc_id] = data
+		var q: Array = _queues.get(acc_id, [])
+		var last_seq: int = int((q[-1] as PackedFloat32Array)[0]) if not q.is_empty() else int(_applied_seq.get(acc_id, -1))
+		if int(data[0]) <= last_seq:
+			return
+		q.append(data)
+		_queues[acc_id] = q
 
 
 func command(acc_id: String, cmd: String, data: Dictionary) -> void:
@@ -285,8 +306,18 @@ func _physics_process(delta: float) -> void:
 		# manda no máximo um a mais para alcançar
 		_snap_acc = minf(_snap_acc - 1.0 / NetProtocol.SNAPSHOT_HZ, 1.0 / NetProtocol.SNAPSHOT_HZ)
 		var bytes := NetSnapshot.encode(_t, manager.roster)
-		for peer in _peers():
-			_net.snap.rpc_id(peer, bytes)
+		# Cada jogador recebe o ack dos próprios comandos no fim (clientes antigos ignoram)
+		for pl in players:
+			if _left.has(pl["id"]):
+				continue
+			var ack := int(_applied_seq.get(pl["id"], 0)) + int(_seq_offset.get(pl["id"], 0))
+			var tail := PackedByteArray()
+			tail.resize(4)
+			tail.encode_u32(0, clampi(ack, 0, 0xFFFFFFFF))
+			var personal := bytes + tail
+			for peer in server.online.get(pl["id"], []):
+				if not server._gone.has(peer):
+					_net.snap.rpc_id(peer, personal)
 	_state_acc += delta
 	if _state_acc >= 1.0 / NetProtocol.RACE_STATE_HZ and _phase != "loading":
 		_state_acc = 0.0
@@ -309,10 +340,29 @@ func _apply_inputs() -> void:
 			car.brake_input = 1.0
 			car.steer_input = 0.0
 			continue
+		# Um comando por passo, em ordem; sem comando novo, repete o último
+		var q: Array = _queues.get(acc_id, [])
+		while q.size() > INPUT_QUEUE_MAX:
+			q.pop_front()
+			_seq_offset[acc_id] = int(_seq_offset.get(acc_id, 0)) - 1
+		var repeat := false
+		if not q.is_empty():
+			_inputs[acc_id] = q.pop_front()
+			_applied_seq[acc_id] = int((_inputs[acc_id] as PackedFloat32Array)[0])
+		elif _inputs.has(acc_id):
+			repeat = true
+			_seq_offset[acc_id] = int(_seq_offset.get(acc_id, 0)) + 1
 		var d: Variant = _inputs.get(acc_id)
 		if d == null:
 			continue
 		var inp: PackedFloat32Array = d
+		if repeat:
+			# Repetição: pedais e direção iguais, sem repetir as ações de toque
+			car.throttle_input = clampf(inp[1], 0.0, 1.0)
+			car.brake_input = clampf(inp[2], 0.0, 1.0)
+			car.reverse_input = clampf(inp[3], 0.0, 1.0) if car.automatic else 0.0
+			car.steer_input = clampf(inp[4], -1.0, 1.0)
+			continue
 		car.throttle_input = clampf(inp[1], 0.0, 1.0)
 		car.brake_input = clampf(inp[2], 0.0, 1.0)
 		# No manual a ré é uma marcha (a tecla de ré não faz nada)

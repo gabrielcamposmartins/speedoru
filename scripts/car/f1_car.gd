@@ -194,6 +194,9 @@ var drs_rule_active := false
 ## As rodas também são posicionadas aqui (suspensão do servidor, esterço e giro pela velocidade):
 ## a suspensão do VehicleBody3D, com o corpo movido por fora, faria as rodas tremerem.
 var puppet := false
+## Rede (cliente): o carro do jogador com predição — a física roda aqui, mas o dano das batidas é
+## do servidor (chega pelos eventos), então os contatos locais não viram dano.
+var net_predicted := false
 ## Rede (cliente): quanto cada roda está abaixo do ponto de fixação (m), vindo do snapshot.
 var puppet_wheel_drop := PackedFloat32Array([0.04, 0.04, 0.04, 0.04])
 var _puppet_spin := PackedFloat32Array([0, 0, 0, 0])
@@ -498,7 +501,7 @@ func _physics_process(delta: float) -> void:
 
 func _integrate_forces(state: PhysicsDirectBodyState3D) -> void:
 	# Contatos do corpo (batidas, raspadas) para o sistema de dano
-	if _damage and state.get_contact_count() > 0:
+	if _damage and not net_predicted and state.get_contact_count() > 0:
 		for i in state.get_contact_count():
 			var pos := state.get_contact_local_position(i)
 			var rel := state.get_contact_local_velocity_at_position(i) - state.get_contact_collider_velocity_at_position(i)

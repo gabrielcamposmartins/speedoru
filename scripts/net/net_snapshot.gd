@@ -6,7 +6,8 @@ extends RefCounted
 ## posição, rotação, velocidade, giro, marcha, pedais, direção, bandeiras (DRS, boost, limitador,
 ## parado, escondido, TC, ABS, automático), bateria, desgaste dos 4 pneus, composto, dano
 ## (asa dianteira/traseira, arrasto, motor), rodas quebradas, uso dos pneus, balanço de freio e
-## quanto cada roda está abaixo da fixação (suspensão, em mm).
+## quanto cada roda está abaixo da fixação (suspensão, em mm). Depois dos carros, o servidor põe
+## (só no instantâneo de cada jogador) o ack dos comandos dele, u32 — clientes antigos ignoram.
 
 const F_DRS := 1
 const F_BOOST := 2
@@ -117,7 +118,11 @@ static func decode(data: PackedByteArray) -> Dictionary:
 		c["bias"] = b.get_u8() / 255.0
 		c["drop"] = PackedFloat32Array([b.get_u8() / 1000.0, b.get_u8() / 1000.0, b.get_u8() / 1000.0, b.get_u8() / 1000.0])
 		cars[idx] = c
-	return {"t": t, "cars": cars}
+	var out := {"t": t, "cars": cars}
+	# Servidor com predição: no fim, o último comando deste jogador aplicado (ack)
+	if b.get_available_bytes() >= 4:
+		out["ack"] = b.get_u32()
+	return out
 
 
 static func _u8(x: float) -> int:

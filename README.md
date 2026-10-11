@@ -1126,13 +1126,31 @@ então um passo atrasado no servidor (o tempo da simulação fica para trás) n�
 adiante dos instantâneos. Sem instantâneo novo, a última posição é esticada pela velocidade (até
 0,25 s) e, quando eles voltam, o carro vai até a posição interpolada em 8 passos, sem salto.
 
+**Predição no cliente** (`NetPrediction`, só o carro do próprio jogador): o carro roda a física no
+aparelho com o comando aplicado na hora — sem a ida e volta ao servidor nem o atraso de
+interpolação no controle (com 120 ms de ida e volta, o carro respondia em ~370 ms; com predição,
+em ~50 ms, o mesmo de jogar sem rede). O servidor aplica os comandos **um por passo, em ordem**
+(fila curta contra o jitter; repete o último se faltar, descarta os mais velhos se acumular) e
+manda no fim do instantâneo de cada jogador o **ack** (u32: último comando aplicado + repetições −
+descartes; clientes antigos ignoram). O cliente guarda o estado previsto depois de cada comando e,
+quando o instantâneo chega, compara com o estado do servidor para o mesmo comando
+(**reconciliação**): erro pequeno (< 5 cm, 0,3 m/s, 1°) é ignorado; médio corrige a velocidade na
+hora e a posição/rotação aos poucos (25% por passo), corrigindo junto o histórico posterior;
+grande (> 4 m: batida, carro levado aos boxes ou de volta à pista) salta para o estado do
+servidor. Largada/parada, dano, pneus, rodas quebradas e bateria vêm sempre do servidor; o dano das
+batidas também (os contatos locais não viram dano). Servidor antigo (sem ack), depois da
+bandeirada ou abandono: o carro volta a seguir o servidor como os outros. Para testar com atraso:
+`-- --net-lag=120` (ida e volta simulada) e `-- --no-prediction` (comparar com o modo antigo).
+
 **Servidor sem travar as salas**: a thread principal do servidor roda a física, os bots e a rede
 de todas as salas a 120 Hz, então nada pode prendê-la por muito tempo.
 - **Pistas geradas uma vez**: na subida, `RaceTrack.prewarm_server` gera a versão de servidor de
   cada pista (só colisão, sem o visual de `SERVER_SKIP`; ~10 a 15 s, em etapas) e guarda uma cópia
   dos nós e os dados calculados. Cada sala só copia os nós (`duplicate`, ~50 ms; os shapes de colisão
   são compartilhados e cada sala monta os próprios corpos no seu mundo de física) e monta luzes de
-  largada novas. Uma sala que larga antes de a pista ficar pronta espera por ela. O log mostra
+  largada novas. Os shapes criados direto no corpo (`create_shape_owner`: barreiras e muros do
+  corte de Suzuka) não vão no `duplicate` e são recriados na cópia (sem isso, na 0.8.0, os muros não
+  tinham colisão no servidor). Uma sala que larga antes de a pista ficar pronta espera por ela. O log mostra
   `RaceTrack: ... copiados do cache` em vez de `gerados em`.
 - **Carros do servidor**: nascem sem som, efeitos, piloto animado e retrovisores, e o dano não copia
   as malhas (a zona de cada peça sai da caixa da malha; o amassado é coisa dos clientes). O grid entra
@@ -1218,6 +1236,8 @@ godot --headless --path . -s res://tests/compile_check.gd   # carrega todos os s
 godot --headless --path . -s res://tests/ccd_probe.gd       # carro não "para do nada" em zebra/raspão a 320 km/h e não atravessa muros
 godot --headless --path . -s res://tests/highspeed_probe.gd # pneus em alta velocidade: carga, aderência, boost, toque de direção, batente
 godot --headless --path . -s res://tests/net_test.gd        # multiplayer de ponta a ponta, com votações de pausa/voltar/recomeçar (precisa do libSQL local; SPEEDORU_TEST_DB=local usa o banco em arquivo)
+godot --headless --path . -s res://tests/track_cache_test.gd -- --server # pista do servidor copiada do cache: mesmos shapes de colisão e raios batendo nas barreiras
+godot --headless --path . -s res://tests/prediction_test.gd -- --offline [--net-lag=120] [--no-prediction] # predição: resposta ao acelerador, erro previsto x servidor, correções e saltos
 godot --headless --path . -s res://tests/server_load_test.gd # servidor com duas salas: pistas geradas uma vez, a sala correndo não congela quando outra larga, 30 instantâneos/s, relógio da interpolação
 godot --headless --path . -s res://tests/host_test.gd       # endereços IPv4/IPv6, banco local, hospedar (entrar por ::1, status, tirar, fechar, batimento), skins pela rede, salvos e histórico (+ -- <Speedoru.exe> = build exportada)
 godot --path . -s res://tests/skin_test.gd -- [pasta]        # skin: planificação, importar/arquivos, ida e volta pelo molde, pintar um lado só muda ele (com janela)

@@ -208,11 +208,41 @@ func _store_cache() -> void:
 	var key := _cache_key()
 	_server_cache[key] = {
 		"root": _root.duplicate(),
+		"shapes": _api_shapes(_root),
+		"shape_count": count_shapes(_root),
 		"lights": _root.get_path_to(start_lights) if start_lights else NodePath(),
 		"path": path, "kerb": kerb, "gravel": gravel, "barrier": barrier, "barrier_kind": barrier_kind,
 		"pit_width": pit_width, "footprints": footprints, "terrain": terrain, "city": city,
 	}
 	_warming.erase(key)
+
+
+## Shapes criados direto nos corpos (sem nó CollisionShape3D): [[caminho, [[transform, [shapes]]]]].
+static func _api_shapes(root: Node) -> Array:
+	var out := []
+	for node in root.find_children("*", "CollisionObject3D", true, false):
+		var body := node as CollisionObject3D
+		var owners := []
+		for id in body.get_shape_owners():
+			if body.shape_owner_get_owner(id) != body:
+				continue
+			var shapes := []
+			for k in body.shape_owner_get_shape_count(id):
+				shapes.append(body.shape_owner_get_shape(id, k))
+			owners.append([body.shape_owner_get_transform(id), shapes])
+		if not owners.is_empty():
+			out.append([root.get_path_to(body), owners])
+	return out
+
+
+## Quantos shapes de colisão a pista tem (todos os corpos, com e sem nó).
+static func count_shapes(root: Node) -> int:
+	var n := 0
+	for node in root.find_children("*", "CollisionObject3D", true, false):
+		var body := node as CollisionObject3D
+		for id in body.get_shape_owners():
+			n += body.shape_owner_get_shape_count(id)
+	return n
 
 
 ## Monta a pista a partir do cache (servidor): copia os nós e reusa os dados (só leitura).
@@ -229,6 +259,17 @@ func _from_cache(c: Dictionary) -> void:
 	city = c["city"]
 	leaves = null
 	_root = (c["root"] as Node3D).duplicate()
+	# Shapes criados direto no corpo (create_shape_owner: barreiras, muros do corte) não vão na
+	# cópia; sem eles os muros não teriam colisão
+	for entry: Array in c["shapes"]:
+		var body := _root.get_node_or_null(entry[0]) as CollisionObject3D
+		if body == null:
+			continue
+		for owner: Array in entry[1]:
+			var id := body.create_shape_owner(body)
+			body.shape_owner_set_transform(id, owner[0])
+			for shape: Shape3D in owner[1]:
+				body.shape_owner_add_shape(id, shape)
 	add_child(_root)
 	# As luzes de largada guardam as lâmpadas e os sons em variáveis (a cópia não leva): monta
 	# outras no mesmo lugar
