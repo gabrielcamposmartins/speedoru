@@ -129,6 +129,10 @@ static func depth_texture(config: CarConfig) -> Texture2D:
 
 static func _bake_later(key: String, cfg: CarConfig) -> void:
 	var tree := Engine.get_main_loop() as SceneTree
+	# Pedido no meio da montagem de uma cena (o _ready da corrida aplica o perfil ao carro): a raiz
+	# ainda está adicionando os filhos e recusa o add_child do mundo da captura. Começa no quadro
+	# seguinte.
+	await tree.process_frame
 	var tex := await bake_depth(tree.root, cfg)
 	_depth[key] = tex
 	_depth_pending.erase(key)
