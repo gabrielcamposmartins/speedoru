@@ -129,6 +129,12 @@ func _peers_of(acc_id: String) -> Array:
 func _on_grid_ready() -> void:
 	_phase = "waiting"
 	_wait = 0.0
+	# Humanos travados no grid enquanto a sala espera todos carregarem (o RaceManager solta no
+	# semáforo). Sem isso, no recomeço o carro andava sozinho com o último comando da corrida
+	# anterior (quem vota está acelerando) e, quando o jogo carregava, voltava aos saltos.
+	for id in manager.humans:
+		var e: RaceEntry = manager.humans[id]
+		e.car.hold = true
 	var roster := manager.net_roster()
 	var race_settings := {"track": settings.get("track", "monza"), "laps": manager.laps, "drs": settings.get("drs", 0), "time_of_day": settings.get("time_of_day", 0),
 		"biome": settings.get("biome", 0), "difficulty": settings.get("difficulty", 1)}
@@ -149,7 +155,15 @@ func set_input(acc_id: String, data: PackedFloat32Array) -> void:
 		var q: Array = _queues.get(acc_id, [])
 		var last_seq: int = int((q[-1] as PackedFloat32Array)[0]) if not q.is_empty() else int(_applied_seq.get(acc_id, -1))
 		if int(data[0]) <= last_seq:
-			return
+			# Numeração que voltou muito para trás: o jogo recomeçou a contar (reiniciado, versão
+			# antiga que recomeça a cada corrida). Recomeça a fila desse jogador em vez de descartar
+			# tudo até a numeração nova passar da velha.
+			if last_seq - int(data[0]) > 240:
+				q.clear()
+				_applied_seq.erase(acc_id)
+				_last_counts.erase(acc_id)
+			else:
+				return
 		q.append(data)
 		_queues[acc_id] = q
 

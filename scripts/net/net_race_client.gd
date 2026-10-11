@@ -61,9 +61,11 @@ var _estimates := PackedFloat64Array()
 var _extrapolated := {}
 var _last_pose := {}
 var _blend := {}
+## Último comando mandado (número de sequência; vem do Net, contínuo entre corridas).
 var _seq := 0
 var _render_t := -1.0
-## Contadores das ações de toque (um por item de ACTIONS; o servidor aplica a diferença).
+## Contadores das ações de toque (um por item de ACTIONS; o servidor aplica a diferença). São os
+## do Net (contínuos entre corridas, como a sequência).
 var _counts := PackedFloat32Array()
 var _net: Node
 ## Folga de interpolação atual (s) e a que a variação medida permite (s).
@@ -97,6 +99,12 @@ func setup(p_manager: RaceManager) -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	process_physics_priority = -10
 	_net = get_node_or_null("/root/Net")
+	if _net:
+		if (_net.input_counts as PackedFloat32Array).size() != ACTIONS.size():
+			_net.input_counts.resize(ACTIONS.size())
+			_net.input_counts.fill(0.0)
+		_counts = _net.input_counts
+		_seq = _net.input_seq
 	for a in OS.get_cmdline_user_args():
 		if a == "--no-prediction":
 			prediction_enabled = false
@@ -348,6 +356,8 @@ func _send_input() -> Array:
 		if hit:
 			_counts[k] += 1.0
 	_seq += 1
+	_net.input_seq = _seq
+	_net.input_counts = _counts
 	var buttons := 0
 	if not blocked and Input.is_action_pressed("drs"):
 		buttons |= NetProtocol.BTN_DRS

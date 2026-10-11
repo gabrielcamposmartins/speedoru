@@ -40,6 +40,12 @@ var auto_profile := true
 var auto_race := true
 ## Servidor aberto por este jogo (só no cliente).
 var local_host: LocalHost
+## Comandos do carro na corrida em rede: número de sequência e contadores das ações de toque.
+## Contínuos entre corridas (o NetRaceClient é recriado a cada uma): no recomeço o servidor já tem
+## a corrida nova enquanto os últimos comandos da antiga ainda chegam, e uma numeração que
+## voltasse a 1 seria descartada por ele.
+var input_seq := 0
+var input_counts := PackedFloat32Array()
 
 var _peer: ENetMultiplayerPeer
 var _pending := {}

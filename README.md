@@ -1164,7 +1164,14 @@ Na 0.8.1 a repetição adiantava a numeração de vez: depois de um engasgo do j
 pista, na largada, ao recomeçar) o ack passava à frente do jogo e a limpeza do histórico da
 predição entrava em loop infinito — o jogo congelava na largada. O histórico agora é descartado
 pela ordem das sequências, sem contador (`tests/prediction_test.gd` congela o jogo 1,5 s no meio
-da corrida). O cliente guarda o estado previsto depois de cada comando e,
+da corrida). Na 0.8.2, ao recomeçar, o carro voltava aos saltos para onde estava: na sala nova
+o servidor deixava os carros dos jogadores soltos enquanto esperava todos carregarem e repetia o
+último comando da corrida anterior (quem vota costuma estar acelerando) — o carro saía andando
+sozinho, a predição saltava atrás dele e a largada o devolvia ao grid. Agora os humanos ficam
+travados no grid desde que a corrida nova é montada até o semáforo, e a numeração dos comandos é
+contínua entre corridas (fica no `Net`; o servidor recomeça a fila se ela voltar muito para trás,
+p. ex. jogo reiniciado) — `tests/restart_jump_test.gd`. O cliente guarda o estado previsto depois
+de cada comando e,
 quando o instantâneo chega, compara com o estado do servidor para o mesmo comando
 (**reconciliação**): erro pequeno (< 5 cm, 0,3 m/s, 1°) é ignorado; médio corrige a velocidade na
 hora e a posição/rotação aos poucos (25% por passo), corrigindo junto o histórico posterior;
@@ -1282,6 +1289,7 @@ godot --headless --path . -s res://tests/chase_camera_test.gd # câmera de perse
 godot --headless --path . -s res://tests/bot_yield_test.gd  # bots dão passagem ao jogador (fácil/médio), o difícil defende, amarela; ultrapassam com 90 m de reta e não desistem lado a lado
 godot --headless --path . -s res://tests/bot_recover_test.gd # bot preso apontado para o muro sai sozinho (ré esterçando, volta à pista) e segue a corrida
 godot --headless --path . -s res://tests/interp_test.gd -- --offline [--net-lag=ms] [--net-jitter=ms] # folga de interpolação adaptativa: pequena sem variação, sobe só o necessário com variação
+godot --headless --path . -s res://tests/restart_jump_test.gd -- --offline [--net-lag=ms] # recomeçar acelerando: o carro não volta aos saltos para trás até a largada
 godot --path . -s res://tests/online_restart_test.gd -- --offline [vezes] # corrida online com skins e bots, com janela: largada e recomeços seguidos sem o jogo travar
 godot --path . -s res://tests/perf_probe.gd -- [monza,suzuka] [grupos] [pinheiros] # FPS, CPU/GPU, desenhos e triângulos em pontos da volta; custo de cada grupo da pista
 godot --headless --path . -s res://tests/start_pause_test.gd # pausa na largada congela o semáforo
