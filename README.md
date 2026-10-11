@@ -4,6 +4,19 @@ Jogo 3D de Fórmula 1 em estilo anime — **Godot 4.7** (Forward+) + **Blender 5
 
 ## Rodar
 
+Antes de abrir o projeto, compile o código nativo (Rust, pasta `native/`; precisa do
+[rustup](https://rustup.rs) — a versão do Rust vem do `native/rust-toolchain.toml` e é instalada
+sozinha):
+
+```
+cd native
+cargo build --release
+```
+
+Repita sempre que mudar algo em `native/` (com o editor fechado: no Windows ele segura a DLL). O
+editor e os testes usam o build de release (`speedoru_native.gdextension`); o de debug do Rust é
+lento demais para a física.
+
 Abra a pasta no Godot 4.7 e aperte F5. A cena principal é `scenes/boot.tscn`, que abre a tela de
 carregamento e carrega o menu principal (`scenes/menu/main_menu.tscn`, a garagem) por trás dela.
 Jogar solo leva a `scenes/tracks/monza.tscn` (F6 nela também funciona, com o menu de corrida antigo
@@ -11,9 +24,9 @@ e sem a tela de carregamento). A área de testes antiga continua em `scenes/test
 
 ### Menu principal (garagem)
 
-`scripts/menu/main_menu.gd` monta a garagem (piso brilhante, plataforma com anel de neon, paredes
-com faixas de luz, bancadas, pneus, letreiro) e o carro do jogador com o que está equipado,
-pousado na plataforma. A câmera fica a nordeste do carro (frente-direita) e orbita devagar; arrastar
+`scripts/menu/main_menu.gd` monta a garagem da equipe (piso brilhante, o carro numa plataforma baixa
+com a luz saindo por baixo, bancada de ferramentas, portas numeradas, mezanino) e o carro do jogador com o que está
+equipado. A câmera fica a nordeste do carro (frente-direita), orbita devagar e não sai da sala; arrastar
 com o mouse gira, a roda aproxima. O carro fica à direita; à esquerda, os botões grandes
 (`scripts/menu/menu_ui.gd`):
 
@@ -23,17 +36,22 @@ com o mouse gira, a roda aproxima. O carro fica à direita; à esquerda, os bot�
 - **Multiplayer:** salas, amigos, grupo, ranking, perfil e a aba **Servidor** (endereço IPv4/IPv6, servidores salvos com nome, últimas conexões e **hospedar** um servidor no próprio PC) (veja [Multiplayer](#multiplayer-servidor-dedicado--turso)); convites e avisos aparecem em qualquer tela do menu.
 - **Garagem:** Estúdio, Galeria e Loja, com o carro mudando na hora ao lado. No Estúdio e na
   Galeria o painel é compacto e fica à direita (o carro vem para o centro-esquerda); a Loja usa o
-  painel largo à esquerda. **Cenário** da garagem (salvo no perfil):
-  - *Garagem neon* (noite): piso de concreto polido em placas, paredes de painéis metálicos,
-    plataforma com anel de luz, elevador de carros, estantes, carrinhos de ferramentas, tambores,
-    caixotes, máquina de bebidas, cartazes e letreiros de neon.
-  - *Ao sol*: pátio de concreto em placas, asfalto com manchas, prédio dos boxes com portas
-    numeradas, arquibancada ao longe, tenda da equipe, motorhome, guarda-sóis, cerca, barreira de
-    pneus, bandeiras e árvores.
-  - *No box*: piso de epóxi com rejunte, tapetes de borracha, paredes de painéis com emendas e
-    cartazes, carrinhos e quadro de ferramentas, rack de pneus com mantas térmicas, pistolas de roda,
-    macacos, asa reserva, mesa dos engenheiros com monitores, relógio e a porta aberta para o pit
-    lane.
+  painel largo à esquerda. O cenário é a garagem da equipe, fechada:
+  - ao fundo, o painel claro com o logo SPEEDORU, quadriculado e faixas coloridas; embaixo, a bancada
+    de gaveteiros com luz no rodapé, painel de ferramentas, prateleira de capacetes, notebook, o
+    quadro de atributos (SPEED, DOWNFORCE, HANDLING, DURABILITY), carrinho vermelho e rack de pneus;
+    pilar com faixa de luz e, no canto, porta, extintor e o banner "DRIVE / HAVE FUN";
+  - à direita, as portas de enrolar "01" e "02" entre pilares com faixa de luz e, em cima, o mezanino
+    de parede clara: porta de vidro do escritório (aceso lá dentro), quadro grande, estante com
+    troféus, capacete, caixas e livros, sofá com mesinha e tapete, plantas, guarda-corpo de vidro e
+    pendentes;
+  - teto escuro com luminárias hexagonais e pendentes iluminando a parede do logo; piso de
+    porcelanato brilhante; o carro numa plataforma escura baixa com a luz saindo por baixo da borda e
+    espalhando no piso; "DRIVE FAST / HAVE FUN / EVERYDAY" pintado no chão; gaveteiro com capacete,
+    pneus e uma planta em primeiro plano (no canto de baixo da câmera do menu).
+  - Os destaques (logo, faixas, LEDs, plataforma, quadro de atributos) usam as cores da paleta da
+    interface (`Retro.c("accent")`, `accent_2`, `accent_3`) e a garagem se refaz quando ela muda;
+    a iluminação geral continua branca e quente.
 
   Pisos e paredes usam várias texturas procedurais por material (cor com manchas, sujeira ou
   rejunte/emendas multiplicados, normal map e rugosidade variando), em mapeamento triplanar. Sem
@@ -217,13 +235,35 @@ lustrosa: faixa de brilho toon forte, verniz fino (clearcoat) e borda de luz.
 
 ## Estrutura no Godot
 
-- `scenes/car/f1_car.tscn` — `VehicleBody3D` (880 kg, centro de massa customizado) com 4 `VehicleWheel3D`
-  e caixas de colisão. O nó `Visual` (`CarAssembly`) instancia as peças conforme o `CarConfig`.
-- `scripts/car/f1_car.gd` — motor (curva de torque + limite de 760 kW), câmbio de 8 marchas, ré,
+- **Código nativo** (`native/`, Rust com [godot-rust](https://godot-rust.github.io) 0.5): tudo o que roda
+  a cada passo de física ou a cada quadro para todos os carros. Cada classe é a base de um script
+  (`F1Car extends F1CarCore` etc.), que continua com o resto (montagem, materiais, regras que só
+  acontecem às vezes) — as cenas usam o tipo nativo no nó e o script por cima:
+  - `F1CarCore` (`car.rs`) — `F1Car`: pneus, motor, câmbio, freios, aerodinâmica, direção, DRS,
+    bateria, fumaça e a marionete da rede;
+  - `BotDriverCore` (`bot.rs`) — `BotDriver`: direção, velocidade, tráfego, boxes e sair do muro;
+    lê os outros carros numa foto por passo de física, comum a todos os bots;
+  - `RaceEntryCore` / `RaceManagerCore` (`manager.rs`) — `RaceEntry` (os campos que mudam a cada
+    passo) e `RaceManager`: posição na pista, voltas, marcas de progresso, boxes, limites de pista,
+    contramão, carros-fantasma, posições, regra do DRS e colisões punidas; as regras do GDScript
+    (`_on_line_crossed`, `_penalize`, `_notify`, pit stop do jogador) são chamadas de lá;
+  - `PathCore` / `LineCore` (`path.rs`) — cópia da `TrackPath` e da `RacingLine` depois de
+    montadas: projeção na pista, posição/direção num ponto e perfis (o GDScript delega a elas);
+  - `RaceNative.update_slipstream` (`race.rs`) — o vácuo de todos os carros;
+  - `CarAudioCore` (`audio.rs`), `CarDamageCore` (`damage.rs`), `CarEffectsCore` e
+    `TrailRibbonCore` (`fx.rs`) — som, contatos/faíscas/peças soltas, efeitos e rastros do carro;
+  - `SlipstreamFxCore` (`fx.rs`), `RacingLineGuideCore` (`guide.rs`), `SceneryAnimatorCore` e
+    `TrackOffshoreCore` (`scenery.rs`) — vácuo visual, linha ideal e o cenário em movimento.
+  Ficaram em GDScript só os scripts que custam menos de ~2 ms por segundo (HUD, câmeras, música,
+  menus). As tabelas dos pisos vêm do `track_surface.gd`. Medido com `tests/frame_probe.gd`.
+- `scenes/car/f1_car.tscn` — `F1CarCore` (um `VehicleBody3D`: 880 kg, centro de massa customizado)
+  com 4 `VehicleWheel3D` e caixas de colisão. O nó `Visual` (`CarAssembly`) instancia as peças
+  conforme o `CarConfig`.
+- `scripts/car/f1_car.gd` + `native/src/car.rs` — motor (curva de torque + limite de 760 kW), câmbio de 8 marchas, ré,
   controle de tração, freios limitados pela carga, downforce ∝ v² dividida entre os eixos, arrasto,
   DRS e animação do flap/volante. Entradas em `throttle_input`, `brake_input`, `steer_input` (prontas
   para IA quando `player_controlled = false`).
-- **Modelo de pneu** (em `f1_car.gd`, `_update_tires`): o atrito embutido do VehicleBody3D é desligado
+- **Modelo de pneu** (em `native/src/car.rs`, `update_tires`): o atrito embutido do VehicleBody3D é desligado
   e cada pneu calcula a própria força:
   - carga vertical por roda (a compressão das molas divide peso + downforce entre as rodas →
     transferência de peso em curva, frenagem e aceleração);
@@ -511,9 +551,28 @@ e a meta de longo prazo). Catálogo e regras em `scripts/economy/shop_catalog.gd
   interface vêm todas com o jogo (troca em Configurações → Tela).
 - Não há presentes/vínculo como no Pokeru (o jogo não tem personagens para presentear).
 
-## Interface retrofuturista
+## Interface: estilos Speedoru e Retrô
 
-Visual synthwave + monitor CRT + HUD de ficção científica (`scripts/ui/retro.gd`, classe `Retro`):
+A interface tem dois estilos (`scripts/ui/retro.gd`, classe `Retro`), escolhidos em
+Configurações → Tela → Estilo da interface (salvo em `user://interface.cfg`, chave `ui/style`):
+
+- **Speedoru (padrão):** pop/anime da paleta de referência do jogo: magenta `#FF2BD6`, ciano
+  `#00E8FF`, amarelo `#FFE73B`, roxo `#A259FF`, vermelho `#FF2E66` sobre tinta `#0D0D14` e
+  azul-noite `#1E1342` (mais rosa `#FFB0F0`, ciano claro `#6CF3FF` e branco; o verde-menta
+  `#3DFFA8` é o único tom extra, para status bom/recorde pessoal). Paleta fixa. Exo 2 itálica
+  pesada nos títulos e números (`assets/fonts/exo2/`, OFL); botões em paralelogramo
+  (`StyleBoxFlat.skew`) com sombra dura deslocada no lugar do brilho; painéis com faixa magenta à
+  esquerda, filete ciano embaixo e retícula no canto; cantos em triângulo; etiquetas inclinadas
+  com "///"; barras em paralelogramo; logo com bandeira quadriculada e "AM I RIGHT?". Fundo dos
+  menus: `shaders/ui/speedoru_backdrop.gdshader` (linhas de velocidade animadas e retícula).
+  `Retro.is_pop()` diz se ele está ativo; cada peça de desenho (`draw_panel`, `draw_tag`…) tem
+  as duas versões.
+- **Retrô (synthwave):** o visual original, descrito abaixo, com as cinco paletas.
+
+Trocar o estilo refaz o `Theme` no lugar, reabre as configurações na mesma aba e remonta o menu
+principal (`MenuUI._restyle`).
+
+Retrô: visual synthwave + monitor CRT + HUD de ficção científica:
 
 - **Tokens:** tudo sai de uma paleta (`Retro.c("accent")`, `"surface"`, `"text"`…); bordas são o
   acento com transparência (`Retro.line(1..3)`), o brilho é acento e nunca massa. Cinco paletas:
@@ -530,7 +589,7 @@ Visual synthwave + monitor CRT + HUD de ficção científica (`scripts/ui/retro.
   seletores, popups, sliders, painéis) e é atualizado no lugar ao trocar a paleta.
 - **Menus** (início, pausa, resultado) sobre o céu synthwave com sol no horizonte e grade em
   perspectiva (`shaders/ui/retro_backdrop.gdshader`, estático).
-- **Paleta** escolhida em Configurações → Tela (salva em `user://interface.cfg`); todas vêm com o jogo.
+- **Paleta** (só no estilo Retrô) escolhida em Configurações → Tela (salva em `user://interface.cfg`); todas vêm com o jogo.
 - **HUD da corrida minimalista**, com fundos quase transparentes e as peças espalhadas pelas bordas:
   classificação (sup. esquerdo), posição e tempos (topo, centro), minimapa e nome do carro (sup.
   direito), velocidade/marcha/giro/bateria e DRS·câmbio·TC·ABS só em texto (`CarCluster`, inf.
@@ -730,20 +789,14 @@ Todos os sons são sintetizados por `tools/generate_car_sounds.py` (Python + num
 
 ## Música
 
-Quatro faixas originais, compostas por código (sementes fixas), em `assets/audio/music/`, todas
-em loop sem emenda e com o mesmo volume médio (−16,5 dBFS):
+Seis faixas em `assets/audio/music/` (MP3, ~1 min cada, importadas em loop — `loop=true` no
+`.import`): Pista Neon (`pista_neon.mp3`), Turbo Disco, Retro Racer, Sakura Drift, Dragon Rush e
+Samba Turbo.
 
-| Faixa | Estilo | Gerador |
-|---|---|---|
-| Tema da corrida (`race_theme.wav`) | pop anime, 152 BPM, Dó maior | `python tools/generate_music.py` |
-| Neon Horizon (`synthwave.wav`) | synthwave/outrun, 104 BPM, Lá menor: baixo arpejado, caixa com reverb "gated", pads largos, lead com portamento | `python tools/generate_music_extra.py` |
-| Slipstream (`drum_and_bass.wav`) | drum & bass, 174 BPM, Ré menor: breakbeat, baixo "reese", pads atmosféricos | idem |
-| Pixel Grand Prix (`chiptune.wav`) | chiptune 8-bit, 144 BPM, Mi maior: onda de pulso, baixo triangular, bateria de ruído, arpejos rápidos | idem |
-
-O menu principal tem o próprio tema (Neon Horizon, em loop); ao trocar de cena a música corta para
+O menu principal tem o próprio tema (Pista Neon, em loop); ao trocar de cena a música corta para
 a da pista e vice-versa. Na pista, o autoload `Music` (`scripts/audio/music_player.gd`) toca no bus "Music": em **playlist** (padrão,
 cada faixa toca duas vezes e passa para a próxima com crossfade de 3 s) ou uma faixa fixa em loop
-(Configurações → Áudio). Ao importar um WAV novo, use loop "Forward" (`edit/loop_mode=2`).
+(Configurações → Áudio). Ao importar uma música nova, marque o loop na importação.
 
 ## Configurações
 
@@ -758,7 +811,7 @@ Tudo é aplicado na hora e salvo em `user://settings.cfg`
   ações também.
 - **Tela:** janela / tela cheia / tela cheia exclusiva, resolução da janela, VSync (desligada,
   ligada, adaptativa, mailbox), limite de FPS, escala da interface (automática pela janela, ou
-  75–150%), campo de visão da câmera e paleta da interface.
+  75–150%), campo de visão da câmera, estilo da interface (Speedoru ou Retrô) e paleta (Retrô).
 - **Gráficos:** predefinições Baixo/Médio/Alto/Ultra (mudar qualquer item vira "Personalizado"),
   escala de renderização 3D com upscaler (bilinear, AMD FSR 1.0, FSR 2.2), MSAA, FXAA/SMAA, TAA,
   sombras (atlas de 2048 a 16384 e filtro suave), SSAO, SSIL, glow, neblina volumétrica e nível de
@@ -1290,6 +1343,7 @@ godot --headless --path . -s res://tests/bot_yield_test.gd  # bots dão passagem
 godot --headless --path . -s res://tests/bot_recover_test.gd # bot preso apontado para o muro sai sozinho (ré esterçando, volta à pista) e segue a corrida
 godot --headless --path . -s res://tests/interp_test.gd -- --offline [--net-lag=ms] [--net-jitter=ms] # folga de interpolação adaptativa: pequena sem variação, sobe só o necessário com variação
 godot --headless --path . -s res://tests/restart_jump_test.gd -- --offline [--net-lag=ms] # recomeçar acelerando: o carro não volta aos saltos para trás até a largada
+godot --path . -s res://tests/frame_probe.gd -- [monza,monaco] [segundos] [puro] [--deep=race_manager,bot_driver] # com janela: onde vai o tempo de cada quadro numa corrida com 10 carros (GDScript por função, física, render, GPU)
 godot --path . -s res://tests/online_restart_test.gd -- --offline [vezes] # corrida online com skins e bots, com janela: largada e recomeços seguidos sem o jogo travar
 godot --path . -s res://tests/perf_probe.gd -- [monza,suzuka] [grupos] [pinheiros] # FPS, CPU/GPU, desenhos e triângulos em pontos da volta; custo de cada grupo da pista
 godot --headless --path . -s res://tests/start_pause_test.gd # pausa na largada congela o semáforo
