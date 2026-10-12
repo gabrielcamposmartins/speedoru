@@ -43,6 +43,8 @@ var room_id := ""
 var settings := {}
 ## [{id, name, peers, profile}]
 var players: Array = []
+## Observadores: [{id, name}] — recebem a largada, os instantâneos e o estado da prova, sem carro.
+var spectators: Array = []
 var manager: RaceManager
 var viewport: SubViewport
 
@@ -75,12 +77,13 @@ var _pause_since := 0.0
 var _resume_at := -1.0
 
 
-func start(p_server: GameServer, p_room: String, p_settings: Dictionary, p_players: Array) -> void:
+func start(p_server: GameServer, p_room: String, p_settings: Dictionary, p_players: Array, p_spectators := []) -> void:
 	server = p_server
 	_net = get_node("/root/Net")
 	room_id = p_room
 	settings = p_settings
 	players = p_players
+	spectators = p_spectators
 	viewport = SubViewport.new()
 	viewport.name = "World"
 	viewport.own_world_3d = true
@@ -113,7 +116,7 @@ func start(p_server: GameServer, p_room: String, p_settings: Dictionary, p_playe
 
 func _peers() -> Array:
 	var out := []
-	for p in players:
+	for p in players + spectators:
 		if _left.has(p["id"]):
 			continue
 		for peer in server.online.get(p["id"], []):
@@ -135,12 +138,30 @@ func _on_grid_ready() -> void:
 	for id in manager.humans:
 		var e: RaceEntry = manager.humans[id]
 		e.car.hold = true
-	var roster := manager.net_roster()
-	var race_settings := {"track": settings.get("track", "monza"), "laps": manager.laps, "drs": settings.get("drs", 0), "time_of_day": settings.get("time_of_day", 0),
-		"biome": settings.get("biome", 0), "difficulty": settings.get("difficulty", 1)}
 	for p in players:
 		for peer in _peers_of(p["id"]):
-			server._send(peer, "race_start", {"room": room_id, "me": p["id"], "roster": roster, "settings": race_settings})
+			server._send(peer, "race_start", _race_start_data(p["id"]))
+	for p in spectators:
+		for peer in _peers_of(p["id"]):
+			server._send(peer, "race_start", _race_start_data(""))
+
+
+## Largada para um cliente: o grid e os ajustes; `me` vazio = observador (assiste, sem carro).
+func _race_start_data(me: String) -> Dictionary:
+	var race_settings := {"track": settings.get("track", "monza"), "laps": manager.laps, "drs": settings.get("drs", 0), "time_of_day": settings.get("time_of_day", 0),
+		"biome": settings.get("biome", 0), "difficulty": settings.get("difficulty", 1)}
+	return {"room": room_id, "me": me, "spectator": me == "", "roster": manager.net_roster(), "settings": race_settings}
+
+
+## Observador que entrou (ou voltou) com a corrida já montada: recebe a largada agora e assiste dali
+## em diante.
+func add_spectator(acc_id: String, acc_name: String) -> void:
+	if not spectators.any(func(p: Dictionary) -> bool: return p["id"] == acc_id):
+		spectators.append({"id": acc_id, "name": acc_name})
+	_left.erase(acc_id)
+	if _phase in ["waiting", "racing"]:
+		for peer in _peers_of(acc_id):
+			server._send(peer, "race_start", _race_start_data(""))
 
 
 func _go() -> void:
@@ -331,6 +352,14 @@ func _physics_process(delta: float) -> void:
 			for peer in server.online.get(pl["id"], []):
 				if not server._gone.has(peer):
 					_net.snap.rpc_id(peer, personal)
+		# Observadores: o mesmo instantâneo, sem ack (não têm carro)
+		var watch := bytes + PackedByteArray([0, 0, 0, 0])
+		for pl in spectators:
+			if _left.has(pl["id"]):
+				continue
+			for peer in server.online.get(pl["id"], []):
+				if not server._gone.has(peer):
+					_net.snap.rpc_id(peer, watch)
 	_state_acc += delta
 	if _state_acc >= 1.0 / NetProtocol.RACE_STATE_HZ and _phase != "loading":
 		_state_acc = 0.0

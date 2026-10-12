@@ -128,6 +128,12 @@ func _on_profile_changed() -> void:
 
 
 func _build() -> void:
+	# Controle: o foco volta ao mesmo lugar depois de reconstruir (escolher uma opção refaz a tela)
+	var focus_index := -1
+	var owner := get_viewport().gui_get_focus_owner() if is_inside_tree() else null
+	if owner != null and is_ancestor_of(owner):
+		focus_index = focusables().find(owner)
+	_after_build.call_deferred(focus_index)
 	for c in _tabs.get_children():
 		c.queue_free()
 	for cat in CATEGORIES:
@@ -157,7 +163,9 @@ func _build() -> void:
 			_title.text = str(cat[1]).to_upper()
 	match category:
 		"livery":
-			_note.text = "%d pinturas prontas · grátis · aplica as 3 cores" % ShopCatalog.PAINTS.size()
+			_note.text = "%d prontas · grátis · salve as suas combinações" % ShopCatalog.PAINTS.size()
+			_build_custom_paints()
+			_section("PRONTAS")
 			for id in ShopCatalog.PAINTS:
 				_tile(id, ShopCatalog.PAINTS[id]["name"], eq["livery"] == id, _profile.equip_livery.bind(id))
 		"primary", "secondary", "accent", "helmet", "suit", "rim":
@@ -178,7 +186,7 @@ func _build() -> void:
 		"neon":
 			var have := _profile.collection_count("neon")
 			_note.text = ("%d de %d cores ganhas · fica mais forte à noite" % [have.x, have.y]) if have.x > 0 \
-				else "nenhum neon ainda · ganhe nas roletas Neon e Inferno"
+				else "nenhum neon ainda · ganhe nas roletas Neon e Dragão"
 			var off := OptionTile.new()
 			off.title = "Desligado"
 			off.art_kind = "off"
@@ -224,21 +232,81 @@ func _build() -> void:
 				_profile.owned_decals().size(), CarDecals.PRESETS.size()]
 			_build_decals()
 		"parts":
-			_note.text = "trocam aderência por velocidade"
-			for slot in CarPartCatalog.all_slots():
-				if CarPartCatalog.variants(slot).size() < 2:
-					continue
-				var current: String = eq["parts"].get(slot, CarPartCatalog.default_variant(slot))
-				for variant in _profile.owned_variants(slot):
-					var t := OptionTile.new()
-					t.title = CarPartCatalog.variant_label(slot, variant)
-					t.subtitle = CarPartCatalog.slot_label(slot)
-					t.art_kind = "part"
-					t.selected = variant == current
-					t.tip_text = "%s: %s." % [CarPartCatalog.slot_label(slot), CarPartCatalog.variant_label(slot, variant)]
-					t.tip_rows = _stats_rows(slot, variant)
-					t.pressed.connect(_profile.equip_part.bind(slot, variant))
-					_add(t)
+			_note.text = "trocam aderência por velocidade · por categoria"
+			_build_parts()
+
+
+## Controles focáveis do painel (abas e conteúdo), na ordem da árvore; ignora o que vai ser apagado.
+func focusables(from: Node = self) -> Array[Control]:
+	var out: Array[Control] = []
+	_collect_focusable(from, out)
+	return out
+
+
+static func _collect_focusable(node: Node, out: Array[Control]) -> void:
+	for child in node.get_children():
+		if child.is_queued_for_deletion():
+			continue
+		if child is Control:
+			var c := child as Control
+			if not c.visible:
+				continue
+			if c.focus_mode == Control.FOCUS_ALL and (c is BaseButton or c is Range) and not (c is BaseButton and c.disabled):
+				out.append(c)
+		_collect_focusable(child, out)
+
+
+func _after_build(focus_index: int) -> void:
+	if not is_inside_tree():
+		return
+	if focus_index >= 0:
+		var list := focusables()
+		if not list.is_empty():
+			list[mini(focus_index, list.size() - 1)].grab_focus()
+	# As posições só valem depois que os contêineres arrumarem a tela nova
+	await get_tree().process_frame
+	_link_focus()
+
+
+## Controle: ↑/↓ andam pelas linhas do conteúdo (pela geometria o foco pularia para a coluna de abas,
+## que fica colada à esquerda); ← de um botão volta para a aba aberta e → da aba entra no conteúdo.
+func _link_focus() -> void:
+	if not is_inside_tree():
+		return
+	var tab: Control = null
+	for t in _tabs.get_children():
+		if t is IconTab and (t as IconTab).selected and not t.is_queued_for_deletion():
+			tab = t
+	var items := focusables(_grid)
+	if items.is_empty():
+		return
+	if tab:
+		tab.focus_neighbor_right = tab.get_path_to(items[0])
+	# Linhas pela altura na tela (na ordem da árvore, de cima para baixo)
+	var rows: Array = []
+	for c in items:
+		if rows.is_empty() or absf(c.global_position.y - (rows[-1][0] as Control).global_position.y) > 6.0:
+			rows.append([c])
+		else:
+			rows[-1].append(c)
+	for r in rows.size():
+		for c: Control in rows[r]:
+			var above: Control = _nearest_x(rows[r - 1], c) if r > 0 else null
+			var below: Control = _nearest_x(rows[r + 1], c) if r + 1 < rows.size() else c
+			if above:
+				c.focus_neighbor_top = c.get_path_to(above)
+			c.focus_neighbor_bottom = c.get_path_to(below)
+			if tab and c == rows[r][0] and not c is Range:
+				c.focus_neighbor_left = c.get_path_to(tab)
+
+
+static func _nearest_x(row: Array, to: Control) -> Control:
+	var best: Control = null
+	var cx := to.global_position.x + to.size.x * 0.5
+	for c: Control in row:
+		if best == null or absf(c.global_position.x + c.size.x * 0.5 - cx) < absf(best.global_position.x + best.size.x * 0.5 - cx):
+			best = c
+	return best
 
 
 const PAINT_TIPS := ["Verniz liso e brilhante (padrão).", "Flocos metálicos sob o verniz: brilha e cintila.",
@@ -272,6 +340,98 @@ func _build_finishes() -> void:
 			t.pressed.connect(_profile.set_finish.bind(group[1], k))
 			_add(t)
 		if names.size() % 2 == 1:
+			_grid.add_child(Control.new())
+
+
+## Título de seção na grade de 2 colunas (ocupa a linha inteira).
+func _section(text: String) -> void:
+	var head := Label.new()
+	head.text = text
+	head.theme_type_variation = "RetroKicker"
+	head.add_theme_font_size_override("font_size", 11)
+	_grid.add_child(head)
+	_grid.add_child(Control.new())
+
+
+## Minhas pinturas: salvar a combinação atual (3 cores, esquema e acabamento) com um nome, aplicar e
+## apagar as salvas (ficam no aparelho).
+func _build_custom_paints() -> void:
+	var list := _profile.custom_paints()
+	_section("MINHAS PINTURAS · %d de %d" % [list.size(), PlayerProfile.MAX_CUSTOM_PAINTS])
+	var current := -1
+	for k in list.size():
+		if _profile.is_custom_paint_on(list[k]):
+			current = k
+	var name_edit := LineEdit.new()
+	name_edit.placeholder_text = "nome da pintura"
+	name_edit.max_length = 24
+	name_edit.custom_minimum_size = Vector2(TILE.x, 34)
+	name_edit.text = str(list[current]["name"]) if current >= 0 else ""
+	_grid.add_child(name_edit)
+	var save := Button.new()
+	save.text = "Atualizar" if current >= 0 and name_edit.text != "" else "Salvar a atual"
+	save.tooltip_text = "Salva as 3 cores, o esquema e o acabamento de agora (mesmo nome = substitui)"
+	save.custom_minimum_size = Vector2(TILE.x, 34)
+	save.disabled = list.size() >= PlayerProfile.MAX_CUSTOM_PAINTS and current < 0
+	var do_save := func() -> void:
+		if _profile.save_custom_paint(name_edit.text) < 0:
+			_note.text = "limite de %d pinturas salvas · apague uma" % PlayerProfile.MAX_CUSTOM_PAINTS
+	save.pressed.connect(do_save)
+	name_edit.text_submitted.connect(func(_t: String) -> void: do_save.call())
+	name_edit.text_changed.connect(func(t: String) -> void:
+		save.text = "Atualizar" if current >= 0 and t.strip_edges() == str(list[current]["name"]) else "Salvar a atual")
+	_grid.add_child(save)
+	for k in list.size():
+		var p: Dictionary = list[k]
+		var t := OptionTile.new()
+		t.title = str(p["name"])
+		t.art_kind = "livery"
+		t.paint_cols = [Color(str(p["primary"])), Color(str(p["secondary"])), Color(str(p["accent"]))]
+		t.selected = k == current
+		t.tip_text = "%s · %s" % [CarConfig.PAINT_SCHEMES[clampi(int(p.get("scheme", 0)), 0, CarConfig.PAINT_SCHEMES.size() - 1)][0],
+			CarConfig.PAINT_FINISHES[clampi(int(p.get("finish", 0)), 0, CarConfig.PAINT_FINISHES.size() - 1)]]
+		t.pressed.connect(_profile.apply_custom_paint.bind(k))
+		_add(t)
+	if list.size() % 2 == 1:
+		_grid.add_child(Control.new())
+	if current >= 0:
+		var del := Button.new()
+		del.text = "Apagar \"%s\"" % str(list[current]["name"])
+		del.custom_minimum_size = Vector2(TILE.x, 30)
+		del.pressed.connect(_profile.delete_custom_paint.bind(current))
+		_grid.add_child(del)
+		_grid.add_child(Control.new())
+
+
+## Peças separadas por categoria (cada lugar do carro: bico, asas, sidepods…), com o título da
+## categoria e quantas variantes a conta tem dela.
+func _build_parts() -> void:
+	var eq := _profile.equipped
+	for slot in CarPartCatalog.all_slots():
+		var total := CarPartCatalog.variants(slot).size()
+		if total < 2:
+			continue
+		var owned := _profile.owned_variants(slot)
+		var head := Label.new()
+		head.text = "%s · %d de %d" % [CarPartCatalog.slot_label(slot).to_upper(), owned.size(), total]
+		head.theme_type_variation = "RetroKicker"
+		head.add_theme_font_size_override("font_size", 11)
+		_grid.add_child(head)
+		_grid.add_child(Control.new())
+		var current: String = eq["parts"].get(slot, CarPartCatalog.default_variant(slot))
+		for variant in owned:
+			var t := OptionTile.new()
+			t.title = CarPartCatalog.variant_label(slot, variant)
+			t.subtitle = _stat_badge(slot, variant)
+			t.art_kind = "part"
+			t.part_slot = slot
+			t.part_variant = variant
+			t.selected = variant == current
+			t.tip_title = "%s: %s" % [CarPartCatalog.slot_label(slot), t.title]
+			t.tip_rows = _stats_rows(slot, variant)
+			t.pressed.connect(_profile.equip_part.bind(slot, variant))
+			_add(t)
+		if owned.size() % 2 == 1:
 			_grid.add_child(Control.new())
 
 
@@ -602,7 +762,7 @@ func _kicker(text: String, width := 64.0) -> Label:
 func _build_engineering() -> void:
 	_note.text = "só o comportamento do carro · passe o mouse para a explicação"
 	var reset_all := Button.new()
-	reset_all.text = "Restaurar tudo de fábrica"
+	reset_all.text = "Restaurar tudo ao padrão"
 	reset_all.add_theme_font_size_override("font_size", 12)
 	reset_all.pressed.connect(func() -> void:
 		_profile.reset_setup()
@@ -700,6 +860,18 @@ func _stats_rows(slot: String, variant: String) -> Array:
 	return rows
 
 
+## Efeito principal da peça, curto, para a arte do cartão (o resto fica no tooltip).
+func _stat_badge(slot: String, variant: String) -> String:
+	if variant == CarPartCatalog.default_variant(slot):
+		return "padrão"
+	var st := CarPartCatalog.variant_stats(slot, variant)
+	if st.has("downforce") and absf(float(st["downforce"])) > 0.001:
+		return "carga %+.2f" % st["downforce"]
+	if st.has("drag") and absf(float(st["drag"])) > 0.001:
+		return "arrasto %+.2f" % st["drag"]
+	return "visual"
+
+
 func _stats_text(slot: String, variant: String) -> String:
 	var st := CarPartCatalog.variant_stats(slot, variant)
 	if st.is_empty():
@@ -754,6 +926,8 @@ class OptionTile extends Button:
 	## Esquema de pintura (art_kind "scheme") e as 3 cores da prévia.
 	var scheme := 0
 	var scheme_cols: Array = []
+	## Pintura (art_kind "livery") sem item da loja: as 3 cores (padrão salvo pelo jogador).
+	var paint_cols: Array = []
 	var selected := false
 	## Tooltip em cartão: título (padrão = nome), texto e linhas de valores.
 	var tip_title := ""
@@ -765,12 +939,17 @@ class OptionTile extends Button:
 	var badge := ""
 	var badge_color := Color.WHITE
 	var dim := false
+	## Peça (art_kind "part"): a silhueta branca dela; `subtitle` vai pequeno no canto.
+	var part_slot := ""
+	var part_variant := ""
 
 	func _ready() -> void:
 		custom_minimum_size = StudioPanel.TILE
 		flat = true
 		if tooltip_text == "":
 			tooltip_text = title
+		if art_kind == "part":
+			PartSilhouette.notifier().rendered.connect(queue_redraw)
 		mouse_entered.connect(queue_redraw)
 		mouse_exited.connect(queue_redraw)
 		focus_entered.connect(queue_redraw)
@@ -787,7 +966,7 @@ class OptionTile extends Button:
 		var a_mul := 0.5 if dim else 1.0
 		match art_kind:
 			"livery":
-				var cols := ShopCatalog.colors_of(item_id)
+				var cols: Array = paint_cols if not paint_cols.is_empty() else Array(ShopCatalog.colors_of(item_id))
 				var w := art.size.x
 				var k := art.size.y * 0.35
 				var xs := [0.0, w * 0.45, w * 0.72, w]
@@ -820,8 +999,17 @@ class OptionTile extends Button:
 				draw_arc(art.get_center(), art.size.y * 0.3, 0, TAU, 32, Retro.c("muted"), 2.0)
 				draw_line(art.get_center() + Vector2(-12, 12), art.get_center() + Vector2(12, -12), Retro.c("muted"), 2.0)
 			"part":
-				draw_string(Retro.display(800), Vector2(art.position.x, art.get_center().y + 5), subtitle.to_upper(),
-					HORIZONTAL_ALIGNMENT_CENTER, art.size.x, 11, Retro.c("accent_2"))
+				# Abaixo do efeito (canto esquerdo) e do selo da Galeria (canto direito)
+				var box := art.grow(-8.0)
+				if subtitle != "" or badge != "":
+					box = Rect2(box.position + Vector2(0, 10), box.size - Vector2(0, 10))
+				if not PartSilhouette.draw(self, part_slot, part_variant, box, Color(1, 1, 1, a_mul)):
+					draw_string(Retro.display(800), Vector2(art.position.x, art.get_center().y + 5),
+						CarPartCatalog.slot_label(part_slot).to_upper(), HORIZONTAL_ALIGNMENT_CENTER, art.size.x, 11,
+						Color(Retro.c("accent_2"), a_mul))
+				if subtitle != "":
+					draw_string(Retro.display(700), Vector2(art.position.x + 4, art.position.y + 12), subtitle.to_upper(),
+						HORIZONTAL_ALIGNMENT_LEFT, -1, 9, Retro.c("accent_2"))
 			"decal":
 				# Fundo cinza-escuro (decalques claros e escuros aparecem) e o desenho na proporção
 				draw_rect(art, Color(0.24, 0.25, 0.3, 0.9))
@@ -984,7 +1172,7 @@ class SetupRow extends VBoxContainer:
 		custom_minimum_size = Vector2(StudioPanel.TILE.x * 2 + 8, 52)
 		add_theme_constant_override("separation", 4)
 		var car := studio.car
-		var d := float(CarSetup.defaults(car)[param[0]])
+		var d := float(CarSetup.standard(car)[param[0]])
 		var top := HBoxContainer.new()
 		top.add_theme_constant_override("separation", 6)
 		add_child(top)
@@ -1008,7 +1196,7 @@ class SetupRow extends VBoxContainer:
 		_reset.flat = true
 		_reset.focus_mode = Control.FOCUS_NONE
 		_reset.tooltip_text = param[2]
-		_reset.make_tip = make_tip.bind("volta ao de fábrica (%s)" % CarSetup.format(param, d))
+		_reset.make_tip = make_tip.bind("volta ao padrão (%s)" % CarSetup.format(param, d))
 		_reset.custom_minimum_size = Vector2(20, 18)
 		_reset.add_theme_font_size_override("font_size", 13)
 		_reset.add_theme_color_override("font_color", Retro.c("accent_2"))
@@ -1030,7 +1218,7 @@ class SetupRow extends VBoxContainer:
 		_slider.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		_slider.custom_minimum_size = Vector2(0, 20)
 		_slider.tooltip_text = param[2]
-		_slider.make_tip = make_tip.bind("arraste para ajustar · a marca é o valor de fábrica")
+		_slider.make_tip = make_tip.bind("arraste para ajustar · a marca é o valor padrão")
 		_slider.value_changed.connect(_on_value)
 		StudioPanel.style_slider(_slider)
 		bottom.add_child(_slider)
@@ -1038,14 +1226,14 @@ class SetupRow extends VBoxContainer:
 		studio._profile.setup_changed.connect(_sync)
 		_sync()
 
-	## Cartão do tooltip: explicação + valores (o atual em destaque se mudou do de fábrica).
+	## Cartão do tooltip: explicação + valores (o atual em destaque se mudou do padrão).
 	func make_tip(action: String) -> Control:
 		var v := studio._profile.setup_value(studio.car, param[0])
-		var d := float(CarSetup.defaults(studio.car)[param[0]])
+		var d := float(CarSetup.standard(studio.car)[param[0]])
 		var changed := not is_equal_approx(v, d)
 		var rows := [
 			["Atual", CarSetup.format(param, v), Retro.c("accent_2") if changed else Retro.c("text")],
-			["Fábrica", CarSetup.format(param, d)],
+			["Padrão", CarSetup.format(param, d)],
 			["Limites", "%s  a  %s" % [CarSetup.format(param, param[5]), CarSetup.format(param, param[6])]],
 			["Passo", "fino %s · grosso %s" % [CarSetup.format(param, param[7]), CarSetup.format(param, param[8])]],
 		]
@@ -1078,7 +1266,7 @@ class SetupRow extends VBoxContainer:
 
 	func _sync() -> void:
 		var v := studio._profile.setup_value(studio.car, param[0])
-		var d := float(CarSetup.defaults(studio.car)[param[0]])
+		var d := float(CarSetup.standard(studio.car)[param[0]])
 		_syncing = true
 		_slider.value = v
 		_syncing = false
@@ -1246,7 +1434,7 @@ class TipButton extends Button:
 
 class TipSlider extends HSlider:
 	var make_tip: Callable
-	## Valor de fábrica: marca fina sobre o trilho.
+	## Valor padrão: marca fina sobre o trilho.
 	var factory := NAN
 
 	func _make_custom_tooltip(_for_text: String) -> Object:

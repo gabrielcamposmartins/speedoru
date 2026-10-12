@@ -186,6 +186,7 @@ func _race(id: String) -> void:
 	var gpu := 0.0
 	var rcpu := 0.0
 	var draws := 0.0
+	var shadow_draws := 0.0
 	var frame_ms: Array[float] = []
 	var steps0 := Engine.get_physics_frames()
 	var t0 := Time.get_ticks_usec()
@@ -198,6 +199,8 @@ func _race(id: String) -> void:
 		gpu += RenderingServer.viewport_get_measured_render_time_gpu(vp)
 		rcpu += RenderingServer.viewport_get_measured_render_time_cpu(vp) + RenderingServer.get_frame_setup_time_cpu()
 		draws += Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME)
+		shadow_draws += RenderingServer.viewport_get_render_info(vp, RenderingServer.VIEWPORT_RENDER_INFO_TYPE_SHADOW,
+			RenderingServer.VIEWPORT_RENDER_INFO_DRAW_CALLS_IN_FRAME)
 	var wall_s := (Time.get_ticks_usec() - t0) / 1e6
 	var n := frame_ms.size()
 	var steps := Engine.get_physics_frames() - steps0
@@ -215,7 +218,7 @@ func _race(id: String) -> void:
 	print("\n%s: %.0f s, %d quadros, %d passos de física, %d carros" % [id, wall_s, n, steps, manager.entries.size()])
 	print("  FPS médio %.0f · quadro médio %.2f ms · 1%% piores %.2f ms · pior %.2f ms" % [
 		n / wall_s, avg, frame_ms[int(n * 0.99)], frame_ms[-1]])
-	print("  GPU %.2f ms/quadro · render na CPU %.2f ms/quadro · %.0f desenhos" % [gpu / n, rcpu / n, draws / n])
+	print("  GPU %.2f ms/quadro · render na CPU %.2f ms/quadro · %.0f desenhos (%.0f da sombra)" % [gpu / n, rcpu / n, draws / n, shadow_draws / n])
 	print("  por segundo de jogo (ms de CPU/s):")
 	print("    GDScript na física   %6.1f" % per_s.call(script_phys))
 	print("    GDScript no quadro   %6.1f" % per_s.call(script_proc))

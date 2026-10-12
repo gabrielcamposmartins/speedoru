@@ -2,9 +2,10 @@ class_name MultiplayerPanel
 extends VBoxContainer
 ## Tela de multiplayer do menu principal (regras do documento do Pokeru, adaptadas para corridas):
 ##
-## * SALAS: corrida rápida (fila), criar sala Custom (nome, senha), lista de salas abertas; dentro da
-##   sala: pilotos (pronto, anfitrião, nível, título, "+ amigo"), ajustes do anfitrião, convidar
-##   amigo online, largar.
+## * SALAS: corrida rápida (fila), criar sala Custom (nome, senha), lista de salas abertas (e das que
+##   estão correndo, para assistir); dentro da sala: pilotos (pronto, anfitrião, nível, título,
+##   "+ amigo"), observadores (só assistem, sem carro), ajustes do anfitrião, convidar amigo online,
+##   largar.
 ## * AMIGOS: seu código (ABC-234), adicionar por código, pedidos recebidos/enviados, lista com
 ##   presença (online / em corrida), perfil, chamar para o grupo ou para a sala, desfazer amizade.
 ## * GRUPO: até 4; só o líder convida e escolhe a partida (contra bots, fila ou Custom).
@@ -33,6 +34,10 @@ var _ranking := {}
 var _profile_view := {}
 var _confirm_remove := ""
 var _rebuild_queued := false
+## Sala em que o jogador está (para saber quando ele entra/sai, e não a cada atualização dela).
+var _room_id := ""
+## Carrossel de pistas da sala (o novo, ao refazer a tela, continua o giro deste).
+var _carousel: TrackCarousel
 var _host_box: VBoxContainer
 var _host_log: Label
 var _host_uptime: Label
@@ -60,6 +65,7 @@ func setup(p_ui: MenuUI) -> void:
 	_content.add_theme_constant_override("separation", 8)
 	_scroll.add_child(_content)
 	if net:
+		_room_id = str((net.room as Dictionary).get("id", ""))
 		net.message.connect(_on_message)
 		net.connection_changed.connect(func(_o: bool) -> void: _queue_rebuild())
 		net.account_changed.connect(_build_header)
@@ -72,19 +78,58 @@ func setup(p_ui: MenuUI) -> void:
 	_rebuild()
 
 
+## Reconstrução pedida por uma mensagem do servidor (não pelo jogador): a tela continua na mesma
+## rolagem e com o foco no mesmo lugar.
 func _queue_rebuild() -> void:
 	if _rebuild_queued:
 		return
 	_rebuild_queued = true
 	(func() -> void:
 		_rebuild_queued = false
-		if is_inside_tree():
-			_rebuild()).call_deferred()
+		if not is_inside_tree():
+			return
+		var scroll := _scroll.scroll_vertical
+		var owner := get_viewport().gui_get_focus_owner()
+		var focus_index := _focusables().find(owner) if owner != null and is_ancestor_of(owner) else -1
+		_rebuild()
+		await get_tree().process_frame
+		if not is_inside_tree():
+			return
+		_scroll.scroll_vertical = scroll
+		if focus_index >= 0:
+			var list := _focusables()
+			if not list.is_empty():
+				list[mini(focus_index, list.size() - 1)].grab_focus()).call_deferred()
+
+
+func _focusables() -> Array[Control]:
+	var out: Array[Control] = []
+	_collect_focusable(self, out)
+	return out
+
+
+static func _collect_focusable(node: Node, out: Array[Control]) -> void:
+	for child in node.get_children():
+		if child.is_queued_for_deletion():
+			continue
+		if child is Control and not (child as Control).visible:
+			continue
+		if child is Control and (child as Control).focus_mode == Control.FOCUS_ALL:
+			out.append(child)
+		_collect_focusable(child, out)
 
 
 func _on_message(type: String, data: Dictionary) -> void:
 	match type:
-		"room", "party":
+		"room":
+			# Atualização da sala (ajustes, alguém pronto): só a aba da sala muda; nas outras, só
+			# quando o jogador entra ou sai de uma sala (botões de chamar para a sala etc.)
+			var id := str((data.get("room", {}) as Dictionary).get("id", ""))
+			var moved := id != _room_id
+			_room_id = id
+			if tab == "rooms" or (moved and tab in ["party", "friends"]):
+				_queue_rebuild()
+		"party":
 			if tab in ["rooms", "party", "friends"]:
 				_queue_rebuild()
 		"friends":
@@ -616,9 +661,13 @@ func _build_lobby() -> void:
 	for room: Dictionary in rooms:
 		var row := _row(list)
 		var st: Dictionary = room["settings"]
-		var info := _label("%s%s  ·  %d/%d  ·  %d voltas  ·  %s" % ["🔒 " if room["locked"] else "", room["name"],
-			(room["members"] as Array).size(), int(st["max"]), int(st["laps"]),
-			("bots " + DIFFICULTIES[int(st["difficulty"])].to_lower()) if st["bots"] else "sem bots"])
+		var racing: bool = room.get("state", "lobby") == "racing"
+		var members: Array = room["members"]
+		var racers := members.filter(func(m: Dictionary) -> bool: return not m.get("spectator", false)).size()
+		var info := _label("%s%s  ·  %d/%d  ·  %d voltas  ·  %s%s" % ["🔒 " if room["locked"] else "", room["name"],
+			racers, int(st["max"]), int(st["laps"]),
+			("bots " + DIFFICULTIES[int(st["difficulty"])].to_lower()) if st["bots"] else "sem bots",
+			"  ·  EM CORRIDA" if racing else ""])
 		info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		row.add_child(info)
 		var pw := LineEdit.new()
@@ -627,7 +676,13 @@ func _build_lobby() -> void:
 			pw.secret = true
 			pw.custom_minimum_size = Vector2(110, 0)
 			row.add_child(pw)
-		row.add_child(_button("ENTRAR", func() -> void: _ask("room_join", {"id": room["id"], "password": pw.text}), false, 100))
+		# Assistir: entra só como observador (na corrida em andamento, ou sem lugar no grid)
+		var watch := _button("ASSISTIR", func() -> void:
+			_ask("room_join", {"id": room["id"], "password": pw.text, "spectate": true}), racing, 100)
+		watch.tooltip_text = "Entrar só como observador: sem carro, com as câmeras de TV"
+		row.add_child(watch)
+		if not racing:
+			row.add_child(_button("ENTRAR", func() -> void: _ask("room_join", {"id": room["id"], "password": pw.text}), false, 100))
 
 
 func _build_room() -> void:
@@ -648,14 +703,22 @@ func _build_room() -> void:
 	top.add_child(_label("Em corrida" if not lobby else "Aguardando", "RetroMuted"))
 	# Ajustes: anfitrião muda (menos na fila); os outros só veem
 	var editable: bool = host and lobby and room.get("kind", "") != "queue"
+	# Pista: carrossel (só o anfitrião gira). A sala se refaz a cada mudança: o novo continua o giro
+	# de onde o anterior estava.
+	var carousel := TrackCarousel.new()
+	carousel.name = "TrackCarousel"
+	carousel.editable = editable
+	carousel.selected = RaceSettings.track_index(str(st.get("track", "monza")))
+	carousel.start_pos = _carousel.pos if is_instance_valid(_carousel) else -1.0
+	carousel.custom_minimum_size = Vector2(0, 190)
+	carousel.track_changed.connect(func(i: int) -> void: _ask("room_settings", {"track": RaceSettings.TRACKS[i]["id"]}))
+	card.add_child(carousel)
+	_carousel = carousel
 	var grid := GridContainer.new()
 	grid.columns = 4
 	grid.add_theme_constant_override("h_separation", 12)
 	grid.add_theme_constant_override("v_separation", 6)
 	card.add_child(grid)
-	_setting(grid, "Pista", RaceSettings.TRACKS.map(func(t: Dictionary) -> String: return t["name"]),
-		RaceSettings.track_index(str(st.get("track", "monza"))), editable,
-		func(i: int) -> void: _ask("room_settings", {"track": RaceSettings.TRACKS[i]["id"]}))
 	_setting(grid, "Voltas", NetProtocol.ROOM_LAPS.map(func(x: int) -> String: return str(x)), NetProtocol.ROOM_LAPS.find(int(st.get("laps", 5))), editable,
 		func(i: int) -> void: _ask("room_settings", {"laps": NetProtocol.ROOM_LAPS[i]}))
 	_setting(grid, "Bots", ["Com bots", "Sem bots"], 0 if st.get("bots", true) else 1, editable and room.get("kind", "") == "custom",
@@ -691,14 +754,21 @@ func _build_room() -> void:
 	# Pilotos
 	var friend_ids := (_friends.get("friends", []) as Array).map(func(f: Dictionary) -> String: return f["id"])
 	var outgoing := (_friends.get("outgoing", []) as Array).map(func(f: Dictionary) -> String: return f["id"])
-	_section("PILOTOS (%d/%d)" % [(room.get("members", []) as Array).size(), int(st.get("max", NetProtocol.MAX_ROOM_PLAYERS))])
-	for m: Dictionary in room.get("members", []):
+	var all_members: Array = room.get("members", [])
+	var watchers := all_members.filter(func(m: Dictionary) -> bool: return m.get("spectator", false))
+	_section("PILOTOS (%d/%d)%s" % [all_members.size() - watchers.size(), int(st.get("max", NetProtocol.MAX_ROOM_PLAYERS)),
+		("  ·  %d OBSERVADOR%s" % [watchers.size(), "ES" if watchers.size() > 1 else ""]) if not watchers.is_empty() else ""])
+	for m: Dictionary in all_members:
 		var row := _row(_content)
-		var ready := _label("✔" if m["ready"] else "…", "", 16, Retro.c("good") if m["ready"] else Retro.c("muted"))
+		var watcher: bool = m.get("spectator", false)
+		var ready := _label("◉" if watcher else ("✔" if m["ready"] else "…"), "", 16,
+			Retro.c("accent_2") if watcher else (Retro.c("good") if m["ready"] else Retro.c("muted")))
 		ready.custom_minimum_size = Vector2(22, 0)
+		ready.tooltip_text = "Observador: só assiste" if watcher else ""
+		ready.mouse_filter = Control.MOUSE_FILTER_PASS
 		row.add_child(ready)
 		row.add_child(_level_badge(int(m["level"])))
-		var n := _label(("★ " if m["host"] else "") + str(m["name"]) + ("  (você)" if m["id"] == me else ""), "", 16)
+		var n := _label(("★ " if m["host"] else "") + str(m["name"]) + ("  (você)" if m["id"] == me else "") + ("  · observador" if watcher else ""), "", 16)
 		n.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		row.add_child(n)
 		if str(m.get("title", "")) != "":
@@ -731,12 +801,20 @@ func _build_room() -> void:
 					ui.toast("Convite enviado")))
 	var actions := _row(_content, 12)
 	var my_ready := false
+	var watching := false
 	for m: Dictionary in room.get("members", []):
 		if m["id"] == me:
 			my_ready = m["ready"]
+			watching = m.get("spectator", false)
 	if lobby:
-		var rb := _button("✔ PRONTO" if my_ready else "MARCAR PRONTO", func() -> void: _ask("room_ready", {"ready": not my_ready}), not my_ready, 180)
-		actions.add_child(rb)
+		if not watching:
+			var rb := _button("✔ PRONTO" if my_ready else "MARCAR PRONTO", func() -> void: _ask("room_ready", {"ready": not my_ready}), not my_ready, 180)
+			actions.add_child(rb)
+		if room.get("kind", "") != "queue":
+			# Observador: assiste a corrida (câmeras de TV), sem carro e sem ocupar lugar no grid
+			var wb := _button("CORRER" if watching else "SÓ ASSISTIR", func() -> void: _ask("room_spectate", {"on": not watching}), false, 150)
+			wb.tooltip_text = "Voltar a correr na próxima largada" if watching else "Entrar na corrida só como observador (sem carro)"
+			actions.add_child(wb)
 		if host and room.get("kind", "") != "queue":
 			actions.add_child(_button("LARGAR", func() -> void: _ask("room_start"), true, 160))
 	else:

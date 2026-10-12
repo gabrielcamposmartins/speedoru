@@ -18,6 +18,10 @@ const CAR_LAYER := 1 << 10
 const INTERIOR_LAYER := 1 << 11
 ## Camadas que só o próprio carro usa (decals e luzes de efeito não devem pegar nelas).
 const OWN_LAYERS := CAR_LAYER | HEAD_LAYER | INTERIOR_LAYER
+## Peças miúdas sem sombra (menos o capacete): a sombra delas cai dentro da do resto do carro, e
+## cada uma custava uma chamada de desenho por cascata da sombra do sol (com 10 carros, a maior
+## parte da sombra).
+const NO_SHADOW_SLOTS := ["cockpit", "driver", "mirrors", "suspension_front", "suspension_rear", "rim"]
 
 var livery := CarLivery.new()
 
@@ -112,8 +116,22 @@ func _replace_part(slot: String, variant: String) -> void:
 		for head in node.find_children("DriverHelmet*", "VisualInstance3D", true, false):
 			(head as VisualInstance3D).layers = HEAD_LAYER
 		_tag_interior(slot, node)
+		_tune_render(slot, node)
 		_nodes[slot] = node
 	_built[slot] = variant
+
+
+## Peças miúdas sem sombra (NO_SHADOW_SLOTS).
+static func _tune_render(slot: String, node: Node) -> void:
+	if not slot in NO_SHADOW_SLOTS:
+		return
+	var list: Array[Node] = node.find_children("*", "GeometryInstance3D", true, false)
+	if node is GeometryInstance3D:
+		list.append(node)
+	for n in list:
+		if n.name.begins_with("DriverHelmet"):
+			continue
+		(n as GeometryInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 
 
 ## Halo inteiro, volante e painel do cockpit, corpo do piloto (o capacete fica na HEAD_LAYER).
@@ -144,6 +162,7 @@ func _replace_wheel_part(slot: String, variant: String, wheel: Node3D) -> void:
 		return
 	node.name = "Visual_" + slot
 	_tag_car_layer(node)
+	_tune_render(slot, node)
 	# Os modelos têm a face externa em +X (lado esquerdo); do lado direito giramos 180°.
 	if wheel.position.x < 0.0:
 		node.rotation.y = PI

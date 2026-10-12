@@ -83,44 +83,78 @@ func _rebuild() -> void:
 	_build_details()
 	for c in _grid.get_children():
 		c.queue_free()
-	for id in ShopCatalog.items_of_type(type):
-		var it := ShopCatalog.item(id)
-		var owned := _profile.owns(id)
-		var t := StudioPanel.OptionTile.new()
-		t.item_id = id
-		t.title = it["name"]
-		match it["type"]:
-			"livery":
-				t.art_kind = "livery"
-			"boost", "neon":
-				t.art_kind = "glow"
-			"part":
-				t.art_kind = "part"
-				t.subtitle = CarPartCatalog.slot_label(it["slot"])
-			"decal":
-				t.art_kind = "decal"
-				t.decal = CarDecals.texture(ShopCatalog.decal_of(id))
-				t.color = Color.WHITE
-			_:
-				t.art_kind = "color"
-		var cols := ShopCatalog.colors_of(id)
-		if not cols.is_empty() and it["type"] != "decal":
-			t.color = cols[0]
-		t.selected = id == selected_id
-		t.dim = not owned
-		if ShopCatalog.is_free(id):
-			t.badge = "GRÁTIS"
-			t.badge_color = Retro.c("muted")
-		elif owned:
-			t.badge = "✓"
-			t.badge_color = Retro.c("good")
-		else:
-			t.badge = "FALTA"
-			t.badge_color = ShopCatalog.RARITY_COLORS[it["rarity"]]
-		t.tip_text = "Clique para ver no carro."
-		t.tip_rows = _tip_rows(id, owned)
-		t.pressed.connect(_select.bind(id))
-		_grid.add_child(t)
+	var ids := ShopCatalog.items_of_type(type)
+	if type == "part":
+		_build_parts(ids)
+		return
+	for id in ids:
+		_grid.add_child(_tile(id))
+
+
+## Peças separadas por categoria (como no Estúdio): título do lugar do carro com quantas a conta
+## tem (as que vêm com o jogo não contam) e as peças dele.
+func _build_parts(ids: Array[String]) -> void:
+	for slot in CarPartCatalog.all_slots():
+		var of_slot := ids.filter(func(id: String) -> bool: return ShopCatalog.item(id).get("slot", "") == slot)
+		if of_slot.is_empty():
+			continue
+		var have := 0
+		var total := 0
+		for id: String in of_slot:
+			if not ShopCatalog.is_free(id):
+				total += 1
+				have += 1 if _profile.owns(id) else 0
+		var head := Label.new()
+		head.text = "%s · %d de %d" % [CarPartCatalog.slot_label(slot).to_upper(), have, total]
+		head.theme_type_variation = "RetroKicker"
+		head.add_theme_font_size_override("font_size", 11)
+		_grid.add_child(head)
+		_grid.add_child(Control.new())
+		for id: String in of_slot:
+			_grid.add_child(_tile(id))
+		if of_slot.size() % 2 == 1:
+			_grid.add_child(Control.new())
+
+
+func _tile(id: String) -> StudioPanel.OptionTile:
+	var it := ShopCatalog.item(id)
+	var owned := _profile.owns(id)
+	var t := StudioPanel.OptionTile.new()
+	t.item_id = id
+	t.title = it["name"]
+	match it["type"]:
+		"livery":
+			t.art_kind = "livery"
+		"boost", "neon":
+			t.art_kind = "glow"
+		"part":
+			t.art_kind = "part"
+			t.part_slot = it["slot"]
+			t.part_variant = it["variant"]
+		"decal":
+			t.art_kind = "decal"
+			t.decal = CarDecals.texture(ShopCatalog.decal_of(id))
+			t.color = Color.WHITE
+		_:
+			t.art_kind = "color"
+	var cols := ShopCatalog.colors_of(id)
+	if not cols.is_empty() and it["type"] != "decal":
+		t.color = cols[0]
+	t.selected = id == selected_id
+	t.dim = not owned
+	if ShopCatalog.is_free(id):
+		t.badge = "GRÁTIS"
+		t.badge_color = Retro.c("muted")
+	elif owned:
+		t.badge = "✓"
+		t.badge_color = Retro.c("good")
+	else:
+		t.badge = "FALTA"
+		t.badge_color = ShopCatalog.RARITY_COLORS[it["rarity"]]
+	t.tip_text = "Clique para ver no carro."
+	t.tip_rows = _tip_rows(id, owned)
+	t.pressed.connect(_select.bind(id))
+	return t
 
 
 func _tip_rows(id: String, owned: bool) -> Array:
@@ -245,6 +279,7 @@ class ItemCard extends Control:
 		custom_minimum_size = Vector2(300, 260) if big else Vector2(176, 168)
 		mouse_filter = Control.MOUSE_FILTER_PASS
 		Retro.events.changed.connect(queue_redraw)
+		PartSilhouette.notifier().rendered.connect(queue_redraw)
 
 	func _draw() -> void:
 		var it := ShopCatalog.item(item_id)
@@ -280,7 +315,8 @@ class ItemCard extends Control:
 			draw_string(body, Vector2(10 * s, y + 15 * s), "repetida devolve %s" % PlayerProfile.format_credits(ShopCatalog.refund_of(item_id)),
 				HORIZONTAL_ALIGNMENT_LEFT, -1, int(11 * s), Retro.c("muted"))
 
-	## Arte de uma peça: pintura = faixas diagonais; cor = disco com brilho; peça = nome do lugar.
+	## Arte de uma peça: pintura = faixas diagonais; cor = disco com brilho; peça = silhueta branca
+	## (o nome do lugar enquanto ela não fica pronta).
 	static func draw_art(ci: CanvasItem, id: String, art: Rect2, owned: bool) -> void:
 		var it := ShopCatalog.item(id)
 		ci.draw_rect(art, Color(Retro.c("bg"), 0.7))
@@ -306,10 +342,12 @@ class ItemCard extends Control:
 					ci.draw_texture_rect(tex, Rect2(box.get_center() - Vector2(w, w / aspect) * 0.5, Vector2(w, w / aspect)), false,
 						Color(1, 1, 1, dim))
 			"part":
-				ci.draw_string(Retro.display(800), art.position + Vector2(0, art.size.y * 0.62),
-					CarPartCatalog.slot_label(it["slot"]).to_upper(), HORIZONTAL_ALIGNMENT_CENTER, art.size.x,
-					int(art.size.y * 0.2), Color(Retro.c("accent_2"), dim))
-				ci.draw_rect(art.grow(-6), Color(Retro.c("accent_2"), 0.3 * dim), false, 1.0)
+				# Abaixo do selo de raridade
+				var box := Rect2(art.position.x + 8.0, art.position.y + art.size.y * 0.32, art.size.x - 16.0, art.size.y * 0.6)
+				if not PartSilhouette.draw(ci, it["slot"], it["variant"], box, Color(1, 1, 1, dim)):
+					ci.draw_string(Retro.display(800), art.position + Vector2(0, art.size.y * 0.62),
+						CarPartCatalog.slot_label(it["slot"]).to_upper(), HORIZONTAL_ALIGNMENT_CENTER, art.size.x,
+						int(art.size.y * 0.2), Color(Retro.c("accent_2"), dim))
 			_:
 				var c := art.get_center()
 				var rad := art.size.y * 0.36

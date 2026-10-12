@@ -198,7 +198,9 @@ func _on_state(state: int) -> void:
 	elif menu:
 		menu.queue_free()
 		menu = null
-	if state == RaceManager.State.FINISHED and manager.player_entry and (manager.player_entry.finished or manager.net == RaceManager.Net.CLIENT):
+	# Resultado: quem terminou, no online quando a prova acaba, e o observador (sem carro)
+	var observer := manager.observer and manager.player_entry == null
+	if state == RaceManager.State.FINISHED and (observer or (manager.player_entry and (manager.player_entry.finished or manager.net == RaceManager.Net.CLIENT))):
 		get_tree().create_timer(2.5).timeout.connect(_show_results)
 
 
@@ -337,11 +339,20 @@ func _show_results() -> void:
 		return
 	var box := _panel("BANDEIRA QUADRICULADA", "RESULTADO", 800)
 	results = box.get_meta("root")
+	# Classificação e penalidades rolam numa área do tamanho que cabe na tela; o prêmio e os botões
+	# ficam sempre visíveis embaixo (com muitas penalidades a lista passava da borda)
+	var scroll := ScrollContainer.new()
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	box.add_child(scroll)
+	var body := VBoxContainer.new()
+	body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	body.add_theme_constant_override("separation", 12)
+	scroll.add_child(body)
 	var grid := GridContainer.new()
 	grid.columns = 6
 	grid.add_theme_constant_override("h_separation", 24)
 	grid.add_theme_constant_override("v_separation", 6)
-	box.add_child(grid)
+	body.add_child(grid)
 	for h in ["POS", "PILOTO", "VOLTAS", "TEMPO", "PENAL.", "MELHOR VOLTA"]:
 		var l := Label.new()
 		l.text = h
@@ -349,16 +360,24 @@ func _show_results() -> void:
 		grid.add_child(l)
 	var rows := manager.final_classification()
 	var winner_time := 0.0
+	var winner_laps := 0
 	for k in rows.size():
 		var e: RaceEntry = rows[k]
 		if k == 0 and e.finished and not e.disqualified:
 			winner_time = e.total_time()
+			winner_laps = e.laps_completed()
+		var gap := "em pista"
+		if e.finished and e.laps_completed() < winner_laps:
+			var down := winner_laps - e.laps_completed()
+			gap = "+%d volta%s" % [down, "s" if down > 1 else ""]
+		elif e.finished:
+			gap = "+%.3f" % (e.total_time() - winner_time)
 		var cells := [
 			"DSQ" if e.disqualified else ("DNF" if e.retired else str(k + 1)),
 			("► " if e.is_player else "") + e.name,
 			str(e.laps_completed()),
 			"Desclassificado" if e.disqualified else "Abandonou" if e.retired else (RaceManager.format_time(e.total_time()) if k == 0 or winner_time <= 0.0
-				else ("+%.3f" % (e.total_time() - winner_time) if e.finished else "em pista")),
+				else gap),
 			("+%ds" % roundi(e.penalty_seconds)) if e.penalty_seconds > 0.0 else "-",
 			RaceManager.format_time(e.best_lap) + (" ⏱" if e == manager.fastest_entry else ""),
 		]
@@ -376,7 +395,16 @@ func _show_results() -> void:
 			if c == 5 and e == manager.fastest_entry:
 				l.add_theme_color_override("font_color", Retro.FASTEST)
 			grid.add_child(l)
-	_penalty_breakdown(box, rows)
+	_penalty_breakdown(body, rows)
+	# Altura da área: o conteúdo inteiro, ou o que sobra da tela (título, prêmio e botões fora dela).
+	# As linhas com quebra de texto só sabem a altura depois de saber a largura: confere no quadro seguinte
+	var fit := func() -> void:
+		if not is_instance_valid(scroll):
+			return
+		var room := maxf(get_viewport().get_visible_rect().size.y - 300.0, 120.0)
+		scroll.custom_minimum_size = Vector2(0, clampf(body.get_combined_minimum_size().y, 60.0, room))
+	fit.call()
+	get_tree().process_frame.connect(fit, CONNECT_ONE_SHOT)
 	if manager.player_reward > 0:
 		var reward := Label.new()
 		reward.text = "+%s %s" % [PlayerProfile.format_credits(manager.player_reward), ShopCatalog.CURRENCY]

@@ -27,11 +27,16 @@ e sem a tela de carregamento). A área de testes antiga continua em `scenes/test
 `scripts/menu/main_menu.gd` monta a garagem da equipe (piso brilhante, o carro numa plataforma baixa
 com a luz saindo por baixo, bancada de ferramentas, portas numeradas, mezanino) e o carro do jogador com o que está
 equipado. A câmera fica a nordeste do carro (frente-direita), orbita devagar e não sai da sala; arrastar
-com o mouse gira, a roda aproxima. O carro fica à direita; à esquerda, os botões grandes
+com o mouse gira, a roda aproxima (só com o mouse fora dos painéis: sobre a interface a roda é dela).
+O carro fica à direita; à esquerda, os botões grandes
 (`scripts/menu/menu_ui.gd`):
 
-- **Jogar solo:** pista (Monza, Mônaco ou Suzuka), modo, voltas, adversários, dificuldade, largada, horário
-  e ambiente → Correr. Na corrida o horário/ambiente ficam como escolhidos (N/B só no treino livre) e
+- **Jogar solo:** pista (Monza, Mônaco, Suzuka ou Las Vegas), modo, voltas, adversários, dificuldade, largada, horário
+  e ambiente → Correr. A pista se escolhe num **carrossel** (`scripts/menu/track_carousel.gd`, o
+  mesmo dos ajustes da sala multiplayer): o traçado de cada pista (linha central do CSV, norte para
+  cima) num anel que gira ao trocar; a da frente fica grande, com nome, extensão, largada (sentido da
+  corrida) e um ponto de luz dando a volta. Setas, clique nas de trás ou ←/→ com o foco; na sala, só
+  o anfitrião gira (e o carrossel refeito a cada atualização continua o giro do anterior). Na corrida o horário/ambiente ficam como escolhidos (N/B só no treino livre) e
   o carro não muda: a garagem do Tab só existe no treino livre (e pausa o jogo enquanto aberta).
 - **Multiplayer:** salas, amigos, grupo, ranking, perfil e a aba **Servidor** (endereço IPv4/IPv6, servidores salvos com nome, últimas conexões e **hospedar** um servidor no próprio PC) (veja [Multiplayer](#multiplayer-servidor-dedicado--turso)); convites e avisos aparecem em qualquer tela do menu.
 - **Garagem:** Estúdio, Galeria e Loja, com o carro mudando na hora ao lado. No Estúdio e na
@@ -418,18 +423,18 @@ e a meta de longo prazo). Catálogo e regras em `scripts/economy/shop_catalog.gd
   desconto. Duas roletas temáticas e sem sobreposição, com **peças, decalques e as cores de luz
   (brilho do boost e neon)**: **Neon** (asas leves, bico, sidepods; sakura, asas, cometa, coração,
   onda, listras, raio; boost Hiperluz, Gelo, Rosa choque, Violeta; neon Aurora, Ciano, Sakura) e
-  **Inferno** (asas traseiras, barbatana, rodas raiadas; chamas, garras, logo S, xadrez, shuriken,
+  **Dragão** (id `inferno`, o nome antigo, que fica nos perfis e no servidor; asas traseiras, barbatana, rodas raiadas; chamas, garras, logo S, xadrez, shuriken,
   faixas duplas; boost Chama solar, Rubi, Ouro; neon Lava, Âmbar, Carmesim, Violeta), 40 itens cada.
   Peças: a Neon tem as de luz, céu e máquina (asas traseiras Borboleta e Ômega, sidepods Turbina e
   Periscópio, asas dianteiras Gaivota, Anel e Delta, bicos de pato, Tubarão-martelo e Broca, rodas
-  Turbina, Colmeia e Disco…); a Inferno, as de fogo e bicho (asas traseiras Fênix, Dragão, Dupla e
+  Turbina, Colmeia e Disco…); a Dragão, as de fogo e bicho (asas traseiras Fênix, Dragão, Dupla e
   Lâmina, focinho de dragão, Tubarão e Presas, Morcego, escamas, chifres, Guelras, rodas Estrela,
   Shuriken e Raios em Y…).
 - **Sorteio:** um degrau de raridade com fatia fixa e, dentro dele, uma peça com chance igual. Sem
   pity nem garantia. Gerador criptográfico (`Crypto`), e a loja mostra a mesma tabela que o sorteio
   usa.
 
-| Raridade | Fatia | Itens (Neon / Inferno) | Chance de cada (Neon / Inferno) | Repetida devolve |
+| Raridade | Fatia | Itens (Neon / Dragão) | Chance de cada (Neon / Dragão) | Repetida devolve |
 |---|---|---|---|---|
 | Lendário | 2,5% | 5 / 5 | 0,5% | 3.600 a 4.320 |
 | Épico | 6% | 6 / 9 | 1% / 0,67% | 2.100 a 2.520 |
@@ -437,6 +442,13 @@ e a meta de longo prazo). Catálogo e regras em `scripts/economy/shop_catalog.gd
 | Incomum | 26% | 12 / 9 | 2,17% / 2,89% | 900 a 1.080 |
 | Comum | 55,5% | 7 / 7 | 7,93% | 600 a 720 |
 
+- **Som do giro** (`scripts/audio/ui_sounds.gd`, gerado por código): um "toc" macio de lingueta de plástico a cada
+  cartão que passa pelo marcador (no máximo 20 por segundo no começo, mais grave ao desacelerar) e
+  um arpejo de sino quando o prêmio aparece (uma nota a mais no raro e no lendário).
+- **Prêmio novo** (algo que a conta ainda não tinha): chuva de confetes (`scripts/ui/confetti.gd`,
+  dois canhões nos cantos, com a cor da raridade) e, logo depois do arpejo, um brilho suave no som
+  (`UiSounds.discovery`: acorde de dó com sétima e nona entrando nota a nota e três pingos agudos
+  baixinhos). Repetidas não têm.
 - **Repetida vira créditos:** 30% do preço de tabela; o giro nunca sai vazio. Um lendário
   específico custa em média 200 giros (500 mil créditos).
 - **O que se coleciona:** peças de desempenho (asas, bico, sidepods, cobertura, rodas raiadas:
@@ -447,6 +459,17 @@ e a meta de longo prazo). Catálogo e regras em `scripts/economy/shop_catalog.gd
 - **Cores livres:** pintura (3 cores), capacete, macacão e rodas são de graça e com qualquer cor
   (seletor de cor e sugestões). As 25 pinturas prontas (`ShopCatalog.PAINTS`) aplicam as 3 cores
   de uma vez; a pintura equipada é a que bate com as cores (ou nenhuma).
+- **Minhas pinturas** (aba Pinturas do Estúdio): salva a combinação atual — 3 cores, esquema e
+  acabamento — com um nome (mesmo nome substitui, até 24), aplica e apaga. Ficam no aparelho, fora do
+  perfil (`user://paint_presets.cfg`, `PlayerProfile.custom_paints`), e valem offline e online.
+- **Peças** (aba do Estúdio e da Galeria): separadas por categoria (bico, asas, sidepods, cobertura,
+  halo, retrovisores, rodas), com quantas a conta tem de cada; o efeito principal fica no canto do
+  cartão. A arte do cartão (e a do giro da loja) é a **silhueta branca da peça**
+  (`scripts/economy/part_silhouette.gd`): a peça é desenhada uma vez numa SubViewport de fundo
+  transparente, toda branca, na vista que mais diferencia as variantes (bico e sidepods de cima ou
+  de lado, asas de frente/de trás, cobertura de lado, rodas só a face de fora) e fica em cache;
+  todas saem em ~0,6 s, juntas, na primeira vez que a aba abre. Sem placa de vídeo (headless) o
+  cartão mostra o nome do lugar. Conferência: `tests/part_silhouette_probe.gd`.
 - **Esquemas de pintura** (aba do Estúdio, grátis; `CarConfig.PAINT_SCHEMES`): como as 3 cores se
   dividem pela carroceria. Clássico (as cores nas peças como o modelo foi pintado), Dois tons
   (cima/baixo com filete), Faixas de corrida, Diagonal, Flechas (chevrons), Degradê (frente → trás),
@@ -536,11 +559,14 @@ e a meta de longo prazo). Catálogo e regras em `scripts/economy/shop_catalog.gd
   sensibilidade à carga), Direção (esterço em baixa/alta, velocidade do volante), Motor e câmbio
   (relação final, giros de troca do automático, freio-motor), Suspensão (molas, amortecedores,
   alturas e barras estabilizadoras por eixo) e Assistências (margem). Cada parâmetro tem nome
-  amigável, limites que fazem sentido, um slider largo com trilho fino e uma marca no valor de
-  fábrica, botões redondos − / + (passo fino; com Shift, grosso), ↺ ao lado do valor só quando ele
-  mudou (volta ao de fábrica) e um tooltip em cartão (`Retro.make_tooltip`: explicação com quebra de
-  linha, valor atual, de fábrica, limites, passos e o efeito do botão). Fica salvo no perfil
-  (`equipped.setup`, só o que mudou) e vale na corrida. Potência, desgaste e regras não entram
+  amigável, limites que fazem sentido, um slider largo com trilho fino e uma marca no valor
+  padrão, botões redondos − / + (passo fino; com Shift, grosso), ↺ ao lado do valor só quando ele
+  mudou (volta ao padrão) e um tooltip em cartão (`Retro.make_tooltip`: explicação com quebra de
+  linha, valor atual, padrão, limites, passos e o efeito do botão). O padrão é o de fábrica, menos
+  na direção do jogador (`CarSetup.PLAYER_DEFAULTS`): esterço em alta de 1,0° e volante 0,5 — contas
+  novas já começam assim e "Restaurar" volta a isso; contas que já existiam mantêm o que tinham, e os
+  bots usam o de fábrica. No controle, ↑/↓ andam pelos sliders (←/→ ajustam). Fica salvo no perfil
+  (`equipped.setup`) e vale na corrida. Potência, desgaste e regras não entram
   (são iguais para todos). Catálogo em `scripts/economy/car_setup.gd`.
 - **Galeria:** mesmo layout do Estúdio (abas Peças, Decalques, Boost e Neon, grade de 2 colunas); cada item
   com arte, raridade e selo ("✓", "FALTA", "GRÁTIS"). Clicar mostra **no carro** como ficaria (sem
@@ -603,7 +629,14 @@ Retrô: visual synthwave + monitor CRT + HUD de ficção científica:
 `scripts/race/race_control.gd` (direção de prova) e `scripts/race/safety_car.gd`.
 
 - **Limitador** (P / D-pad ←): corta a tração acima de 80 km/h (indicador LIM no painel). Nos
-  boxes é você quem aciona; passar de 80 km/h na pista dos boxes continua dando +5 s.
+  boxes é você quem aciona e só você desliga (o pit stop não mexe nele); passar de 80 km/h na pista
+  dos boxes continua dando +5 s.
+- **Voltas e classificação:** depois da bandeirada as voltas param de contar (`finish_laps`; o carro
+  segue andando e cruzando a linha). Ordem ao vivo e resultado final: primeiro quem completou mais
+  voltas; quem levou volta e recebeu a bandeirada fica atrás de quem tem mais voltas mesmo que esse
+  ainda não tenha cruzado a linha (com as mesmas voltas, quem ainda corre está na volta seguinte).
+  No resultado, quem levou volta aparece com "+1 volta"; a tabela e as penalidades rolam numa área
+  do tamanho da tela, com os botões sempre visíveis.
 - **Bandeira amarela:** entra quando uma batida arranca peças (ou quebra uma roda). Um painel no
   topo mostra a instrução da sua situação, com a tecla certa (ou botão, se estiver no controle):
   - quem bateu: "Pressione [K] para voltar aos boxes ou vá sozinho 1:40". O botão (depois do
@@ -1065,6 +1098,94 @@ monta a cena certa, e para os clientes no `race_start`).
   Volta do bot no difícil: ~1:46. Volta mínima plausível no servidor: 85 s.
 - Recorde por pista em `best_lap_suzuka` nos contadores (como Mônaco).
 
+## Las Vegas (Las Vegas Strip Circuit)
+
+`scenes/tracks/las_vegas.tscn` + `resources/tracks/las_vegas_layout.tres`, gerados com
+`python tools/build_las_vegas.py [--debug pasta]` a partir dos dados do OpenStreetMap (ODbL) salvos
+em `tools/data/las_vegas/` (relação 16696508 do circuito, prédios e partes de prédio, ruas, água,
+parques, árvores e a roda-gigante). Saída em `assets/track/las_vegas/` no mesmo formato da cidade de
+Mônaco (`TrackCity`). Os CSVs precisam do importador "keep" (`.csv.import`), como os das outras
+pistas: com o padrão (tradução) o Godot não os leva para o jogo exportado.
+
+- **Traçado:** 6,16 km (o oficial tem 6,201 km), no sentido da corrida, começando na largada. O OSM
+  tem esquinas de 90° em canto vivo: só elas são arredondadas até 17 m de raio no eixo
+  (`round_corners`), o resto não muda. A Strip (Las Vegas Blvd.) tem ~1,9 km de reta; meia-largura
+  6,6 m (7,4 m nas curvas fechadas). Plano: o deserto não tem desnível.
+- **Boxes:** à esquerda; a faixa real sai depois da curva 1, mas a do jogo acompanha a reta e
+  termina antes dela (s = −230 a +150). O Grand Prix Plaza (o prédio real dos boxes) dá lugar ao
+  complexo do jogo.
+- **Cidade:** ~670 prédios do OSM (as torres dos cassinos com a altura do OSM: Palazzo 196 m, Wynn e
+  Encore ~190 m, Cosmopolitan 184 m…; plantas com partes viram as partes), fachadas modernas
+  (`"style": "modern"`: torres de vidro e pódios lisos, sem venezianas nem telhas), ruas, ~130
+  piscinas, o campo de golfe do Wynn e ~3.200 palmeiras (as mapeadas, as dos parques e uma fileira na
+  calçada de toda a pista). Sem mar, cais, túnel nem navios (`TrackCity.has_sea/has_tunnel`): essas
+  etapas nem rodam. O horizonte vira deserto: vale plano com a cidade baixa e serras recortadas
+  (rocha avermelhada, como Red Rock) a partir de ~2 km.
+- **Preenchimento** (`City.infill` no gerador): os terrenos vazios do OSM (estacionamentos abertos e
+  lotes de areia, que deixavam a cidade "chapada") ganham ~780 prédios inventados no estilo da Strip,
+  alinhados à rua mais próxima e com calçada, folga da pista (10 m além da área dela), das ruas, das
+  piscinas, dos parques e dos marcos: resorts (pódio de cassino com torre em lâmina, em Y ou duas
+  torres, de 75 a 170 m; mais altas perto da pista), hotéis médios, cassinos baixos, garagens,
+  escritórios e, nos lotes estreitos, lojas e motéis. Lotes achados por erosão da máscara de lugares
+  livres (2 m) e crescidos lado a lado; marcados com `"f": 1` no JSON. Fachadas próprias (vidro
+  dourado, bronze, branco de hotel, vidro azul, salmão) depois das 14 do OSM.
+- **Luzes da cidade** (`scripts/track/city_neon.gd`, etapa "neon", só nas cidades "modern"): cada
+  prédio traz o tipo de letreiro (`"v"`), o ponto da pista mais perto (`"tp"`) e a distância (`"td"`);
+  o letreiro vai na parede virada para a pista.
+  - **Torres de hotel** (e parte das torres altas do OSM): nome no alto da fachada, coroa de neon na
+    laje (às vezes descendo pelas quinas) e, em ~1/3, um desenho grande em pé no telhado.
+  - **Cassinos:** marquise (painel escuro, moldura de neon, lâmpadas correndo e a palavra) e, embaixo,
+    um telão de LED que troca de anúncio, um desenho de neon ou faixas verticais; a até 120 m da
+    pista, um ponto na calçada (para o lado, sem tapar a marquise) para luminoso.
+  - **Lojas e motéis:** lâmina vertical na quina, com letras empilhadas (MOTEL, BAR, PAWN…) ou só um
+    desenho.
+  - **Placas famosas** (nos luminosos, espalhadas pela volta; recriação ou homenagem sem o nome de
+    verdade): "Welcome to Fabulous Las Vegas" — frente e verso ("Drive Carefully / Come Back Soon"),
+    losango branco com os "dólares de prata" do WELCOME e a estrela de oito pontas; o desenho de Betty
+    Willis nunca teve copyright —, o caubói acenando (Vegas Vic, 2 quadros), a vaqueira chutando
+    (Vegas Vickie), a guitarra gigante (Hard Rock), o sapatinho girando no alto do poste (Silver
+    Slipper), o pilar atômico (Stardust), o flamingo com plumas (Flamingo), a ferradura (Binion's) e a
+    lâmpada do gênio (Aladdin). Os outros luminosos: painel com nome, telão de LED e estrela.
+  - **Cobertura de LED** à moda da Fremont Street sobre a rua larga e reta mais perto da pista (sem
+    cruzar com ela): abóbada em colunas com shows procedurais (`shaders/track/vegas_led.gdshader`:
+    ondas de cor, céu com cometas, bandeira quadriculada, arco-íris).
+  - **Dirigíveis:** três, a 150–200 m, dando a volta no circuito (`scripts/track/vegas_motion.gd`),
+    com telão de LED curvo dos dois lados e luzes de navegação.
+  - **Arte** (`scripts/track/neon_art.gd`): atlas `assets/track/las_vegas/neon_atlas.png` (4096×3328,
+    94 células) com os nomes de hotel, cada um num estilo — cursiva com sublinhado e estrela,
+    marquise de letras coloridas, faroeste, "Googie" com explosão atômica, tubos múltiplos, dólares
+    de prata, duas linhas em duas fontes, texto em seta —, as palavras de cassino, as lâminas, 24
+    desenhos de neon (naipes, dados, cerejas, 777, martíni, coroa, diamante, ferradura, fichas,
+    roleta, palmeira, foguete, gato da sorte, carpa, dragão, planeta…), as placas famosas e 6 rolos de
+    LED de 4 quadros. Fontes livres (OFL, licenças junto) em `assets/fonts/neon/`: Monoton, Pacifico,
+    Lobster, Bungee, Rye e Righteous. Nomes inventados. O atlas é gerado fora do jogo —
+    `godot --path . -s res://tools/build_neon_atlas.gd` (com janela) — e importado comprimido (S3TC),
+    com mipmaps e sem `fix_alpha_border` (o alfa é pré-multiplicado): desenhar no jogo custaria ~1 s e
+    deixaria centenas de MB de memória de vídeo presos. Mudou um desenho ou o tamanho de uma célula,
+    gere de novo.
+  - **Brilho:** neon e lâmpadas em `shaders/track/vegas_neon.gdshader` (alfa da cor de vértice = fase
+    das lâmpadas em sequência); a arte em `vegas_sign.gdshader` (halo do próprio desenho, quadros
+    animados por `instance uniform`; a placa Welcome, painel pintado, clareia menos). De dia acesos e
+    contidos, à noite fortes, com glow (`CityNeon.set_night`).
+  - **Postes** com braço sobre a rua dos dois lados das ruas largas (≥ 9 m), alternados a cada 17 m.
+- **Marcos** (`scripts/track/city_landmarks.gd`, chave `landmarks` do JSON):
+  - **Sphere**: tela de LED esférica (`shaders/track/vegas_sphere.gdshader`) com três shows que se
+    alternam — o olho gigante (olhando para o circuito), um planeta e ondas de néon —; a grade de
+    LEDs só aparece de perto; à noite brilha forte;
+  - **Torre Eiffel** do Paris Las Vegas (165 m): treliça de bronze com lâmpadas douradas;
+  - **High Roller** (158 m de diâmetro): a roda-gigante de Suzuka em escala real, no plano mapeado;
+  - **Fontes do Bellagio**: jatos no lago (`vegas_fountain.gdshader`), coreografia de ~36 s (ondas
+    correndo pela fileira, todos juntos e o estouro final) com pausa entre os shows.
+- **Elementos:** arquibancadas na reta (em frente aos boxes, coberta), na curva 1, na Koval, na
+  chicane da Sphere e na curva da Harmon; áreas de escape nas frenagens fortes; anúncios e postes em
+  toda a volta; pórticos e placas de frenagem; bandeira dos EUA nos mastros.
+- Recorde por pista em `best_lap_las_vegas` (volta mínima plausível de 80 s).
+- Teste: `tests/las_vegas_test.gd` (comprimento, pista plana, pisos, grid e boxes no asfalto, cidade
+  sem mar/túnel, os quatro marcos, prédios de preenchimento, letreiros e postes, nada sobre a pista);
+  capturas em `tests/las_vegas_shots.gd` (horário 2 = noite; inclui as placas famosas, um
+  dirigível e a cobertura de LED).
+- Dados: © colaboradores do OpenStreetMap, licença ODbL (https://www.openstreetmap.org/copyright).
+
 ## Vitrine: balões de personagem, outdoors e murais
 
 `scripts/track/track_showcase.gd` (etapa "vitrine" da geração, nas duas pistas; o servidor pula):
@@ -1169,6 +1290,15 @@ liberada pelo nível) e paga.
 - **Presença**: online / em corrida (nada guardado); aviso quando um amigo entra.
 - **Grupo** até 4: só o líder convida amigos online e escolhe a partida (contra bots, fila ou
   Custom); se o líder sai ou sobra um, o grupo se desfaz.
+- **Observadores**: na sala (fora da fila), "SÓ ASSISTIR" deixa o jogador fora do grid — não precisa
+  marcar pronto, não ocupa lugar (até `NetProtocol.MAX_SPECTATORS` por sala) e, na largada, abre a
+  corrida sem carro, no modo espectador travado (câmeras de TV, livre e perseguição; Esc volta ao
+  menu). Na lista de salas, as que estão correndo aparecem com "ASSISTIR": dá para entrar no meio da
+  corrida só para ver (o servidor manda a largada na hora e os instantâneos dali em diante). Uma sala
+  só de observadores não larga.
+- **Atualizações da sala** (ajustes do anfitrião, alguém pronto) não tiram ninguém da tela em que
+  está (garagem, loja…): a tela da sala só abre sozinha quando o jogador entra numa sala nova, e a
+  própria tela da sala se refaz mantendo a rolagem e o foco.
 - **Salas**: corrida rápida (fila, larga quando todos marcam pronto), Custom (nome, senha, pista,
   voltas 3/5/10/15, bots e dificuldade, **corredores no grid** 2–14 — jogadores + bots; a sala
   aceita até 10 jogadores —, classificatória (voltas, tempo limite, colisão e se infração anula a
@@ -1305,7 +1435,7 @@ godot --headless --path . -s res://tests/damage_test.gd     # dano: dirigir sem 
 godot --path . -s res://tests/capture_crash.gd -- <pasta>    # screenshots de uma batida
 godot --path . -s res://tests/capture_moods.gd -- <pasta>    # todos os horários × ambientes
 godot --path . -s res://tests/capture_boost.gd -- <pasta>    # boost, marcas de pneu, sombra, fantasia
-godot --headless --path . -s res://tests/race_test.gd -- 3 9 3  # corrida de 3 voltas, 9 bots, dificuldade mista (+ monaco ou suzuka no fim = nessa pista)
+godot --headless --path . -s res://tests/race_test.gd -- 3 9 3  # corrida de 3 voltas, 9 bots, dificuldade mista (+ monaco, suzuka ou las_vegas no fim = nessa pista)
 godot --headless --path . -s res://tests/monaco_test.gd     # Mônaco: traçado, desnível, pisos, túnel coberto, cidade, porto, carro na rampa
 godot --path . -s res://tests/monaco_shots.gd -- <pasta> [horário] [ambiente] [prefixo]  # screenshots de Mônaco (+ calçadas, navios, balões, dirigíveis e o céu visto da pista)
 godot --headless --path . -s res://tests/suzuka_test.gd     # Suzuka: traçado, desnível, cruzamento (folga, projeção nos dois níveis), nada acima do asfalto, terreno, carro na ponte e embaixo dela
@@ -1323,6 +1453,9 @@ godot --path . -s res://tests/capture_yellow.gd -- <pasta>   # instrução da am
 godot --headless --path . -s res://tests/ui_nav_test.gd     # menus pelo controle: foco, D-pad, A/B, LB/RB
 godot --headless --path . -s res://tests/economy_test.gd    # economia: chances, sorteio, giro, repetidas, loja, estúdio, prêmios
 godot --path . -s res://tests/capture_menu.gd -- <pasta>     # menu principal: início, jogar solo, estúdio, galeria, loja, giro
+godot --headless --path . -s res://tests/track_carousel_test.gd # carrossel de pistas, peças por categoria na Galeria, Roleta Dragão
+godot --path . -s res://tests/capture_cards.gd -- <pasta>    # capturas: carrossel, silhuetas no Estúdio/Galeria, giro da Dragão
+godot --path . -s res://tests/part_silhouette_probe.gd -- <pasta> # folha com a silhueta de todas as peças
 godot --path . -s res://tests/capture_settings.gd -- <pasta> # menu de configurações + monitor de desempenho
 godot --headless --path . -s res://tests/compile_check.gd   # carrega todos os scripts (erros de compilação)
 godot --headless --path . -s res://tests/ccd_probe.gd       # carro não "para do nada" em zebra/raspão a 320 km/h e não atravessa muros

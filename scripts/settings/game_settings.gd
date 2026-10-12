@@ -79,6 +79,13 @@ const UI_SCALES := [0.0, 0.75, 0.9, 1.0, 1.15, 1.25, 1.5]
 const UI_BASE := Vector2(1600, 900)
 const SHADOW_SIZES := [2048, 4096, 8192, 16384]
 const SHADOW_FILTERS := [1, 2, 3, 4]
+## Sombra do sol (o "Sun" dos nós no grupo "daylight") por qualidade: cascatas, alcance (m) e onde
+## termina a 1ª cascata (fração do alcance; ~28 m com 2 cascatas). Cada cascata desenha de novo
+## tudo o que faz sombra nela (com 10 carros na tela, metade das chamadas de desenho era de sombra);
+## 2 cascatas cortam isso quase pela metade. Só o Ultra mantém 4.
+const SUN_SPLITS := [2, 2, 2, 4]
+const SUN_DISTANCE := [160.0, 200.0, 240.0, 320.0]
+const SUN_SPLIT_1 := [0.18, 0.14, 0.12, 0.05]
 const LOD_THRESHOLDS := [4.0, 2.0, 1.0, 0.5]
 
 ## Valores padrão (e tipos) de tudo que é salvo.
@@ -484,6 +491,12 @@ func _apply_graphics() -> void:
 	RenderingServer.directional_soft_shadow_filter_set_quality(SHADOW_FILTERS[shadows] as RenderingServer.ShadowQuality)
 	RenderingServer.positional_soft_shadow_filter_set_quality(SHADOW_FILTERS[shadows] as RenderingServer.ShadowQuality)
 	vp.positional_shadow_atlas_size = SHADOW_SIZES[shadows] / 2
+	for daylight in get_tree().get_nodes_in_group(&"daylight"):
+		var sun := (daylight as Node).get_node_or_null("Sun") as DirectionalLight3D
+		if sun:
+			sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_4_SPLITS if SUN_SPLITS[shadows] == 4 				else DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS
+			sun.directional_shadow_max_distance = SUN_DISTANCE[shadows]
+			sun.directional_shadow_split_1 = SUN_SPLIT_1[shadows]
 	var world := vp.find_world_3d()
 	var env := world.environment if world else null
 	if env:

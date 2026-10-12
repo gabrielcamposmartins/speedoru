@@ -1,0 +1,2213 @@
+{
+  "version": 0.6,
+  "generator": "Overpass API 0.7.62.4 2390de5a",
+  "osm3s": {
+    "timestamp_osm_base": "2026-10-12T07:42:31Z",
+    "copyright": "The data included in this document is from www.openstreetmap.org. The data is made available under ODbL."
+  },
+  "elements": [
+
+{
+  "type": "node",
+  "id": 367054910,
+  "lat": 36.1289345,
+  "lon": -115.1653620,
+  "tags": {
+    "addr:city": "Las Vegas",
+    "addr:housenumber": "3131",
+    "addr:postcode": "89109",
+    "addr:state": "NV",
+    "addr:street": "South Las Vegas Boulevard",
+    "amenity": "casino",
+    "name": "Encore Casino at Wynn"
+  }
+},
+{
+  "type": "node",
+  "id": 664689970,
+  "lat": 36.1101552,
+  "lon": -115.1774748,
+  "tags": {
+    "name": "Bellagio Tram Station",
+    "network": "ARIA Express",
+    "operator": "Aria Resort and Casino",
+    "operator:wikidata": "Q654279",
+    "operator:wikipedia": "en:Aria Resort and Casino",
+    "public_transport": "stop_position",
+    "railway": "tram_stop",
+    "ref": "3",
+    "tram": "yes",
+    "wheelchair": "yes"
+  }
+},
+{
+  "type": "node",
+  "id": 1565477539,
+  "lat": 36.1267955,
+  "lon": -115.1681632,
+  "tags": {
+    "bench": "yes",
+    "bin": "yes",
+    "bus": "yes",
+    "highway": "bus_stop",
+    "lit": "yes",
+    "name": "Northbound Las Vegas at The Wynn",
+    "network": "RTC",
+    "network:wikidata": "Q7309181",
+    "operator": "Regional Transportation Commission of Southern Nevada",
+    "operator:wikidata": "Q7309181",
+    "public_transport": "platform",
+    "ref": "1353",
+    "route_ref": "The Deuce",
+    "shelter": "yes",
+    "tactile_paving": "no"
+  }
+},
+{
+  "type": "node",
+  "id": 1688891884,
+  "lat": 36.1104895,
+  "lon": -115.1732885,
+  "tags": {
+    "bench": "no",
+    "bin": "yes",
+    "bus": "yes",
+    "highway": "bus_stop",
+    "name": "Southbound Las Vegas at Bellagio/Cosmo",
+    "network": "RTC",
+    "network:wikidata": "Q7309181",
+    "operator": "Regional Transportation Commission of Southern Nevada",
+    "operator:wikidata": "Q7309181",
+    "public_transport": "platform",
+    "ref": "3590",
+    "route_ref": "The Deuce",
+    "shelter": "yes",
+    "tactile_paving": "no",
+    "wheelchair": "yes"
+  }
+},
+{
+  "type": "node",
+  "id": 1688891907,
+  "lat": 36.1227467,
+  "lon": -115.1707994,
+  "tags": {
+    "bus": "yes",
+    "highway": "bus_stop",
+    "name": "Venetian",
+    "network": "RTC",
+    "network:wikidata": "Q7309181",
+    "operator": "Regional Transportation Commission of Southern Nevada",
+    "operator:wikidata": "Q7309181",
+    "public_transport": "platform"
+  }
+},
+{
+  "type": "node",
+  "id": 3623467361,
+  "lat": 36.1263781,
+  "lon": -115.1658180,
+  "tags": {
+    "addr:housenumber": "3131",
+    "addr:postcode": "89109",
+    "addr:street": "South Las Vegas Boulevard",
+    "amenity": "casino",
+    "name": "Wynn Las Vegas Casino",
+    "opening_hours": "24/7",
+    "phone": "+1-877-770-7000",
+    "website": "https://www.wynnlasvegas.com/",
+    "wheelchair": "yes"
+  }
+},
+{
+  "type": "node",
+  "id": 4019287777,
+  "lat": 36.1129578,
+  "lon": -115.1776948,
+  "tags": {
+    "fee": "yes",
+    "name": "Bellagio Gallery of Fine Art",
+    "shop": "art",
+    "tourism": "gallery",
+    "website": "https://www.bellagio.com/en/entertainment/gallery-of-fine-art.html"
+  }
+},
+{
+  "type": "node",
+  "id": 4538256290,
+  "lat": 36.1329842,
+  "lon": -115.1641762,
+  "tags": {
+    "addr:housenumber": "2955",
+    "addr:postcode": "89109",
+    "addr:street": "South Las Vegas Boulevard",
+    "name": "Big Bus Las Vegas Hop-on Hop-off",
+    "tourism": "attraction"
+  }
+},
+{
+  "type": "node",
+  "id": 4668671251,
+  "lat": 36.1118913,
+  "lon": -115.1769612,
+  "tags": {
+    "amenity": "cafe",
+    "cuisine": "pastry",
+    "name": "Bellagio Patisserie",
+    "outdoor_seating": "no",
+    "shop": "pastry",
+    "website": "https://www.bellagio.com/en/restaurants/bellagio-patisserie.html"
+  }
+},
+{
+  "type": "node",
+  "id": 4668742170,
+  "lat": 36.1227839,
+  "lon": -115.1686150,
+  "tags": {
+    "name": "Saint Mark's Square",
+    "place": "square",
+    "tourism": "attraction"
+  }
+},
+{
+  "type": "node",
+  "id": 4669624917,
+  "lat": 36.1191219,
+  "lon": -115.1783130,
+  "tags": {
+    "name": "Fall of Atlantis Show",
+    "tourism": "attraction"
+  }
+},
+{
+  "type": "node",
+  "id": 4749150238,
+  "lat": 36.1015996,
+  "lon": -115.1708690,
+  "tags": {
+    "addr:city": "Las Vegas",
+    "addr:state": "NV",
+    "name": "CSI: The Experience",
+    "tourism": "attraction"
+  }
+},
+{
+  "type": "node",
+  "id": 5374215230,
+  "lat": 36.1177969,
+  "lon": -115.1730844,
+  "tags": {
+    "bus": "yes",
+    "highway": "bus_stop",
+    "name": "Southbound Las Vegas at Caesars Palace",
+    "network": "RTC",
+    "network:wikidata": "Q7309181",
+    "operator": "Regional Transportation Commission of Southern Nevada",
+    "operator:wikidata": "Q7309181",
+    "public_transport": "platform",
+    "ref": "1339",
+    "route_ref": "The Deuce",
+    "shelter": "yes"
+  }
+},
+{
+  "type": "node",
+  "id": 5774753053,
+  "lat": 36.1329966,
+  "lon": -115.1740622,
+  "tags": {
+    "addr:city": "Las Vegas",
+    "addr:housenumber": "3160",
+    "addr:postcode": "89109",
+    "addr:state": "NV",
+    "addr:street": "Highland Drive",
+    "addr:unit": "D",
+    "name": "WelderUp",
+    "opening_hours": "Mo-Su 10:00-16:00",
+    "phone": "+1 702-862-4723",
+    "tourism": "attraction",
+    "website": "https://welderup.com/"
+  }
+},
+{
+  "type": "node",
+  "id": 5879269785,
+  "lat": 36.1167130,
+  "lon": -115.1712851,
+  "tags": {
+    "name": "Flamingos",
+    "tourism": "attraction",
+    "wheelchair": "yes"
+  }
+},
+{
+  "type": "node",
+  "id": 6202564673,
+  "lat": 36.1203727,
+  "lon": -115.1695681,
+  "tags": {
+    "amenity": "parking",
+    "capacity:disabled": "yes",
+    "name": "The Venetian Self-Parking",
+    "parking": "multi-storey"
+  }
+},
+{
+  "type": "node",
+  "id": 6836460385,
+  "lat": 36.1259025,
+  "lon": -115.1651680,
+  "tags": {
+    "amenity": "restaurant",
+    "cuisine": "american;brunch",
+    "name": "Tableau - Wynn Las Vegas"
+  }
+},
+{
+  "type": "node",
+  "id": 8241579281,
+  "lat": 36.1135961,
+  "lon": -115.1760851,
+  "tags": {
+    "amenity": "restaurant",
+    "name": "Bellagio Buffet"
+  }
+},
+{
+  "type": "node",
+  "id": 9273197817,
+  "lat": 36.1235450,
+  "lon": -115.1689850,
+  "tags": {
+    "name": "Gondola Rides at the Venetian",
+    "tourism": "attraction"
+  }
+},
+{
+  "type": "node",
+  "id": 9536189989,
+  "lat": 36.1026579,
+  "lon": -115.1741329,
+  "tags": {
+    "alt_name": "Manhattan Express Coaster",
+    "attraction": "roller_coaster",
+    "name": "Big Apple Coaster",
+    "roller_coaster": "station",
+    "tourism": "attraction"
+  }
+},
+{
+  "type": "node",
+  "id": 11773900335,
+  "lat": 36.1213004,
+  "lon": -115.1601350,
+  "tags": {
+    "access": "customers",
+    "addr:city": "Las Vegas",
+    "addr:housenumber": "255",
+    "addr:postcode": "89109",
+    "addr:state": "NV",
+    "addr:street": "Sands Avenue",
+    "amenity": "parking",
+    "fee": "yes",
+    "name": "Sphere Parking Lot A",
+    "operator": "Sphere Entertainment Co.",
+    "operator:type": "private",
+    "parking": "surface",
+    "website": "https://www.thespherevegas.com/plan-your-visit/transportation-and-parking"
+  }
+},
+{
+  "type": "node",
+  "id": 12272122953,
+  "lat": 36.1101550,
+  "lon": -115.1774272,
+  "tags": {
+    "name": "Bellagio Tram Station",
+    "network": "ARIA Express",
+    "operator": "Aria Resort and Casino",
+    "operator:wikidata": "Q654279",
+    "operator:wikipedia": "en:Aria Resort and Casino",
+    "public_transport": "stop_position",
+    "railway": "tram_stop",
+    "ref": "3",
+    "tram": "yes",
+    "wheelchair": "yes"
+  }
+},
+{
+  "type": "node",
+  "id": 12398237197,
+  "lat": 36.1156222,
+  "lon": -115.1745069,
+  "tags": {
+    "amenity": "restaurant",
+    "name": "Cafe Americano at Caesars Palace"
+  }
+},
+{
+  "type": "node",
+  "id": 12398251904,
+  "lat": 36.1173701,
+  "lon": -115.1732225,
+  "tags": {
+    "artwork_type": "sculpture",
+    "name": "Julius Caesar Statue at Caesars Palace Las Vegas",
+    "tourism": "artwork"
+  }
+},
+{
+  "type": "node",
+  "id": 12398251906,
+  "lat": 36.1179320,
+  "lon": -115.1749003,
+  "tags": {
+    "amenity": "casino",
+    "name": "Caesars Palace Poker Room"
+  }
+},
+{
+  "type": "node",
+  "id": 12400346766,
+  "lat": 36.1218832,
+  "lon": -115.1690292,
+  "tags": {
+    "name": "The Venetian Gift Shop",
+    "shop": "gift"
+  }
+},
+{
+  "type": "node",
+  "id": 12400346774,
+  "lat": 36.1214280,
+  "lon": -115.1690256,
+  "tags": {
+    "amenity": "bar",
+    "name": "Tipsy Robot at the Venetian"
+  }
+},
+{
+  "type": "node",
+  "id": 12407196268,
+  "lat": 36.1215480,
+  "lon": -115.1649461,
+  "tags": {
+    "amenity": "conference_centre",
+    "name": "The Venetian Convention Center"
+  }
+},
+{
+  "type": "node",
+  "id": 12407196269,
+  "lat": 36.1206917,
+  "lon": -115.1649172,
+  "tags": {
+    "name": "The Venetian Shoppe",
+    "shop": "clothes"
+  }
+},
+{
+  "type": "node",
+  "id": 12407196270,
+  "lat": 36.1220634,
+  "lon": -115.1655133,
+  "tags": {
+    "name": "The Venetian Expo Cafe Presse",
+    "shop": "coffee"
+  }
+},
+{
+  "type": "node",
+  "id": 12407196273,
+  "lat": 36.1208815,
+  "lon": -115.1691613,
+  "tags": {
+    "amenity": "restaurant",
+    "name": "Bouchon at The Venetian"
+  }
+},
+{
+  "type": "node",
+  "id": 13124284116,
+  "lat": 36.1215773,
+  "lon": -115.1716028,
+  "tags": {
+    "bench": "no",
+    "bus": "yes",
+    "highway": "bus_stop",
+    "name": "Northbound Las Vegas at Venetian",
+    "network": "RTC",
+    "network:wikidata": "Q7309181",
+    "operator": "Regional Transportation Commission of Southern Nevada",
+    "operator:wikidata": "Q7309181",
+    "public_transport": "platform",
+    "ref": "1377",
+    "route_ref": "Deuce",
+    "shelter": "no",
+    "source": "RTC GIS"
+  }
+},
+{
+  "type": "node",
+  "id": 13692014482,
+  "lat": 36.1131764,
+  "lon": -115.1770507,
+  "tags": {
+    "addr:city": "Las Vegas",
+    "addr:housenumber": "3600",
+    "addr:postcode": "89109",
+    "addr:state": "NV",
+    "addr:street": "South Las Vegas Boulevard",
+    "amenity": "clinic",
+    "description": "Medspa in Bellagio.",
+    "healthcare": "clinic",
+    "name": "Kalologie | The Bellagio | IV Therapy & More",
+    "opening_hours": "Mo-Th 09:00-16:00; Fr-Su 09:00-17:00",
+    "phone": "+1-702-790-8735",
+    "website": "https://kalologie.com/our-locations/kalologie-at-bellagio"
+  }
+},
+{
+  "type": "way",
+  "id": 14293119,
+  "center": {
+    "lat": 36.1118838,
+    "lon": -115.1746814
+  },
+  "tags": {
+    "highway": "unclassified",
+    "lanes": "2",
+    "name": "Bellagio Drive",
+    "oneway": "yes",
+    "sidewalk:left": "no",
+    "sidewalk:right": "separate",
+    "surface": "asphalt",
+    "tiger:cfcc": "A41",
+    "tiger:county": "Clark, NV",
+    "tiger:name_base": "Bellagio",
+    "tiger:name_type": "Dr",
+    "tiger:reviewed": "no"
+  }
+},
+{
+  "type": "way",
+  "id": 22971030,
+  "center": {
+    "lat": 36.1128057,
+    "lon": -115.1741094
+  },
+  "tags": {
+    "amenity": "fountain",
+    "covered": "no",
+    "drinking_water": "no",
+    "fountain": "decorative",
+    "indoor": "no",
+    "name": "Fountains of Bellagio",
+    "name:ko": "벨라지오 분수 쇼",
+    "name:ru": "Фонтаны Белладжио",
+    "natural": "water",
+    "site": "geodesic",
+    "tourism": "attraction",
+    "type": "site",
+    "water": "fountain",
+    "website": "https://www.bellagio.com/en/entertainment/fountains-of-bellagio.html",
+    "wheelchair": "yes",
+    "wikidata": "Q2735117",
+    "wikipedia": "en:Fountains of Bellagio"
+  }
+},
+{
+  "type": "way",
+  "id": 25718284,
+  "center": {
+    "lat": 36.1112832,
+    "lon": -115.1745997
+  },
+  "tags": {
+    "bridge": "yes",
+    "highway": "unclassified",
+    "lanes": "4",
+    "layer": "1",
+    "name": "Bellagio Drive",
+    "oneway": "yes",
+    "sidewalk:left": "no",
+    "sidewalk:right": "separate",
+    "surface": "asphalt",
+    "tiger:cfcc": "A41",
+    "tiger:county": "Clark, NV",
+    "tiger:name_base": "Bellagio",
+    "tiger:name_type": "Dr",
+    "tiger:reviewed": "no"
+  }
+},
+{
+  "type": "way",
+  "id": 25718286,
+  "center": {
+    "lat": 36.1110315,
+    "lon": -115.1735720
+  },
+  "tags": {
+    "highway": "unclassified",
+    "lanes": "3",
+    "name": "Bellagio Drive",
+    "oneway": "yes",
+    "sidewalk:both": "no",
+    "surface": "asphalt",
+    "tiger:cfcc": "A41",
+    "tiger:county": "Clark, NV",
+    "tiger:name_base": "Bellagio",
+    "tiger:name_type": "Dr",
+    "tiger:reviewed": "no",
+    "turn:lanes": "left|left|left"
+  }
+},
+{
+  "type": "way",
+  "id": 25718288,
+  "center": {
+    "lat": 36.1112715,
+    "lon": -115.1761506
+  },
+  "tags": {
+    "access": "yes",
+    "amenity": "parking",
+    "building": "yes",
+    "building:levels": "3",
+    "fee": "yes",
+    "height": "10",
+    "name": "Bellagio Self Parking Garage",
+    "opening_hours": "24/7",
+    "parking": "multi-storey",
+    "website": "https://www.mgmresorts.com/en/things-to-do/parking.html"
+  }
+},
+{
+  "type": "way",
+  "id": 25723909,
+  "center": {
+    "lat": 36.1131121,
+    "lon": -115.1768773
+  },
+  "tags": {
+    "addr:city": "Las Vegas",
+    "addr:housenumber": "3600",
+    "addr:postcode": "89109",
+    "addr:state": "NV",
+    "addr:street": "South Las Vegas Boulevard",
+    "building": "yes",
+    "building:colour": "#b4AAA7",
+    "building:levels": "34",
+    "height": "120",
+    "layer": "4",
+    "name": "Bellagio Las Vegas",
+    "name:en": "Bellagio Las Vegas",
+    "name:zh": "百樂宮飯店",
+    "operator": "MGM Resorts International",
+    "operator:wikidata": "Q568532",
+    "operator:wikipedia": "en:MGM Resorts International",
+    "phone": "+1-888-987-6667",
+    "rooms": "3950",
+    "tourism": "hotel",
+    "website": "https://bellagio.mgmresorts.com/en.html",
+    "wikidata": "Q25007",
+    "wikipedia": "en:Bellagio (resort)"
+  }
+},
+{
+  "type": "way",
+  "id": 25723910,
+  "center": {
+    "lat": 36.1109485,
+    "lon": -115.1773612
+  },
+  "tags": {
+    "building": "hotel",
+    "building:levels": "30",
+    "height": "100 m",
+    "layer": "3",
+    "name": "Bellagio Spa Tower"
+  }
+},
+{
+  "type": "way",
+  "id": 27831699,
+  "center": {
+    "lat": 36.1124630,
+    "lon": -115.1721684
+  },
+  "tags": {
+    "alt_name": "Eiffel Tower Experience",
+    "building": "commercial",
+    "building:levels": "54",
+    "building:shape": "pyramidal",
+    "height": "165",
+    "layer": "1",
+    "man_made": "tower",
+    "name": "Eiffel Tower",
+    "phone": "+1 877-796-2096",
+    "tourism": "attraction",
+    "tower:construction": "lattice"
+  }
+},
+{
+  "type": "way",
+  "id": 27910587,
+  "center": {
+    "lat": 36.1258804,
+    "lon": -115.1597879
+  },
+  "tags": {
+    "access": "private",
+    "addr:city": "Las Vegas",
+    "addr:housenumber": "3131",
+    "addr:postcode": "89109",
+    "addr:state": "NV",
+    "addr:street": "South Las Vegas Boulevard",
+    "description": "18 hole Par 70",
+    "golf:course": "18_hole",
+    "golf:par": "70",
+    "leisure": "golf_course",
+    "name": "Wynn Golf Course",
+    "name:tr": "Wynn Golf Sahası",
+    "phone": "+1-702-770-4653",
+    "website": "https://www.wynnlasvegas.com/"
+  }
+},
+{
+  "type": "way",
+  "id": 30618090,
+  "center": {
+    "lat": 36.1215198,
+    "lon": -115.1691644
+  },
+  "tags": {
+    "building": "yes",
+    "building:colour": "#F6E3CE",
+    "building:levels": "37",
+    "height": "145",
+    "name": "Venetian Tower",
+    "roof:colour": "white",
+    "roof:material": "concrete",
+    "roof:shape": "flat"
+  }
+},
+{
+  "type": "way",
+  "id": 34068416,
+  "center": {
+    "lat": 36.1189178,
+    "lon": -115.1758152
+  },
+  "tags": {
+    "building": "yes",
+    "building:levels": "3",
+    "building:max_level": "3",
+    "name": "The Forum Shops at Caesars",
+    "shop": "mall",
+    "wikidata": "Q2382966",
+    "wikipedia": "en:The Forum Shops at Caesars"
+  }
+},
+{
+  "type": "way",
+  "id": 61239326,
+  "center": {
+    "lat": 36.1151041,
+    "lon": -115.1716550
+  },
+  "tags": {
+    "addr:city": "Las Vegas",
+    "addr:county": "Clark",
+    "addr:housenumber": "3595",
+    "addr:postcode": "89109",
+    "addr:state": "NV",
+    "addr:street": "South Las Vegas Boulevard",
+    "brand": "Caesars",
+    "building": "hotel",
+    "internet_access": "wlan",
+    "name": "The Vanderpump Las Vegas Hotel & Casino - A Caesars Rewards Destination",
+    "phone": "+1 702 777 3777",
+    "rooms": "188",
+    "toilets:wheelchair": "yes",
+    "tourism": "hotel",
+    "website": "https://www.caesars.com/vanderpump-hotel",
+    "wheelchair": "yes",
+    "wikipedia": "en: The Vanderpump Hotel"
+  }
+},
+{
+  "type": "way",
+  "id": 111339081,
+  "center": {
+    "lat": 36.1210115,
+    "lon": -115.1634121
+  },
+  "tags": {
+    "amenity": "parking",
+    "building": "yes",
+    "height": "25",
+    "name": "Wynn Employee Parking",
+    "parking": "multi-storey"
+  }
+},
+{
+  "type": "way",
+  "id": 111339183,
+  "center": {
+    "lat": 36.1275577,
+    "lon": -115.1676702
+  },
+  "tags": {
+    "highway": "unclassified",
+    "lanes": "3",
+    "name": "Wynn Main Gate Drive",
+    "oneway": "yes",
+    "smoothness": "good",
+    "source:name": "https://maps.clarkcountynv.gov/openweb/?@778747,26748342,8",
+    "surface": "paving_stones"
+  }
+},
+{
+  "type": "way",
+  "id": 111348717,
+  "center": {
+    "lat": 36.1247197,
+    "lon": -115.1669064
+  },
+  "tags": {
+    "access": "customers",
+    "highway": "unclassified",
+    "name": "Wynn South Gate",
+    "oneway": "yes",
+    "surface": "asphalt"
+  }
+},
+{
+  "type": "way",
+  "id": 111367819,
+  "center": {
+    "lat": 36.1218977,
+    "lon": -115.1662300
+  },
+  "tags": {
+    "amenity": "conference_centre",
+    "building": "yes",
+    "layer": "1",
+    "name": "Venetian Expo",
+    "old_name": "Sands Expo",
+    "tourism": "yes",
+    "wikidata": "Q7416896",
+    "wikipedia": "en:Venetian Expo"
+  }
+},
+{
+  "type": "way",
+  "id": 114718351,
+  "center": {
+    "lat": 36.1120045,
+    "lon": -115.1765630
+  },
+  "tags": {
+    "access": "yes",
+    "building:levels": "5",
+    "building:part": "roof",
+    "fee": "no",
+    "garden:type": "botanical",
+    "leisure": "garden",
+    "name": "Bellagio Conservatory & Botanical Gardens",
+    "wikidata": "Q124203376"
+  }
+},
+{
+  "type": "way",
+  "id": 114724063,
+  "center": {
+    "lat": 36.1137260,
+    "lon": -115.1668667
+  },
+  "tags": {
+    "building": "yes",
+    "building:levels": "5",
+    "name": "Caesars Employment Center",
+    "office": "employment_agency"
+  }
+},
+{
+  "type": "way",
+  "id": 115672893,
+  "center": {
+    "lat": 36.1166247,
+    "lon": -115.1766530
+  },
+  "tags": {
+    "addr:city": "Las Vegas",
+    "addr:county": "Clark",
+    "addr:housenumber": "3570",
+    "addr:postcode": "89109",
+    "addr:state": "NV",
+    "addr:street": "Las Vegas Boulevard",
+    "air_conditioning": "yes",
+    "amenity": "casino",
+    "building": "hotel",
+    "ele": "644",
+    "fax": "+1 702 866 1700",
+    "gnis:feature_id": "2472987",
+    "layer": "1",
+    "name": "Caesars Palace",
+    "name:en": "Caesars Palace",
+    "name:zh": "凱薩宮酒店",
+    "opening_hours": "24/7",
+    "phone": "+1 866 227 5938",
+    "tourism": "hotel",
+    "website": "https://www.caesars.com/caesars-palace",
+    "wheelchair": "yes",
+    "wikidata": "Q569978",
+    "wikipedia": "en:Caesars Palace"
+  }
+},
+{
+  "type": "way",
+  "id": 115773426,
+  "center": {
+    "lat": 36.1183503,
+    "lon": -115.1705982
+  },
+  "tags": {
+    "addr:city": "Las Vegas",
+    "addr:housenumber": "3535",
+    "addr:postcode": "89109",
+    "addr:state": "NV",
+    "addr:street": "South Las Vegas Boulevard",
+    "building": "hotel",
+    "building:levels": "20",
+    "name": "The LINQ Hotel & Casino - A Caesars Rewards Destination",
+    "operator": "Caesar’s Entertainment",
+    "smoking": "yes"
+  }
+},
+{
+  "type": "way",
+  "id": 116867081,
+  "center": {
+    "lat": 36.1134826,
+    "lon": -115.1689115
+  },
+  "tags": {
+    "addr:city": "Las Vegas",
+    "addr:county": "Clark",
+    "addr:housenumber": "3645",
+    "addr:postcode": "89109",
+    "addr:state": "NV",
+    "addr:street": "South Las Vegas Boulevard",
+    "building": "commercial",
+    "building:levels": "26",
+    "ele": "640",
+    "gnis:feature_id": "2472977",
+    "name": "Horseshoe Las Vegas Hotel & Casino - A Caesars Rewards Destination",
+    "tourism": "hotel",
+    "wikidata": "Q805467"
+  }
+},
+{
+  "type": "way",
+  "id": 128573458,
+  "center": {
+    "lat": 36.1328628,
+    "lon": -115.1615495
+  },
+  "tags": {
+    "building": "yes",
+    "height": "12",
+    "name": "Vegas Indoor Skydiving",
+    "name_alt": "Flyaway Vegas",
+    "sport": "skydiving",
+    "tourism": "attraction",
+    "website": "https://www.vegasindoorskydiving.com/"
+  }
+},
+{
+  "type": "way",
+  "id": 134949402,
+  "center": {
+    "lat": 36.1167079,
+    "lon": -115.1751898
+  },
+  "tags": {
+    "addr:city": "Las Vegas",
+    "addr:housenumber": "3570",
+    "addr:postcode": "89109",
+    "addr:state": "NV",
+    "addr:street": "South Las Vegas Boulevard",
+    "brand": "Caesars Entertainment",
+    "brand:wikidata": "Q104840749",
+    "building": "hotel",
+    "building:levels": "12",
+    "height": "40 m",
+    "internet_access": "yes",
+    "name": "Nobu Hotel at Caesars Palace",
+    "opening_hours": "24/7",
+    "phone": "+1 800 727 4923",
+    "tourism": "hotel",
+    "website": "https://www.caesars.com/nobu-caesars-palace"
+  }
+},
+{
+  "type": "way",
+  "id": 134949710,
+  "center": {
+    "lat": 36.1177383,
+    "lon": -115.1787016
+  },
+  "tags": {
+    "amenity": "parking",
+    "building": "yes",
+    "building:levels": "7",
+    "fee": "yes",
+    "name": "Caesars Palace Self Parking",
+    "parking": "multi-storey"
+  }
+},
+{
+  "type": "way",
+  "id": 134949713,
+  "center": {
+    "lat": 36.1176932,
+    "lon": -115.1768967
+  },
+  "tags": {
+    "amenity": "parking",
+    "building": "yes",
+    "building:levels": "7",
+    "fee": "yes",
+    "name": "Caesars Palace Self Parking",
+    "parking": "multi-storey"
+  }
+},
+{
+  "type": "way",
+  "id": 134949715,
+  "center": {
+    "lat": 36.1163888,
+    "lon": -115.1788076
+  },
+  "tags": {
+    "amenity": "conference_centre",
+    "building:part": "yes",
+    "name": "Caesars Palace Convention Center"
+  }
+},
+{
+  "type": "way",
+  "id": 135459231,
+  "center": {
+    "lat": 36.1191096,
+    "lon": -115.1793525
+  },
+  "tags": {
+    "amenity": "parking",
+    "building": "yes",
+    "building:levels": "7",
+    "fee": "yes",
+    "name": "Caesars Palace Self Parking",
+    "parking": "multi-storey"
+  }
+},
+{
+  "type": "way",
+  "id": 156624461,
+  "center": {
+    "lat": 36.1217551,
+    "lon": -115.1561741
+  },
+  "tags": {
+    "building": "yes",
+    "name": "Wynn Resorts Employment Center",
+    "office": "employment_agency"
+  }
+},
+{
+  "type": "way",
+  "id": 205501268,
+  "center": {
+    "lat": 36.1266511,
+    "lon": -115.1656312
+  },
+  "tags": {
+    "addr:city": "Las Vegas",
+    "addr:housenumber": "3131",
+    "addr:postcode": "89109",
+    "addr:state": "NV",
+    "addr:street": "Wynn Las Vegas",
+    "air_conditioning": "yes",
+    "building": "commercial",
+    "building:colour": "brown",
+    "building:material": "mirror",
+    "height": "187",
+    "internet_access": "wlan",
+    "layer": "1",
+    "level": "45",
+    "name": "Wynn Las Vegas",
+    "opening_hours": "24/7",
+    "rooms": "2716",
+    "tourism": "hotel",
+    "website": "https://www.wynnlasvegas.com/",
+    "wheelchair": "yes"
+  }
+},
+{
+  "type": "way",
+  "id": 345705621,
+  "center": {
+    "lat": 36.1170553,
+    "lon": -115.1797011
+  },
+  "tags": {
+    "highway": "service",
+    "name": "Caesars Service Road",
+    "surface": "asphalt"
+  }
+},
+{
+  "type": "way",
+  "id": 364846543,
+  "center": {
+    "lat": 36.1151300,
+    "lon": -115.1736229
+  },
+  "tags": {
+    "amenity": "bar",
+    "building": "commercial",
+    "height": "2.1",
+    "name": "Mojito Hut at Caesars Palace"
+  }
+},
+{
+  "type": "way",
+  "id": 364846544,
+  "center": {
+    "lat": 36.1114043,
+    "lon": -115.1725333
+  },
+  "tags": {
+    "building": "yes",
+    "height": "46",
+    "man_made": "tower",
+    "name": "Paris Balloon",
+    "note": "150 foot tall hot air balloon looking billboard",
+    "roof:shape": "dome",
+    "tourism": "attraction",
+    "tower:construction": "freestanding"
+  }
+},
+{
+  "type": "way",
+  "id": 374989496,
+  "center": {
+    "lat": 36.1173140,
+    "lon": -115.1734804
+  },
+  "tags": {
+    "highway": "unclassified",
+    "lit": "yes",
+    "name": "Caesars Palace Drive",
+    "oneway": "yes",
+    "sidewalk:left": "no",
+    "sidewalk:right": "separate",
+    "smoothness": "excellent",
+    "surface": "asphalt"
+  }
+},
+{
+  "type": "way",
+  "id": 402543930,
+  "center": {
+    "lat": 36.1175589,
+    "lon": -115.1681609
+  },
+  "tags": {
+    "attraction": "big_wheel",
+    "height": "167",
+    "layer": "2",
+    "name": "High Roller",
+    "name:ko": "하이롤러",
+    "tourism": "attraction",
+    "website": "https://www.caesars.com/linq/high-roller",
+    "wikidata": "Q892103",
+    "wikipedia": "en:High Roller (Ferris wheel)"
+  }
+},
+{
+  "type": "way",
+  "id": 402543933,
+  "center": {
+    "lat": 36.1176315,
+    "lon": -115.1682178
+  },
+  "tags": {
+    "area": "yes",
+    "highway": "pedestrian",
+    "name": "High Roller Observation Deck",
+    "surface": "concrete"
+  }
+},
+{
+  "type": "way",
+  "id": 402792183,
+  "center": {
+    "lat": 36.1252660,
+    "lon": -115.1664689
+  },
+  "tags": {
+    "access": "customers",
+    "highway": "unclassified",
+    "name": "Wynn South Gate",
+    "oneway": "yes"
+  }
+},
+{
+  "type": "way",
+  "id": 402792187,
+  "center": {
+    "lat": 36.1249904,
+    "lon": -115.1667471
+  },
+  "tags": {
+    "access": "customers",
+    "highway": "unclassified",
+    "name": "Wynn South Gate",
+    "oneway": "yes",
+    "smoothness": "good",
+    "surface": "asphalt"
+  }
+},
+{
+  "type": "way",
+  "id": 402792188,
+  "center": {
+    "lat": 36.1255022,
+    "lon": -115.1664913
+  },
+  "tags": {
+    "access": "customers",
+    "highway": "unclassified",
+    "name": "Wynn South Gate",
+    "oneway": "yes"
+  }
+},
+{
+  "type": "way",
+  "id": 495449303,
+  "center": {
+    "lat": 36.1166247,
+    "lon": -115.1766530
+  },
+  "tags": {
+    "amenity": "casino",
+    "name": "Caesars Palace Complex"
+  }
+},
+{
+  "type": "way",
+  "id": 502072804,
+  "center": {
+    "lat": 36.1116964,
+    "lon": -115.1784683
+  },
+  "tags": {
+    "amenity": "conference_centre",
+    "indoor": "yes",
+    "layer": "-1",
+    "name": "Bellagio Convention Area"
+  }
+},
+{
+  "type": "way",
+  "id": 543638185,
+  "center": {
+    "lat": 36.1243724,
+    "lon": -115.1706346
+  },
+  "tags": {
+    "building": "ship",
+    "historic": "ship",
+    "tourism": "attraction"
+  }
+},
+{
+  "type": "way",
+  "id": 543638206,
+  "center": {
+    "lat": 36.1247520,
+    "lon": -115.1703021
+  },
+  "tags": {
+    "building": "ship",
+    "historic": "ship",
+    "tourism": "attraction"
+  }
+},
+{
+  "type": "way",
+  "id": 586928078,
+  "center": {
+    "lat": 36.1193649,
+    "lon": -115.1741363
+  },
+  "tags": {
+    "area": "yes",
+    "loc_name": "The Strip",
+    "name": "Las Vegas Strip",
+    "opening_hours": "24/7",
+    "tourism": "attraction",
+    "wikidata": "Q745608",
+    "wikipedia": "en:Las Vegas Strip"
+  }
+},
+{
+  "type": "way",
+  "id": 600022989,
+  "center": {
+    "lat": 36.1274332,
+    "lon": -115.1669664
+  },
+  "tags": {
+    "highway": "unclassified",
+    "lanes": "1",
+    "name": "Wynn Main Gate Drive",
+    "oneway": "yes",
+    "source:name": "https://maps.clarkcountynv.gov/openweb/?@778747,26748342,8",
+    "surface": "asphalt"
+  }
+},
+{
+  "type": "way",
+  "id": 707357749,
+  "center": {
+    "lat": 36.1256866,
+    "lon": -115.1664346
+  },
+  "tags": {
+    "access": "customers",
+    "covered": "yes",
+    "highway": "unclassified",
+    "name": "Wynn South Gate",
+    "oneway": "yes"
+  }
+},
+{
+  "type": "way",
+  "id": 762169780,
+  "center": {
+    "lat": 36.1189370,
+    "lon": -115.1661886
+  },
+  "tags": {
+    "addr:city": "Las Vegas",
+    "addr:housenumber": "3911",
+    "addr:postcode": "89109",
+    "addr:state": "NV",
+    "addr:street": "South Koval Lane",
+    "amenity": "conference_centre",
+    "building": "yes",
+    "name": "Caesars Forum",
+    "phone": "+1-855-633-8238",
+    "website": "https://www.caesarsforum.com/",
+    "wikidata": "Q107073101",
+    "wikipedia": "en:Caesars Forum"
+  }
+},
+{
+  "type": "way",
+  "id": 767372238,
+  "center": {
+    "lat": 36.1174096,
+    "lon": -115.1733077
+  },
+  "tags": {
+    "highway": "unclassified",
+    "name": "Caesars Palace Drive",
+    "oneway": "yes",
+    "sidewalk:left": "no",
+    "sidewalk:right": "separate",
+    "smoothness": "excellent",
+    "surface": "asphalt"
+  }
+},
+{
+  "type": "way",
+  "id": 789702810,
+  "center": {
+    "lat": 36.1120057,
+    "lon": -115.1752470
+  },
+  "tags": {
+    "covered": "yes",
+    "highway": "unclassified",
+    "name": "Bellagio Drive",
+    "oneway": "yes",
+    "sidewalk:left": "no",
+    "sidewalk:right": "separate",
+    "surface": "asphalt",
+    "tiger:cfcc": "A41",
+    "tiger:county": "Clark, NV",
+    "tiger:name_base": "Bellagio",
+    "tiger:name_type": "Dr",
+    "tiger:reviewed": "no"
+  }
+},
+{
+  "type": "way",
+  "id": 789702811,
+  "center": {
+    "lat": 36.1115050,
+    "lon": -115.1748803
+  },
+  "tags": {
+    "highway": "unclassified",
+    "lanes": "3",
+    "name": "Bellagio Drive",
+    "oneway": "yes",
+    "sidewalk:left": "no",
+    "sidewalk:right": "separate",
+    "smoothness": "good",
+    "surface": "asphalt",
+    "tiger:cfcc": "A41",
+    "tiger:county": "Clark, NV",
+    "tiger:name_base": "Bellagio",
+    "tiger:name_type": "Dr",
+    "tiger:reviewed": "no"
+  }
+},
+{
+  "type": "way",
+  "id": 946789276,
+  "center": {
+    "lat": 36.1170885,
+    "lon": -115.1794590
+  },
+  "tags": {
+    "highway": "service",
+    "name": "Caesars Service Road",
+    "surface": "asphalt"
+  }
+},
+{
+  "type": "way",
+  "id": 946789277,
+  "center": {
+    "lat": 36.1170720,
+    "lon": -115.1787817
+  },
+  "tags": {
+    "covered": "yes",
+    "highway": "service",
+    "name": "Caesars Service Road",
+    "surface": "asphalt"
+  }
+},
+{
+  "type": "way",
+  "id": 946789278,
+  "center": {
+    "lat": 36.1170489,
+    "lon": -115.1779672
+  },
+  "tags": {
+    "highway": "service",
+    "name": "Caesars Service Road",
+    "surface": "asphalt"
+  }
+},
+{
+  "type": "way",
+  "id": 964588226,
+  "center": {
+    "lat": 36.1173219,
+    "lon": -115.1736193
+  },
+  "tags": {
+    "highway": "unclassified",
+    "name": "Caesars Palace Drive",
+    "oneway": "yes",
+    "sidewalk:left": "no",
+    "sidewalk:right": "separate"
+  }
+},
+{
+  "type": "way",
+  "id": 976244059,
+  "center": {
+    "lat": 36.1253169,
+    "lon": -115.1663446
+  },
+  "tags": {
+    "access": "customers",
+    "highway": "unclassified",
+    "name": "Wynn South Gate",
+    "oneway": "yes"
+  }
+},
+{
+  "type": "way",
+  "id": 976405284,
+  "center": {
+    "lat": 36.1212436,
+    "lon": -115.1620684
+  },
+  "tags": {
+    "addr:city": "Las Vegas",
+    "addr:housenumber": "255",
+    "addr:postcode": "89109",
+    "addr:state": "NV",
+    "addr:street": "Sands Avenue",
+    "air_conditioning": "yes",
+    "alt_name": "MSG Sphere;Sphere at The Venetian Resort;The Sphere",
+    "amenity": "theatre",
+    "architect": "Populous",
+    "building": "commercial",
+    "capacity": "23600",
+    "capacity:persons": "23600",
+    "height": "112",
+    "layer": "1",
+    "name": "Sphere",
+    "name:en": "Sphere",
+    "name:ru": "Сфера",
+    "opening_date": "2023-09-29",
+    "operator": "Sphere Entertainment Co.",
+    "owner": "Sphere Entertainment Co.",
+    "roof:shape": "dome",
+    "shape": "spherical_cutted",
+    "start_date": "2023-09-29",
+    "website": "https://www.thesphere.com",
+    "wikidata": "Q60749353",
+    "wikipedia": "en:Sphere (venue)"
+  }
+},
+{
+  "type": "way",
+  "id": 1001560971,
+  "center": {
+    "lat": 36.1129365,
+    "lon": -115.1650400
+  },
+  "tags": {
+    "alt_name": "BattleBots Arena",
+    "amenity": "studio",
+    "building": "yes",
+    "name": "Caesars Entertainment Studios",
+    "source": "microsoft/BuildingFootprints",
+    "studio": "video"
+  }
+},
+{
+  "type": "way",
+  "id": 1030067966,
+  "center": {
+    "lat": 36.1110784,
+    "lon": -115.1741363
+  },
+  "tags": {
+    "highway": "unclassified",
+    "lanes": "5",
+    "name": "Bellagio Drive",
+    "oneway": "yes",
+    "sidewalk:left": "no",
+    "sidewalk:right": "separate",
+    "surface": "asphalt",
+    "tiger:cfcc": "A41",
+    "tiger:county": "Clark, NV",
+    "tiger:name_base": "Bellagio",
+    "tiger:name_type": "Dr",
+    "tiger:reviewed": "no"
+  }
+},
+{
+  "type": "way",
+  "id": 1030067967,
+  "center": {
+    "lat": 36.1110765,
+    "lon": -115.1729737
+  },
+  "tags": {
+    "bicycle": "yes",
+    "foot": "no",
+    "hgv": "no",
+    "highway": "unclassified",
+    "horse": "permissive",
+    "motor_vehicle": "yes",
+    "name": "Bellagio Drive",
+    "oneway": "yes",
+    "sidewalk:left": "no",
+    "sidewalk:right": "separate",
+    "surface": "asphalt",
+    "tiger:cfcc": "A41",
+    "tiger:county": "Clark, NV",
+    "tiger:name_base": "Bellagio",
+    "tiger:name_type": "Dr",
+    "tiger:reviewed": "no"
+  }
+},
+{
+  "type": "way",
+  "id": 1035069442,
+  "center": {
+    "lat": 36.1272663,
+    "lon": -115.1668392
+  },
+  "tags": {
+    "highway": "unclassified",
+    "lanes": "2",
+    "name": "Wynn Main Gate Drive",
+    "oneway": "yes",
+    "source:name": "https://maps.clarkcountynv.gov/openweb/?@778747,26748342,8",
+    "surface": "asphalt"
+  }
+},
+{
+  "type": "way",
+  "id": 1035080512,
+  "center": {
+    "lat": 36.1112585,
+    "lon": -115.1734859
+  },
+  "tags": {
+    "bicycle": "yes",
+    "foot": "no",
+    "highway": "unclassified",
+    "horse": "permissive",
+    "lanes": "3",
+    "motor_vehicle": "yes",
+    "name": "Bellagio Drive",
+    "oneway": "yes",
+    "sidewalk:both": "no",
+    "surface": "asphalt",
+    "tiger:cfcc": "A41",
+    "tiger:county": "Clark, NV",
+    "tiger:name_base": "Bellagio",
+    "tiger:name_type": "Dr",
+    "tiger:reviewed": "no"
+  }
+},
+{
+  "type": "way",
+  "id": 1035080513,
+  "center": {
+    "lat": 36.1113724,
+    "lon": -115.1739810
+  },
+  "tags": {
+    "highway": "unclassified",
+    "lanes": "5",
+    "name": "Bellagio Drive",
+    "oneway": "yes",
+    "sidewalk:left": "no",
+    "sidewalk:right": "separate",
+    "surface": "asphalt",
+    "tiger:cfcc": "A41",
+    "tiger:county": "Clark, NV",
+    "tiger:name_base": "Bellagio",
+    "tiger:name_type": "Dr",
+    "tiger:reviewed": "no"
+  }
+},
+{
+  "type": "way",
+  "id": 1041357122,
+  "center": {
+    "lat": 36.1117905,
+    "lon": -115.1751704
+  },
+  "tags": {
+    "highway": "unclassified",
+    "lanes": "1",
+    "name": "Bellagio Drive",
+    "oneway": "yes",
+    "sidewalk:left": "no",
+    "sidewalk:right": "separate",
+    "surface": "asphalt",
+    "tiger:cfcc": "A41",
+    "tiger:county": "Clark, NV",
+    "tiger:name_base": "Bellagio",
+    "tiger:name_type": "Dr",
+    "tiger:reviewed": "no"
+  }
+},
+{
+  "type": "way",
+  "id": 1043470556,
+  "center": {
+    "lat": 36.1276222,
+    "lon": -115.1676222
+  },
+  "tags": {
+    "highway": "unclassified",
+    "lanes": "4",
+    "name": "Wynn Main Gate Drive",
+    "oneway": "yes",
+    "smoothness": "good",
+    "source:name": "https://maps.clarkcountynv.gov/openweb/?@778747,26748342,8",
+    "surface": "paving_stones",
+    "turn:lanes": "left|left|none|none"
+  }
+},
+{
+  "type": "way",
+  "id": 1050182643,
+  "center": {
+    "lat": 36.1111870,
+    "lon": -115.1744568
+  },
+  "tags": {
+    "highway": "unclassified",
+    "lanes": "4",
+    "name": "Bellagio Drive",
+    "oneway": "yes",
+    "sidewalk:left": "no",
+    "sidewalk:right": "separate",
+    "surface": "asphalt",
+    "tiger:cfcc": "A41",
+    "tiger:county": "Clark, NV",
+    "tiger:name_base": "Bellagio",
+    "tiger:name_type": "Dr",
+    "tiger:reviewed": "no"
+  }
+},
+{
+  "type": "way",
+  "id": 1124614071,
+  "center": {
+    "lat": 36.1273041,
+    "lon": -115.1671945
+  },
+  "tags": {
+    "highway": "unclassified",
+    "lanes": "3",
+    "name": "Wynn Main Gate Drive",
+    "oneway": "yes",
+    "source:name": "https://maps.clarkcountynv.gov/openweb/?@778747,26748342,8",
+    "surface": "asphalt"
+  }
+},
+{
+  "type": "way",
+  "id": 1124614072,
+  "center": {
+    "lat": 36.1275573,
+    "lon": -115.1673852
+  },
+  "tags": {
+    "highway": "unclassified",
+    "lanes": "1",
+    "name": "Wynn Main Gate Drive",
+    "oneway": "yes",
+    "source:name": "https://maps.clarkcountynv.gov/openweb/?@778747,26748342,8",
+    "surface": "asphalt"
+  }
+},
+{
+  "type": "way",
+  "id": 1124614073,
+  "center": {
+    "lat": 36.1274139,
+    "lon": -115.1674494
+  },
+  "tags": {
+    "highway": "unclassified",
+    "lanes": "3",
+    "name": "Wynn Main Gate Drive",
+    "oneway": "yes",
+    "source:name": "https://maps.clarkcountynv.gov/openweb/?@778747,26748342,8",
+    "surface": "asphalt"
+  }
+},
+{
+  "type": "way",
+  "id": 1198427833,
+  "center": {
+    "lat": 36.1098946,
+    "lon": -115.1619890
+  },
+  "tags": {
+    "building": "yes",
+    "building:colour": "white",
+    "building:levels": "4",
+    "height": "19.5",
+    "name": "Grand Prix Plaza",
+    "tourism": "attraction"
+  }
+},
+{
+  "type": "way",
+  "id": 1354683789,
+  "center": {
+    "lat": 36.1246426,
+    "lon": -115.1672222
+  },
+  "tags": {
+    "access": "customers",
+    "highway": "unclassified",
+    "name": "Wynn South Gate",
+    "oneway": "yes",
+    "smoothness": "good",
+    "surface": "asphalt"
+  }
+},
+{
+  "type": "way",
+  "id": 1354683790,
+  "center": {
+    "lat": 36.1247509,
+    "lon": -115.1670710
+  },
+  "tags": {
+    "highway": "unclassified",
+    "name": "Wynn South Gate",
+    "oneway": "yes",
+    "smoothness": "good",
+    "surface": "asphalt"
+  }
+},
+{
+  "type": "way",
+  "id": 1362569858,
+  "center": {
+    "lat": 36.1173188,
+    "lon": -115.1731882
+  },
+  "tags": {
+    "highway": "unclassified",
+    "lit": "yes",
+    "name": "Caesars Palace Drive",
+    "oneway": "yes",
+    "sidewalk:left": "no",
+    "sidewalk:right": "separate",
+    "smoothness": "excellent",
+    "surface": "asphalt"
+  }
+},
+{
+  "type": "way",
+  "id": 1415677576,
+  "center": {
+    "lat": 36.1262835,
+    "lon": -115.1673679
+  },
+  "tags": {
+    "highway": "corridor",
+    "indoor": "yes",
+    "level": "0",
+    "name": "Wynn Esplanade"
+  }
+},
+{
+  "type": "way",
+  "id": 1415781861,
+  "center": {
+    "lat": 36.1140535,
+    "lon": -115.1742151
+  },
+  "tags": {
+    "highway": "corridor",
+    "indoor": "yes",
+    "name": "Via Bellagio",
+    "wheelchair": "yes"
+  }
+},
+{
+  "type": "way",
+  "id": 1419057377,
+  "center": {
+    "lat": 36.1274595,
+    "lon": -115.1675579
+  },
+  "tags": {
+    "highway": "unclassified",
+    "lanes": "3",
+    "name": "Wynn Main Gate Drive",
+    "oneway": "yes",
+    "smoothness": "good",
+    "source:name": "https://maps.clarkcountynv.gov/openweb/?@778747,26748342,8",
+    "surface": "asphalt"
+  }
+},
+{
+  "type": "way",
+  "id": 1419057391,
+  "center": {
+    "lat": 36.1172975,
+    "lon": -115.1741804
+  },
+  "tags": {
+    "amenity": "bar",
+    "indoor": "room",
+    "name": "Caesars Palace Race and Sports Book",
+    "room": "shop"
+  }
+},
+{
+  "type": "way",
+  "id": 1419075076,
+  "center": {
+    "lat": 36.1112011,
+    "lon": -115.1729709
+  },
+  "tags": {
+    "bicycle": "yes",
+    "foot": "no",
+    "highway": "unclassified",
+    "horse": "permissive",
+    "lanes": "3",
+    "motor_vehicle": "yes",
+    "name": "Bellagio Drive",
+    "oneway": "yes",
+    "sidewalk:both": "no",
+    "surface": "asphalt"
+  }
+},
+{
+  "type": "way",
+  "id": 1419321983,
+  "center": {
+    "lat": 36.1036384,
+    "lon": -115.1724974
+  },
+  "tags": {
+    "addr:city": "Las Vegas",
+    "addr:country": "US",
+    "addr:housenumber": "3785",
+    "addr:postcode": "89109",
+    "addr:state": "NV",
+    "addr:street": "South Las Vegas Boulevard",
+    "branch": "Las Vegas",
+    "brand": "Coca-Cola",
+    "brand:wikidata": "Q2813",
+    "check_date": "2024-10-23",
+    "check_date:opening_hours": "2024-10-23",
+    "drink:cola": "yes",
+    "indoor": "room",
+    "name": "Coca‑Cola Store",
+    "opening_hours": "Mo-Th 09:00-22:00; Fr-Su 09:00-23:00",
+    "operator": "Coca-Cola",
+    "phone": "+1 702-270-5952",
+    "room": "shop",
+    "shop": "gift",
+    "tourism": "attraction",
+    "website": "https://www.coca-colastore.com/retail/las-vegas"
+  }
+},
+{
+  "type": "way",
+  "id": 1424252915,
+  "center": {
+    "lat": 36.1176297,
+    "lon": -115.1705762
+  },
+  "tags": {
+    "aerialway": "zip_line",
+    "name": "Fly LINQ Zipline",
+    "tourism": "attraction"
+  }
+},
+{
+  "type": "way",
+  "id": 1431583953,
+  "center": {
+    "lat": 36.1102069,
+    "lon": -115.1774623
+  },
+  "tags": {
+    "name": "Bellagio Tram Station",
+    "network": "ARIA Express",
+    "operator": "Aria Resort and Casino",
+    "operator:wikidata": "Q654279",
+    "operator:wikipedia": "en:Aria Resort and Casino",
+    "public_transport": "station",
+    "ref": "3",
+    "tram": "yes",
+    "wheelchair": "yes"
+  }
+},
+{
+  "type": "way",
+  "id": 1431583954,
+  "center": {
+    "lat": 36.1100378,
+    "lon": -115.1774021
+  },
+  "tags": {
+    "name": "Bellagio Tram Station",
+    "network": "ARIA Express",
+    "operator": "Aria Resort and Casino",
+    "operator:wikidata": "Q654279",
+    "operator:wikipedia": "en:Aria Resort and Casino",
+    "public_transport": "platform",
+    "railway": "platform",
+    "ref": "3",
+    "tram": "yes",
+    "wheelchair": "yes"
+  }
+},
+{
+  "type": "way",
+  "id": 1431583955,
+  "center": {
+    "lat": 36.1100375,
+    "lon": -115.1775149
+  },
+  "tags": {
+    "name": "Bellagio Tram Station",
+    "network": "ARIA Express",
+    "operator": "Aria Resort and Casino",
+    "operator:wikidata": "Q654279",
+    "operator:wikipedia": "en:Aria Resort and Casino",
+    "public_transport": "platform",
+    "railway": "platform",
+    "ref": "3",
+    "tram": "yes",
+    "wheelchair": "yes"
+  }
+},
+{
+  "type": "way",
+  "id": 1436542129,
+  "center": {
+    "lat": 36.1110542,
+    "lon": -115.1731908
+  },
+  "tags": {
+    "highway": "unclassified",
+    "lanes": "3",
+    "name": "Bellagio Drive",
+    "oneway": "yes",
+    "sidewalk:left": "no",
+    "sidewalk:right": "separate",
+    "surface": "asphalt",
+    "tiger:cfcc": "A41",
+    "tiger:county": "Clark, NV",
+    "tiger:name_base": "Bellagio",
+    "tiger:name_type": "Dr",
+    "tiger:reviewed": "no",
+    "turn:lanes": "left|left|left"
+  }
+},
+{
+  "type": "way",
+  "id": 1485126930,
+  "center": {
+    "lat": 36.1173919,
+    "lon": -115.1728974
+  },
+  "tags": {
+    "highway": "unclassified",
+    "name": "Caesars Palace Drive",
+    "oneway": "yes",
+    "sidewalk:left": "no",
+    "sidewalk:right": "separate",
+    "smoothness": "excellent",
+    "surface": "asphalt"
+  }
+},
+{
+  "type": "way",
+  "id": 1485126931,
+  "center": {
+    "lat": 36.1173442,
+    "lon": -115.1728997
+  },
+  "tags": {
+    "highway": "unclassified",
+    "lit": "yes",
+    "name": "Caesars Palace Drive",
+    "oneway": "yes",
+    "sidewalk:left": "no",
+    "sidewalk:right": "separate",
+    "smoothness": "excellent",
+    "surface": "asphalt"
+  }
+},
+{
+  "type": "relation",
+  "id": 1599958,
+  "center": {
+    "lat": 36.1122875,
+    "lon": -115.1765694
+  },
+  "tags": {
+    "addr:city": "Las Vegas",
+    "addr:county": "Clark",
+    "addr:housenumber": "3600",
+    "addr:postcode": "89109",
+    "addr:state": "NV",
+    "addr:street": "South Las Vegas Boulevard",
+    "amenity": "casino",
+    "building": "hotel",
+    "building:levels": "3",
+    "ele": "646",
+    "gnis:feature_id": "2472978",
+    "layer": "3",
+    "name": "Bellagio",
+    "type": "multipolygon",
+    "website": "https://www.bellagio.com",
+    "wikidata": "Q25007",
+    "wikipedia": "en:Bellagio (resort)"
+  }
+},
+{
+  "type": "relation",
+  "id": 7770314,
+  "center": {
+    "lat": 36.1217005,
+    "lon": -115.1694338
+  },
+  "tags": {
+    "addr:city": "Las Vegas",
+    "addr:county": "Clark",
+    "addr:housenumber": "3355",
+    "addr:postcode": "89109",
+    "addr:state": "NV",
+    "addr:street": "Las Vegas Boulevard South",
+    "amenity": "casino",
+    "building": "yes",
+    "ele": "638",
+    "gnis:feature_id": "2472802",
+    "internet_access": "wlan",
+    "name": "The Venetian Las Vegas",
+    "name:ko": "베네치안호텔 테마여행",
+    "opening_hours": "24/7",
+    "operator": "Las Vegas Sands",
+    "rooms": "4049",
+    "tourism": "hotel",
+    "type": "multipolygon",
+    "website": "https://www.venetian.com/",
+    "wheelchair": "yes",
+    "wikidata": "Q1049209",
+    "wikipedia": "en:The Venetian Las Vegas"
+  }
+},
+{
+  "type": "relation",
+  "id": 19413576,
+  "center": {
+    "lat": 36.1173611,
+    "lon": -115.1732375
+  },
+  "tags": {
+    "name": "Caesars Palace Drive",
+    "route": "road",
+    "type": "route"
+  }
+},
+{
+  "type": "relation",
+  "id": 19413749,
+  "center": {
+    "lat": 36.1116704,
+    "lon": -115.1740327
+  },
+  "tags": {
+    "name": "Bellagio Drive",
+    "route": "road",
+    "type": "route"
+  }
+},
+{
+  "type": "relation",
+  "id": 19430637,
+  "center": {
+    "lat": 36.1251261,
+    "lon": -115.1666905
+  },
+  "tags": {
+    "name": "Wynn South Gate",
+    "route": "road",
+    "type": "route"
+  }
+},
+{
+  "type": "relation",
+  "id": 19511963,
+  "center": {
+    "lat": 36.1128057,
+    "lon": -115.1741094
+  },
+  "tags": {
+    "amenity": "fountain",
+    "covered": "no",
+    "drinking_water": "no",
+    "fountain": "decorative",
+    "indoor": "no",
+    "name": "Fountains of Bellagio",
+    "name:ko": "벨라지오 분수 쇼",
+    "name:ru": "Фонтаны Белладжио",
+    "natural": "water",
+    "site": "geodesic",
+    "tourism": "attraction",
+    "type": "site",
+    "water": "fountain",
+    "website": "https://www.bellagio.com/en/entertainment/fountains-of-bellagio.html",
+    "wheelchair": "yes",
+    "wikidata": "Q2735117",
+    "wikipedia": "en:Fountains of Bellagio"
+  }
+},
+{
+  "type": "relation",
+  "id": 19627655,
+  "center": {
+    "lat": 36.1102069,
+    "lon": -115.1774623
+  },
+  "tags": {
+    "name": "Bellagio Tram Station",
+    "network": "ARIA Express",
+    "operator": "Aria Resort and Casino",
+    "operator:wikidata": "Q654279",
+    "operator:wikipedia": "en:Aria Resort and Casino",
+    "public_transport": "stop_area",
+    "ref": "3",
+    "tram": "yes",
+    "type": "public_transport",
+    "wheelchair": "yes"
+  }
+},
+{
+  "type": "relation",
+  "id": 19627656,
+  "center": {
+    "lat": 36.1102069,
+    "lon": -115.1774623
+  },
+  "tags": {
+    "name": "Bellagio Tram Station",
+    "network": "ARIA Express",
+    "operator": "Aria Resort and Casino",
+    "operator:wikidata": "Q654279",
+    "operator:wikipedia": "en:Aria Resort and Casino",
+    "public_transport": "stop_area",
+    "ref": "3",
+    "tram": "yes",
+    "type": "public_transport",
+    "wheelchair": "yes"
+  }
+},
+{
+  "type": "relation",
+  "id": 19824691,
+  "center": {
+    "lat": 36.1193649,
+    "lon": -115.1741363
+  },
+  "tags": {
+    "loc_name": "The Strip",
+    "name": "Las Vegas Strip",
+    "tourism": "attraction",
+    "type": "site",
+    "wikidata": "Q745608",
+    "wikipedia": "en:Las Vegas Strip"
+  }
+}
+
+  ]
+}

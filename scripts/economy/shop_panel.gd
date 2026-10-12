@@ -159,7 +159,9 @@ func _on_overlay_closed(again: String) -> void:
 
 
 ## Cena do giro: carrossel que desacelera por no mínimo 2,2 s e para no prêmio; depois o cartão
-## grande com "NOVA!" ou "REPETIDA · +créditos" e os botões.
+## grande com "NOVA!" ou "REPETIDA · +créditos" e os botões. Som baixinho: um clique a cada cartão
+## que passa pelo marcador (no começo, rápido demais, no máximo um a cada TICK_GAP) e um arpejo
+## quando o prêmio aparece; prêmio novo ganha confetes e um brilho suave no som (UiSounds.discovery).
 class SpinOverlay extends CanvasLayer:
 	var roulette := ""
 	var result := {}
@@ -169,6 +171,11 @@ class SpinOverlay extends CanvasLayer:
 	var _pool: Array[String] = []
 	var _strip: Control
 	var _reveal: Control
+	var _last_card := 0
+	var _last_tick := -1.0
+
+	const TICK_GAP := 0.05
+	const SPINS := 34.0
 
 	func _ready() -> void:
 		layer = 110
@@ -186,11 +193,23 @@ class SpinOverlay extends CanvasLayer:
 	func _process(delta: float) -> void:
 		_t += delta
 		_strip.queue_redraw()
+		if not _done:
+			var card := int(floor(_pos()))
+			if card != _last_card and _t - _last_tick >= TICK_GAP:
+				_last_tick = _t
+				# Mais grave e mais baixo conforme desacelera
+				var slow := clampf(_t / ShopPanel.MIN_SPIN_TIME, 0.0, 1.0)
+				UiSounds.play(self, UiSounds.tick(), -20.0 + slow * 3.0, randf_range(0.97, 1.03) * (1.08 - slow * 0.12))
+			_last_card = card
 		if not _done and _t >= ShopPanel.MIN_SPIN_TIME:
 			_done = true
 			_show_result()
 
-	## Posição do carrossel: desacelera (ease out) e para exatamente no prêmio.
+	## Posição do carrossel (em cartões): desacelera (ease out) e para exatamente no prêmio.
+	func _pos() -> float:
+		var t := clampf(_t / ShopPanel.MIN_SPIN_TIME, 0.0, 1.0)
+		return SPINS * (1.0 - pow(1.0 - t, 3.0))
+
 	func _draw_strip() -> void:
 		var vp := _strip.size
 		var info: Dictionary = ShopCatalog.ROULETTES[roulette]
@@ -200,9 +219,8 @@ class SpinOverlay extends CanvasLayer:
 			return
 		var card_w := 190.0
 		var gap := 16.0
-		var spins := 34.0
-		var t := clampf(_t / ShopPanel.MIN_SPIN_TIME, 0.0, 1.0)
-		var pos := spins * (1.0 - pow(1.0 - t, 3.0))
+		var spins := SPINS
+		var pos := _pos()
 		var center := Vector2(vp.x * 0.5, vp.y * 0.5)
 		var target_index := _pool.find(result["item"])
 		for k in range(-4, 5):
@@ -236,6 +254,7 @@ class SpinOverlay extends CanvasLayer:
 		center.add_child(box)
 		var dup: bool = result["dup"]
 		var rarity: int = result["rarity"]
+		UiSounds.play(self, UiSounds.prize(rarity), -13.0 if dup else -10.0)
 		var head := Label.new()
 		head.text = "REPETIDA · +%s %s" % [PlayerProfile.format_credits(result["refund"]), ShopCatalog.CURRENCY] if dup else "NOVA PEÇA!"
 		head.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -280,6 +299,14 @@ class SpinOverlay extends CanvasLayer:
 		card.pivot_offset = card.custom_minimum_size * 0.5
 		card.scale = Vector2(0.6, 0.6)
 		create_tween().tween_property(card, "scale", Vector2.ONE, 0.35).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+		# Prêmio novo: confetes e um brilho suave no som, logo depois do arpejo
+		if not dup:
+			var confetti := Confetti.new()
+			var rc: Color = ShopCatalog.RARITY_COLORS[rarity]
+			confetti.colors.append_array([rc, rc, rc.lightened(0.3)])
+			add_child(confetti)
+			get_tree().create_timer(0.22, true, false, true).timeout.connect(func() -> void:
+				UiSounds.play(self, UiSounds.discovery(), -15.0))
 
 	func _unhandled_input(event: InputEvent) -> void:
 		if _done and event.is_action_pressed("ui_cancel"):

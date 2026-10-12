@@ -26,6 +26,10 @@ const COLOR_FIELDS := {"primary": "livery", "secondary": "livery", "accent": "li
 	"suit": "suit", "rim": "rim", "boost": "boost", "neon": "neon"}
 
 static var save_path := PATH
+## Padrões de pintura do jogador (Estúdio → Pinturas): ficam no aparelho, fora do perfil, e valem
+## offline e online. Cada um: {name, primary, secondary, accent, scheme, finish}.
+static var paints_path := "user://paint_presets.cfg"
+const MAX_CUSTOM_PAINTS := 24
 
 var credits := ShopCatalog.START_CREDITS
 var owned := {}
@@ -71,7 +75,7 @@ static func default_equipped() -> Dictionary:
 		"paint_finish": 0,
 		"paint_scheme": 0,
 		"rim_finish": 0,
-		"setup": {},
+		"setup": CarSetup.PLAYER_DEFAULTS.duplicate(),
 		"decals": {},
 		"skin": "",
 		# Hora (unix, s) da última mudança feita pelo jogador: decide qual carro vale quando o do
@@ -106,6 +110,7 @@ func load_profile() -> void:
 		for key in equipped:
 			if eq.has(key):
 				equipped[key] = eq[key]
+		_keep_old_setup(eq)
 	var st: Variant = cfg.get_value("stats", "data", {})
 	if st is Dictionary:
 		for key in stats:
@@ -146,6 +151,7 @@ func from_dict(d: Dictionary) -> void:
 			for key in equipped:
 				if eq.has(key):
 					equipped[key] = eq[key]
+			_keep_old_setup(eq)
 	var st: Variant = d.get("stats", {})
 	if st is Dictionary:
 		for key in stats:
@@ -466,6 +472,89 @@ func _matching_livery() -> String:
 	return ""  # combinação própria
 
 
+# ---------------------------------------------------------------------------
+# Padrões de pintura do jogador
+# ---------------------------------------------------------------------------
+func custom_paints() -> Array:
+	var cfg := ConfigFile.new()
+	if cfg.load(paints_path) != OK:
+		return []
+	var out := []
+	for p in cfg.get_value("paints", "list", []):
+		if p is Dictionary and _valid_paint(p):
+			out.append(p)
+	return out.slice(0, MAX_CUSTOM_PAINTS)
+
+
+static func _valid_paint(p: Dictionary) -> bool:
+	for f in ["primary", "secondary", "accent"]:
+		if not Color.html_is_valid(str(p.get(f, ""))):
+			return false
+	return true
+
+
+func _store_custom_paints(list: Array) -> void:
+	var cfg := ConfigFile.new()
+	cfg.set_value("paints", "list", list)
+	cfg.save(paints_path)
+
+
+## Salva as cores, o esquema e o acabamento atuais como um padrão novo (ou atualiza o de mesmo
+## nome). Devolve o índice dele (-1 se a lista está cheia).
+func save_custom_paint(paint_name: String) -> int:
+	var list := custom_paints()
+	paint_name = paint_name.strip_edges().left(24)
+	if paint_name == "":
+		paint_name = "Pintura %d" % (list.size() + 1)
+	var p := {"name": paint_name, "primary": str(equipped["primary"]), "secondary": str(equipped["secondary"]),
+		"accent": str(equipped["accent"]), "scheme": int(equipped.get("paint_scheme", 0)), "finish": int(equipped.get("paint_finish", 0))}
+	var index := -1
+	for k in list.size():
+		if str(list[k]["name"]) == paint_name:
+			index = k
+	if index >= 0:
+		list[index] = p
+	elif list.size() >= MAX_CUSTOM_PAINTS:
+		return -1
+	else:
+		list.append(p)
+		index = list.size() - 1
+	_store_custom_paints(list)
+	changed.emit()
+	return index
+
+
+func delete_custom_paint(index: int) -> void:
+	var list := custom_paints()
+	if index < 0 or index >= list.size():
+		return
+	list.remove_at(index)
+	_store_custom_paints(list)
+	changed.emit()
+
+
+## Aplica um padrão salvo (as 3 cores, o esquema e o acabamento).
+func apply_custom_paint(index: int) -> void:
+	var list := custom_paints()
+	if index < 0 or index >= list.size():
+		return
+	var p: Dictionary = list[index]
+	for f in ["primary", "secondary", "accent"]:
+		equipped[f] = Color(str(p[f])).to_html(false)
+	equipped["paint_scheme"] = int(p.get("scheme", 0))
+	equipped["paint_finish"] = int(p.get("finish", 0))
+	equipped["livery"] = _matching_livery()
+	_commit()
+
+
+## O carro está agora com este padrão salvo?
+func is_custom_paint_on(p: Dictionary) -> bool:
+	for f in ["primary", "secondary", "accent"]:
+		if Color(str(p[f])).to_html(false) != str(equipped[f]):
+			return false
+	return int(p.get("scheme", 0)) == int(equipped.get("paint_scheme", 0)) 		and int(p.get("finish", 0)) == int(equipped.get("paint_finish", 0))
+
+
 func _commit() -> void:
 	_touch()
 	clamp_equipped()
@@ -550,11 +639,22 @@ func set_setup_value(key: String, value: float) -> void:
 		equip_requested.emit(equipped.duplicate(true))
 
 
-## Volta um parâmetro (ou todos, com key vazia) ao de fábrica.
+## Conta que já existia, salva antes do ajuste de engenharia: continua com o de fábrica (o padrão
+## novo do jogador, CarSetup.PLAYER_DEFAULTS, é só para contas novas).
+func _keep_old_setup(eq: Dictionary) -> void:
+	if not eq.has("setup"):
+		equipped["setup"] = {}
+
+
+## Volta um parâmetro (ou todos, com key vazia) ao padrão (CarSetup.standard: o de fábrica, com o
+## padrão do jogador na direção).
 func reset_setup(key := "") -> void:
 	var setup: Dictionary = equipped["setup"]
 	if key == "":
 		setup.clear()
+		setup.merge(CarSetup.PLAYER_DEFAULTS)
+	elif CarSetup.PLAYER_DEFAULTS.has(key):
+		setup[key] = CarSetup.PLAYER_DEFAULTS[key]
 	else:
 		setup.erase(key)
 	_touch()

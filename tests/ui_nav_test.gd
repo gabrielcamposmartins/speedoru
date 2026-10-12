@@ -53,6 +53,24 @@ func _run() -> void:
 		await process_frame
 	_check(ui.screen == "garage" and ui.garage_tab == 0, "A abre a garagem (Estúdio)")
 	_check(_focused() != null and _focused().is_visible_in_tree(), "a garagem já abre com algo em foco")
+	# Engenharia (aba padrão do Estúdio): ↓/↑ andam pelos sliders, sem pular para a coluna de abas
+	var studio: StudioPanel = scene.find_children("*", "StudioPanel", true, false).front() if not scene.find_children("*", "StudioPanel", true, false).is_empty() else null
+	for i in 3:
+		await process_frame
+	var sliders: Array[Control] = []
+	if studio:
+		for c in studio.focusables(studio._grid):
+			if c is Range:
+				sliders.append(c)
+	_check(sliders.size() >= 3, "engenharia: sliders focáveis (%d)" % sliders.size())
+	if sliders.size() >= 3:
+		sliders[0].grab_focus()
+		await _pad(JOY_BUTTON_DPAD_DOWN)
+		_check(_focused() == sliders[1], "engenharia: ↓ vai para o slider de baixo")
+		await _pad(JOY_BUTTON_DPAD_DOWN)
+		_check(_focused() == sliders[2], "engenharia: ↓ de novo, o seguinte")
+		await _pad(JOY_BUTTON_DPAD_UP)
+		_check(_focused() == sliders[1], "engenharia: ↑ volta")
 	await _pad(JOY_BUTTON_RIGHT_SHOULDER)
 	_check(ui.garage_tab == 1, "RB vai para a Galeria")
 	await _pad(JOY_BUTTON_RIGHT_SHOULDER)

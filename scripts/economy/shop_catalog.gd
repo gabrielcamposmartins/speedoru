@@ -45,7 +45,7 @@ const GACHA_COLORS := ["boost", "neon"]
 
 const ROULETTES := {
 	"neon": {"name": "Roleta Neon", "theme": "luz fria, sakura, cometa e peças leves", "color": Color("05d9e8")},
-	"inferno": {"name": "Roleta Inferno", "theme": "fogo, chamas, garras, asas traseiras e rodas", "color": Color("ff4d2d")},
+	"inferno": {"name": "Roleta Dragão", "theme": "dragões, fogo, garras, asas traseiras e rodas", "color": Color("ff4d2d")},
 }
 
 ## Pinturas prontas (grátis): combinações de três cores aplicadas de uma vez. As cores do carro são
@@ -140,7 +140,7 @@ const ITEMS := {
 	"part_halo_ribbed": {"type": "part", "name": "Halo com costelas", "rarity": 0, "roulette": "neon", "slot": "halo", "variant": "ribbed"},
 	"part_mirrors_eye": {"type": "part", "name": "Retrovisores Olho", "rarity": 0, "roulette": "neon", "slot": "mirrors", "variant": "eye"},
 	"part_rim_disc": {"type": "part", "name": "Rodas Disco", "rarity": 0, "roulette": "neon", "slot": "rim", "variant": "disc"},
-	# --- Roleta Inferno ----------------------------------------------------------
+	# --- Roleta Dragão (id "inferno", o nome antigo, que fica nos perfis e no servidor) --------
 	"part_rear_wing_lowdf": {"type": "part", "name": "Asa traseira de baixa carga", "rarity": 3, "roulette": "inferno", "slot": "rear_wing", "variant": "lowdf"},
 	"part_rear_wing_highdf": {"type": "part", "name": "Asa traseira de alta carga", "rarity": 3, "roulette": "inferno", "slot": "rear_wing", "variant": "highdf"},
 	"part_engine_cover_sharkfin": {"type": "part", "name": "Cobertura com barbatana", "rarity": 2, "roulette": "inferno", "slot": "engine_cover", "variant": "sharkfin"},

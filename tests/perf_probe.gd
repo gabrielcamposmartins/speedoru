@@ -2,8 +2,9 @@ extends SceneTree
 ## Desempenho das pistas (com janela, vsync desligado): corrida solo com 9 bots parados no grid; o
 ## carro do jogador é posto em alguns pontos da volta (a câmera da corrida segue) e mede FPS, tempo
 ## de CPU e de GPU, chamadas de desenho e triângulos. Com "grupos", desliga um grupo de nós da pista
-## de cada vez e mede quanto cada um custa.
-##   godot --path . -s res://tests/perf_probe.gd -- [pistas: monza,suzuka,monaco] [grupos]
+## de cada vez e mede quanto cada um custa. Com "sombras", compara variações da sombra do sol em
+## cada ponto (cascatas e distância), separando os desenhos da tela dos da sombra.
+##   godot --path . -s res://tests/perf_probe.gd -- [pistas: monza,suzuka,monaco] [grupos] [sombras]
 
 const POINTS := [0.0, 0.25, 0.5, 0.75]
 const SAMPLE_S := 2.5
@@ -12,6 +13,7 @@ var by_group := false
 ## Média da última amostra: [scripts (_process), física, render na CPU] em ms.
 var _cpu := [0.0, 0.0, 0.0]
 var pines := false
+var shadows := false
 
 
 func _initialize() -> void:
@@ -59,6 +61,8 @@ func _run() -> void:
 			by_group = true
 		elif a == "pinheiros":
 			pines = true
+		elif a == "sombras":
+			shadows = true
 		elif not a.begins_with("--"):
 			tracks = a.split(",")
 	DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_DISABLED)
@@ -98,6 +102,8 @@ func _run() -> void:
 			print("            CPU: scripts %.1f ms · física %.1f ms · render %.1f ms" % [_cpu[0], _cpu[1], _cpu[2]])
 			for k in 6:
 				total[k] += r[k] / POINTS.size()
+		if shadows:
+			await _shadows(scene, manager)
 		print("  média: %4.0f fps · quadro %.1f ms · GPU %.1f ms · %4.0f desenhos · %5.0f mil triângulos" % [total[0], total[1], total[2], total[3], total[4]])
 		if by_group:
 			await _groups(manager, path.length * 0.5 + 30.0)
@@ -106,6 +112,43 @@ func _run() -> void:
 		scene.queue_free()
 		await _frames(10)
 	quit()
+
+
+## Variações da sombra do sol, nos mesmos pontos da volta: [nome, cascatas, distância máxima].
+func _shadows(scene: Node, manager: RaceManager) -> void:
+	var sun := scene.find_child("Sun", true, false) as DirectionalLight3D
+	if sun == null:
+		print("  (sem sol)")
+		return
+	var base_mode := sun.directional_shadow_mode
+	var base_dist := sun.directional_shadow_max_distance
+	var variants := [["atual", base_mode, base_dist], ["2 cascatas", DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS, base_dist],
+		["4 cascatas, 200 m", base_mode, 200.0], ["2 cascatas, 200 m", DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS, 200.0],
+		["2 cascatas, 140 m", DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS, 140.0], ["sem sombra", base_mode, -1.0]]
+	var vp := root.get_viewport().get_viewport_rid()
+	var car := manager.player
+	var path := manager.track.path
+	print("  sombras (média dos pontos):")
+	for v: Array in variants:
+		sun.shadow_enabled = v[2] > 0.0
+		sun.directional_shadow_mode = v[1]
+		if v[2] > 0.0:
+			sun.directional_shadow_max_distance = v[2]
+		var acc := [0.0, 0.0, 0.0, 0.0, 0.0]
+		for f: float in POINTS:
+			car.global_transform = path.frame_at(path.length * f + 30.0, 0.0, 0.6)
+			car.reset_physics_interpolation()
+			await _frames(15)
+			var r := await _sample(1.5)
+			var shadow_draws := RenderingServer.viewport_get_render_info(vp, RenderingServer.VIEWPORT_RENDER_INFO_TYPE_SHADOW,
+				RenderingServer.VIEWPORT_RENDER_INFO_DRAW_CALLS_IN_FRAME)
+			for k in 5:
+				acc[k] += [r[1], r[2], _cpu[2], r[3], shadow_draws][k] / POINTS.size()
+		print("    %-18s quadro %.2f ms · GPU %.2f ms · render CPU %.2f ms · %4.0f desenhos (%4.0f da sombra)" % [
+			v[0], acc[0], acc[1], acc[2], acc[3], acc[4]])
+	sun.shadow_enabled = true
+	sun.directional_shadow_mode = base_mode
+	sun.directional_shadow_max_distance = base_dist
 
 
 ## Opções para os pinheiros (o grupo mais caro na GPU), no ponto dado.

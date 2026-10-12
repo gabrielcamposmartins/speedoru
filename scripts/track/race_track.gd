@@ -66,7 +66,7 @@ static var _warming := {}
 ## Esta instância é a que gera a pista para o cache (não espera por ela mesma).
 var _for_cache := false
 const SERVER_SKIP := ["arquibancadas", "atrações", "árvores", "folhas", "pinheiros", "cenário", "grama", "prédios", "túnel", "porto",
-	"jardins", "entorno", "navios", "detalhes", "vitrine"]
+	"jardins", "entorno", "navios", "detalhes", "vitrine", "marcos", "neon"]
 
 var terrain: TrackTerrain
 ## Circuito de rua: dados da cidade (layout.city); nulo nos circuitos de campo.
@@ -143,13 +143,24 @@ func rebuild(staged := false) -> void:
 		steps.append_array([
 			["cidade", "Cidade, ruas e cais", 900, func(): TrackCity.build_ground(self, city, _root)],
 			["prédios", "Prédios", 700, func(): TrackCity.build_buildings(self, city, _root)],
-			["túnel", "Túnel", 60, func(): TrackTunnel.build(self, city.tunnel.x, city.tunnel.y, _root)],
-			["porto", "Mar, porto e barcos", 300, func(): TrackHarbour.build(self, city, _root)],
+		])
+		# Túnel, porto e navios só onde existem (Mônaco); marcos onde a cidade tem (Las Vegas)
+		if city.has_tunnel():
+			steps.append(["túnel", "Túnel", 60, func(): TrackTunnel.build(self, city.tunnel.x, city.tunnel.y, _root)])
+		if city.has_sea():
+			steps.append(["porto", "Mar, porto e barcos", 300, func(): TrackHarbour.build(self, city, _root)])
+		if not (city.data.get("landmarks", []) as Array).is_empty():
+			steps.append(["marcos", "Marcos da cidade", 120, func(): CityLandmarks.build(self, city, _root)])
+		# Letreiros de neon dos cassinos e postes nas ruas (Las Vegas)
+		if city.modern():
+			steps.append(["neon", "Letreiros de neon e postes", 150, func(): CityNeon.build(self, city, _root)])
+		steps.append_array([
 			["jardins", "Palmeiras e jardins", 120, func(): TrackCity.build_trees(self, city, _root)],
 			["detalhes", "Calçadas, cafés e árvores", 150, func(): CityProps.build(self, city, _root)],
 			["entorno", "Morros e horizonte", 250, func(): TrackCity.build_backdrop(self, city, _root)],
-			["navios", "Navios e balões", 80, func(): TrackOffshore.build(self, city, _root)],
 		])
+		if city.has_sea():
+			steps.append(["navios", "Navios e balões", 80, func(): TrackOffshore.build(self, city, _root)])
 	else:
 		steps.append_array([
 			["terreno", "Terreno e montanhas", 550, func(): terrain = TrackTerrain.build(self, _root)],

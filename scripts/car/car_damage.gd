@@ -263,6 +263,7 @@ func _copy_mesh(mi: MeshInstance3D, side: int, inv: Transform3D) -> Array:
 	copy.name = "Damaged_" + mi.name + ("" if side == 0 else ("_L" if side > 0 else "_R"))
 	copy.mesh = mesh
 	copy.layers = mi.layers
+	copy.cast_shadow = mi.cast_shadow
 	mi.get_parent().add_child(copy)
 	copy.transform = mi.transform
 	# A original fica escondida (as metades de peças divididas leem dela)
@@ -554,6 +555,7 @@ func _create_effects() -> void:
 	add_child(_sparks)
 	_smoke = CPUParticles3D.new()
 	_smoke.name = "EngineSmoke"
+	_smoke.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	var puff := SphereMesh.new()
 	puff.radius = 0.3
 	puff.height = 0.6

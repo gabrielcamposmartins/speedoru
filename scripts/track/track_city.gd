@@ -19,6 +19,9 @@ const SIDEWALK := Color(0.76, 0.74, 0.7)
 const UNDER_ROAD := Color(0.2, 0.2, 0.22)
 const GRASS := Color(0.36, 0.56, 0.24)
 const GARDEN := Color(0.27, 0.47, 0.2)
+## Deserto em volta de Las Vegas: areia clara no vale, rocha avermelhada nas serras.
+const DESERT := Color(0.78, 0.68, 0.52)
+const DESERT_ROCK := Color(0.58, 0.4, 0.3)
 const SLOPE := Color(0.62, 0.56, 0.46)
 ## Muro de arrimo (pedra calcária em fiadas) nas encostas muito íngremes da cidade.
 const RETAINING := Color(0.7, 0.63, 0.5)
@@ -113,6 +116,21 @@ func height_at(x: float, z: float) -> float:
 	var ty := fy - iy
 	var i := iy * nx + ix
 	return lerpf(lerpf(heights[i], heights[i + 1], tx), lerpf(heights[i + nx], heights[i + nx + 1], tx), ty)
+
+
+## A cidade tem mar (porto, cais, barcos, horizonte com costa)? Las Vegas não.
+func has_sea() -> bool:
+	return bool(data.get("sea", true))
+
+
+func has_tunnel() -> bool:
+	return tunnel.y > tunnel.x
+
+
+## Fachadas no estilo da cidade: "riviera" (Mônaco: venezianas, mansardas, telhas) ou "modern"
+## (Las Vegas: torres de vidro e prédios lisos).
+func modern() -> bool:
+	return str(data.get("style", "riviera")) == "modern"
 
 
 func in_tunnel(s: float, margin := 0.0) -> bool:
@@ -574,9 +592,14 @@ static func build_buildings(track: RaceTrack, city: TrackCity, parent: Node3D) -
 	parent.add_child(root)
 	var palette: Array = city.data["facades"]
 	var chunks := {}
+	var occluders := {}
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 4242
+	var modern := city.modern()
 	for b in city.data["buildings"]:
+		# Marcos com desenho próprio (CityLandmarks): a Sphere e a Torre Eiffel
+		if str(b.get("lm", "")) in CityLandmarks.KINDS:
+			continue
 		var p: Array = b["p"]
 		var poly := PackedVector2Array()
 		for i in range(0, p.size(), 2):
@@ -599,13 +622,19 @@ static func build_buildings(track: RaceTrack, city: TrackCity, parent: Node3D) -
 		if lm != "":
 			style = STYLE_CLASSIC
 			color = Color("f2e2bf") if lm == "casino" else Color("efe3cc")
-		var mansard := lm != "" or (style == STYLE_CLASSIC and height > 13.0 and rng.randf() < 0.55)
+		if modern:
+			# Las Vegas: torres de hotel de vidro e pódios lisos
+			style = STYLE_MODERN if height > 18.0 else STYLE_PLAIN
+		var mansard := not modern and (lm != "" or (style == STYLE_CLASSIC and height > 13.0 and rng.randf() < 0.55))
 		var roof := int(b["r"])
-		if roof == 0 and not mansard and height < 22.0 and rng.randf() < 0.45:
+		if not modern and roof == 0 and not mansard and height < 22.0 and rng.randf() < 0.45:
 			roof = 1  # telhado de telha nos prédios baixos (casario mediterrâneo)
 		# Varandas de verdade só perto da pista (onde o jogador vê de perto)
 		var near := absf(track.path.project(to_world(center.x, center.y, base)).y) < BALCONY_RANGE
 		_building(chunks[key], poly, base, top, color, style, roof, mansard, lm, rng, track)
+		if not occluders.has(key):
+			occluders[key] = [PackedVector3Array(), PackedInt32Array()]
+		_occluder(occluders[key], poly, base, top - 3.6 if mansard else top, track)
 		if near and lm == "" and height > 8.0:
 			_balconies(chunks[key], poly, base, top - 3.6 if mansard else top, style, rng)
 	if city.tunnel.y > city.tunnel.x:
@@ -621,6 +650,63 @@ static func build_buildings(track: RaceTrack, city: TrackCity, parent: Node3D) -
 		mi.name = "Block_%d_%d" % [key.x, key.y]
 		mi.mesh = arr.commit(mat)
 		root.add_child(mi)
+	for key in occluders:
+		var data: Array = occluders[key]
+		if (data[1] as PackedInt32Array).is_empty():
+			continue
+		var shape := ArrayOccluder3D.new()
+		shape.set_arrays(data[0], data[1])
+		var oi := OccluderInstance3D.new()
+		oi.name = "Occluder_%d_%d" % [key.x, key.y]
+		oi.occluder = shape
+		root.add_child(oi)
+
+
+## Oclusor do prédio (culling por oclusão: o que fica atrás dele não é desenhado): as paredes da
+## planta, 0,3 m para dentro da fachada, da base até o alto (sem telhado nem varandas), para nunca
+## esconder algo que deveria aparecer; sem tampa (dentro não há nada a esconder). Prédios que
+## encostam na pista ficam de fora.
+static func _occluder(data: Array, poly: PackedVector2Array, base: float, wall_top: float, track: RaceTrack) -> void:
+	if wall_top - base < 3.0 or _touches_track(poly, base, track):
+		return
+	var shrunk := Geometry2D.offset_polygon(poly, -0.3, Geometry2D.JOIN_MITER)
+	if shrunk.size() != 1:
+		return
+	var outline: PackedVector2Array = shrunk[0]
+	var verts: PackedVector3Array = data[0]
+	var idx: PackedInt32Array = data[1]
+	var first := verts.size()
+	var n := outline.size()
+	for v in outline:
+		verts.append(to_world(v.x, v.y, base))
+		verts.append(to_world(v.x, v.y, wall_top))
+	for i in n:
+		var a := first + i * 2
+		var b := first + ((i + 1) % n) * 2
+		idx.append_array([a, b, b + 1, a, b + 1, a + 1])
+	data[0] = verts
+	data[1] = idx
+
+
+## A planta do prédio chega a menos de 2 m da beira da pista (ou a cobre: túnel, passagens)?
+static func _touches_track(poly: PackedVector2Array, base: float, track: RaceTrack) -> bool:
+	var center := _centroid(poly)
+	var radius := 0.0
+	for v in poly:
+		radius = maxf(radius, v.distance_to(center))
+	var path := track.path
+	var pr := path.project(to_world(center.x, center.y, base), false, false)
+	if absf(pr.y) > radius + 30.0:
+		return false
+	var s := pr.x - radius - 4.0
+	while s <= pr.x + radius + 4.0:
+		var i := path.index_at(s)
+		for lat in [path.half_width(i, 1) + 2.0, 0.0, -path.half_width(i, -1) - 2.0]:
+			var w := path.position_at(s, lat)
+			if Geometry2D.is_point_in_polygon(Vector2(w.x, -w.z), poly):
+				return true
+		s += 1.5
+	return false
 
 
 ## Hotel sobre a boca do túnel, como o Fairmont de verdade (o túnel passa por baixo dele): o prédio
@@ -666,6 +752,8 @@ static var _bmat: ShaderMaterial
 static func set_night(amount: float) -> void:
 	if _bmat:
 		_bmat.set_shader_parameter("night", amount)
+	CityLandmarks.set_night(amount)
+	CityNeon.set_night(amount)
 
 
 static func _building_material() -> Material:
@@ -1121,6 +1209,8 @@ static func build_backdrop(track: RaceTrack, city: TrackCity, parent: Node3D) ->
 		p2 = Vector2(exits[1][0], exits[1][1])
 	var center := city.area.get_center()
 	var land_sign := signf((p2 - p1).cross(Vector2(city.area.position.x, city.area.end.y) - p1))
+	# Sem mar (Las Vegas): tudo é terra; a cidade baixa se espalha pelo vale e as serras ficam longe
+	var desert := not city.has_sea()
 	var noise := FastNoiseLite.new()
 	noise.seed = 31
 	noise.frequency = 0.0012
@@ -1156,7 +1246,14 @@ static func build_backdrop(track: RaceTrack, city: TrackCity, parent: Node3D) ->
 			var p := b + dir * d
 			var h := h0
 			var is_land := 0
-			if r > 0:
+			if r > 0 and desert:
+				is_land = 1
+				# Vale plano até ~2 km; depois as serras (cristas recortadas, como as de Red Rock)
+				var range_h := clampf((d - 2000.0) * 0.32, 0.0, 820.0)
+				range_h += ridges.get_noise_2d(p.x, p.y) * 260.0 * smoothstep(2000.0, 3600.0, d)
+				range_h += noise.get_noise_2d(p.x, p.y) * 60.0
+				h = lerpf(h0, maxf(range_h, h0), smoothstep(0.0, 1400.0, d))
+			elif r > 0:
 				var dc := land_sign * (p2 - p1).normalized().cross(p - p1)
 				if dc > 0.0 and h0 > -1.0:
 					is_land = 1
@@ -1182,7 +1279,11 @@ static func build_backdrop(track: RaceTrack, city: TrackCity, parent: Node3D) ->
 			verts.append(v)
 			var c := PAVEMENT
 			var kind := FLOOR_PLAZA
-			if r > 0:
+			if r > 0 and desert:
+				var town := clampf(1.2 - float(RINGS[r]) / 1800.0 + noise.get_noise_2d(v.x * 3.1, v.z * 3.1), 0.0, 1.0)
+				c = DESERT.lerp(DESERT_ROCK, clampf(v.y / 500.0, 0.0, 1.0)).lerp(PAVEMENT, town * 0.6)
+				kind = FLOOR_PLAZA if town > 0.55 else (FLOOR_ROCK if v.y > 120.0 else FLOOR_SCRUB)
+			elif r > 0:
 				var town := clampf(noise.get_noise_2d(v.x * 3.1, v.z * 3.1) * 2.0 + 0.4 - float(RINGS[r]) / 2500.0, 0.0, 1.0)
 				c = GARDEN.lerp(Color(0.5, 0.5, 0.36), clampf(v.y / 700.0, 0.0, 0.6)).lerp(PAVEMENT, town * 0.7)
 				kind = FLOOR_PLAZA if town > 0.55 else FLOOR_SCRUB
@@ -1224,7 +1325,8 @@ static func build_backdrop(track: RaceTrack, city: TrackCity, parent: Node3D) ->
 	mi.mesh = mesh
 	root.add_child(mi)
 	_backdrop_town(city, rows, land_rows, root)
-	_backdrop_trees(rows, land_rows, colors, root)
+	if not desert:
+		_backdrop_trees(rows, land_rows, colors, root)
 
 
 ## Árvores nos morros (as espécies do TrackTrees), só nos anéis mais perto da cidade: pinheiros e

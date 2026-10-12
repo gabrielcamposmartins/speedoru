@@ -388,6 +388,8 @@ func on_message(peer: int, type: String, data: Dictionary) -> void:
 			_ok(peer, data)
 		"room_ready":
 			_room_ready(peer, data)
+		"room_spectate":
+			_room_spectate(peer, data)
 		"room_settings":
 			_room_settings(peer, data)
 		"room_start":
@@ -897,6 +899,8 @@ func _new_room(kind: String, name: String, host_id: String) -> Dictionary:
 	return {
 		"id": _id("r"), "kind": kind, "name": name.substr(0, 24), "host": host_id, "password": "",
 		"members": [], "ready": {}, "state": "lobby", "session": null, "invited": {},
+		# Observadores: membros que só assistem (fora do grid; não contam para pronto nem lotação)
+		"spectators": {},
 		"settings": {"track": "monza", "laps": 5, "difficulty": 1, "bots": true, "cars": NetProtocol.MAX_ROOM_PLAYERS, "quali_laps": 0, "quali_collisions": true, "quali_time": 0, "quali_strict": true, "drs": 0, "time_of_day": 0, "biome": 0, "max": NetProtocol.MAX_ROOM_PLAYERS},
 	}
 
@@ -908,7 +912,8 @@ func _room_payload(room: Dictionary) -> Dictionary:
 		if s.is_empty():
 			continue
 		members.append({"id": m, "name": s["account"]["name"], "title": s["account"]["title"],
-			"level": Progression.level_of(s["account"]["counters"]), "ready": room["ready"].get(m, false), "host": m == room["host"]})
+			"level": Progression.level_of(s["account"]["counters"]), "ready": room["ready"].get(m, false), "host": m == room["host"],
+			"spectator": room["spectators"].has(m)})
 	return {"id": room["id"], "kind": room["kind"], "name": room["name"], "host": room["host"],
 		"locked": room["password"] != "", "state": room["state"], "settings": room["settings"], "members": members}
 
@@ -921,13 +926,19 @@ func _push_room(room_id: String) -> void:
 		_send_account(m, "room", {"room": payload})
 
 
+## Salas Custom abertas e as que estão correndo (nessas dá para entrar só como observador).
 func _room_list() -> Array:
 	var out := []
 	for id in rooms:
 		var r: Dictionary = rooms[id]
-		if r["kind"] == "custom" and r["state"] == "lobby":
+		if r["kind"] == "custom" and r["state"] in ["lobby", "racing"]:
 			out.append(_room_payload(r))
 	return out
+
+
+## Quantos membros vão correr (os observadores ficam de fora).
+static func _racers(room: Dictionary) -> int:
+	return (room["members"] as Array).size() - (room["spectators"] as Dictionary).size()
 
 
 func _apply_room_settings(room: Dictionary, data: Dictionary) -> void:
@@ -952,7 +963,7 @@ func _apply_room_settings(room: Dictionary, data: Dictionary) -> void:
 		st["quali_strict"] = bool(data["quali_strict"])
 	if data.has("cars") and room["kind"] == "custom":
 		# Total do grid; a sala aceita até esse número de jogadores (nunca menos que os que já estão)
-		var members: int = (room["members"] as Array).size()
+		var members := _racers(room)
 		st["cars"] = clampi(int(data["cars"]), maxi(2, members), NetProtocol.MAX_GRID)
 		st["max"] = clampi(int(st["cars"]), members, NetProtocol.MAX_ROOM_PLAYERS)
 	if data.has("time_of_day"):
@@ -993,11 +1004,16 @@ func _room_join(peer: int, data: Dictionary, room_id: String, password: String, 
 		return
 	var room: Dictionary = rooms[room_id]
 	var me: String = s["account"]["id"]
-	if room["state"] != "lobby":
+	# Observador: entra mesmo com a corrida em andamento (assiste dali em diante) e não ocupa lugar
+	var spectate: bool = bool(data.get("spectate", false)) and not forced and room["kind"] != "queue"
+	if room["state"] != "lobby" and not spectate:
 		if not forced:
 			_error(peer, data, "A corrida dessa sala já começou.")
 		return
-	if room["members"].size() >= int(room["settings"]["max"]):
+	if spectate and (room["spectators"] as Dictionary).size() >= NetProtocol.MAX_SPECTATORS:
+		_error(peer, data, "A sala já tem observadores demais.")
+		return
+	if not spectate and _racers(room) >= int(room["settings"]["max"]):
 		if not forced:
 			_error(peer, data, "A sala está cheia.")
 		return
@@ -1012,10 +1028,15 @@ func _room_join(peer: int, data: Dictionary, room_id: String, password: String, 
 	_leave_room(peer)
 	room["members"].append(me)
 	room["invited"].erase(me)
+	if spectate:
+		room["spectators"][me] = true
 	s["room"] = room_id
 	_push_room(room_id)
 	if not forced:
 		_ok(peer, data, {"room": room_id})
+	# Corrida em andamento: o observador já recebe a largada e passa a assistir
+	if spectate and room["session"]:
+		room["session"].add_spectator(me, s["account"]["name"])
 
 
 ## Fila: entra numa sala de corrida rápida aberta com lugar; senão cria uma.
@@ -1051,6 +1072,7 @@ func _leave_room(peer: int) -> void:
 			return
 	room["members"].erase(me)
 	room["ready"].erase(me)
+	room["spectators"].erase(me)
 	if room["session"]:
 		room["session"].player_left(me)
 	_send(peer, "room", {"room": {}})
@@ -1071,6 +1093,32 @@ func _room_ready(peer: int, data: Dictionary) -> void:
 	rooms[s["room"]]["ready"][s["account"]["id"]] = bool(data.get("ready", true))
 	_push_room(s["room"])
 	_maybe_autostart(s["room"])
+
+
+## Observador (só assiste a próxima corrida) ou piloto, antes da largada (fila não tem observador).
+func _room_spectate(peer: int, data: Dictionary) -> void:
+	var s := _session(peer)
+	if s["room"] == "" or not rooms.has(s["room"]):
+		_error(peer, data, "Você não está numa sala.")
+		return
+	var room: Dictionary = rooms[s["room"]]
+	var me: String = s["account"]["id"]
+	if room["state"] != "lobby" or room["kind"] == "queue":
+		_error(peer, data, "Só dá para virar observador antes da largada, fora da fila.")
+		return
+	if bool(data.get("on", true)):
+		if not room["spectators"].has(me) and (room["spectators"] as Dictionary).size() >= NetProtocol.MAX_SPECTATORS:
+			_error(peer, data, "A sala já tem observadores demais.")
+			return
+		room["spectators"][me] = true
+		room["ready"].erase(me)
+	else:
+		if room["spectators"].has(me) and _racers(room) >= int(room["settings"]["max"]):
+			_error(peer, data, "O grid está cheio.")
+			return
+		room["spectators"].erase(me)
+	_push_room(room["id"])
+	_ok(peer, data)
 
 
 func _room_settings(peer: int, data: Dictionary) -> void:
@@ -1111,9 +1159,10 @@ func _maybe_autostart(room_id: String) -> void:
 	if room["kind"] != "queue" or room["state"] != "lobby":
 		return
 	for m in room["members"]:
-		if not room["ready"].get(m, false):
+		if not room["ready"].get(m, false) and not room["spectators"].has(m):
 			return
-	_start_race(room_id)
+	if _racers(room) > 0:
+		_start_race(room_id)
 
 
 func _room_start(peer: int, data: Dictionary) -> void:
@@ -1126,6 +1175,9 @@ func _room_start(peer: int, data: Dictionary) -> void:
 		return
 	if room["state"] != "lobby":
 		return
+	if _racers(room) <= 0:
+		_error(peer, data, "Alguém precisa correr: todos estão como observadores.")
+		return
 	_ok(peer, data)
 	_start_race(room["id"])
 
@@ -1134,10 +1186,14 @@ func _start_race(room_id: String) -> void:
 	var room: Dictionary = rooms[room_id]
 	room["state"] = "racing"
 	var players := []
+	var spectators := []
 	for m in room["members"]:
 		if not online.has(m):
 			continue
 		var s: Dictionary = sessions[online[m][0]]
+		if room["spectators"].has(m):
+			spectators.append({"id": m, "name": s["account"]["name"]})
+			continue
 		var pd: Dictionary = s["profile"].to_dict()
 		if NetProtocol.TRUST_CLIENT_CAR:
 			# Carro aceito do aparelho: na pista todos os itens valem (senão o perfil os trocaria
@@ -1150,7 +1206,7 @@ func _start_race(room_id: String) -> void:
 	room["session"] = session
 	session.finished.connect(_on_race_finished.bind(room_id))
 	session.restart_requested.connect(_restart_race.bind(room_id), CONNECT_DEFERRED)
-	session.start(self, room_id, room["settings"].duplicate(), players)
+	session.start(self, room_id, room["settings"].duplicate(), players, spectators)
 	_push_room(room_id)
 	for m in room["members"]:
 		await _broadcast_presence(m)

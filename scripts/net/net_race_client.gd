@@ -82,7 +82,8 @@ var prediction: NetPrediction
 static var prediction_enabled := true
 ## Atraso de rede simulado (ms, ida e volta; -- --net-lag=ms), só para testes: segura os comandos
 ## na ida e os instantâneos na volta por metade disso cada; -- --net-jitter=ms soma um atraso
-## aleatório de 0 a isso a cada instantâneo.
+## aleatório de 0 a isso a cada instantâneo e a cada comando (os que chegam fora de ordem são
+## descartados pelo servidor, como no canal "unreliable_ordered").
 static var lag_ms := 0
 static var jitter_ms := 0
 var _out_lag: Array = []
@@ -234,7 +235,8 @@ func _physics_process(delta: float) -> void:
 		if not manager.net_paused:
 			prediction.record(_seq)
 			prediction.step()
-	var sent := _send_input()
+	# Observador (sem carro): não manda comandos
+	var sent := [] if manager.observer else _send_input()
 	if prediction and not manager.net_paused and not sent.is_empty():
 		prediction.apply_input(sent[0], sent[1])
 	if _snaps.is_empty():
@@ -372,8 +374,9 @@ func _send_input() -> Array:
 		buttons,
 	])
 	d.append_array(_counts)
-	if lag_ms > 0:
-		_out_lag.append([Time.get_ticks_msec() + lag_ms / 2, d])
+	if lag_ms > 0 or jitter_ms > 0:
+		_out_lag.append([Time.get_ticks_msec() + lag_ms / 2 + randi_range(0, jitter_ms), d])
+		_out_lag.sort_custom(func(x: Array, y: Array) -> bool: return x[0] < y[0])
 	else:
 		_net.inp.rpc_id(1, d)
 	return [d, pressed]

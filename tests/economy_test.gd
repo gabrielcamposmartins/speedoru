@@ -203,8 +203,48 @@ func _run() -> void:
 	_check(car.config.primary_color == color_before, "engenharia não mexe na aparência")
 	profile.reset_setup()
 	profile.apply_setup(car)
-	_check(is_equal_approx(car.downforce_area, base_df) and is_equal_approx(car.gear_ratios[0], base_gear), "engenharia: restaurar de fábrica")
+	_check(is_equal_approx(car.downforce_area, base_df) and is_equal_approx(car.gear_ratios[0], base_gear), "engenharia: restaurar ao padrão")
+	# Direção: padrão do jogador (esterço em alta 1,0°, volante 0,5) só para contas novas e no restaurar
+	_check(is_equal_approx(rad_to_deg(car.high_speed_steer_angle), 1.0) and is_equal_approx(car.steer_rate, 0.5),
+		"engenharia: padrão da direção (esterço em alta %.1f°, volante %.2f)" % [rad_to_deg(car.high_speed_steer_angle), car.steer_rate])
+	_check(PlayerProfile.default_equipped()["setup"] == CarSetup.PLAYER_DEFAULTS, "conta nova começa com o padrão da direção")
+	var state_before := profile.to_dict()
+	var old_cfg := ConfigFile.new()
+	var old_eq := PlayerProfile.default_equipped()
+	old_eq["setup"] = {}
+	old_cfg.set_value("equipped", "data", old_eq)
+	old_cfg.save(PlayerProfile.save_path)
+	profile.load_profile()
+	profile.apply_setup(car)
+	_check(is_equal_approx(car.high_speed_steer_angle, 0.12) and is_equal_approx(car.steer_rate, 2.4),
+		"conta que já existia continua com a direção de antes (%.2f rad, %.2f)" % [car.high_speed_steer_angle, car.steer_rate])
+	var older := ConfigFile.new()
+	var older_eq := PlayerProfile.default_equipped()
+	older_eq.erase("setup")
+	older.set_value("equipped", "data", older_eq)
+	older.save(PlayerProfile.save_path)
+	profile.load_profile()
+	_check((profile.equipped["setup"] as Dictionary).is_empty(), "conta salva antes da engenharia também continua igual")
+	profile.from_dict(state_before)
+	profile.save_profile()
 	car.queue_free()
+
+	# --- Padrões de pintura do jogador (arquivo de teste)
+	PlayerProfile.paints_path = "user://test_economy_paints.cfg"
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(PlayerProfile.paints_path))
+	profile.equip_color("primary", Color("ff2d7a"))
+	profile.set_finish("paint_scheme", 2)
+	_check(profile.save_custom_paint("Rosa") == 0, "salva um padrão de pintura")
+	profile.equip_livery("livery_aurora")
+	profile.set_finish("paint_scheme", 0)
+	_check(profile.save_custom_paint("") == 1 and str(profile.custom_paints()[1]["name"]) == "Pintura 2", "padrão sem nome ganha um nome")
+	profile.apply_custom_paint(0)
+	_check(str(profile.equipped["primary"]) == "ff2d7a" and int(profile.equipped["paint_scheme"]) == 2
+		and profile.is_custom_paint_on(profile.custom_paints()[0]), "aplicar um padrão salvo (cores e esquema)")
+	_check(profile.save_custom_paint("Rosa") == 0 and profile.custom_paints().size() == 2, "mesmo nome substitui")
+	profile.delete_custom_paint(0)
+	_check(profile.custom_paints().size() == 1 and str(profile.custom_paints()[0]["name"]) == "Pintura 2", "apagar um padrão")
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(PlayerProfile.paints_path))
 
 	# --- Recompensas
 	profile.credits = 0

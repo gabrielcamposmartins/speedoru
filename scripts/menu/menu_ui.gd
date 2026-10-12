@@ -23,6 +23,8 @@ var _toast: Label
 var _profile: PlayerProfile
 var _net: Node
 var _invites: VBoxContainer
+## Sala em que o jogador está ("" = nenhuma): só entrar numa sala nova abre a tela dela.
+var _room_id := ""
 
 
 func _ready() -> void:
@@ -78,6 +80,7 @@ func _ready() -> void:
 	_update_wallet()
 	_net = get_node_or_null("/root/Net")
 	if _net:
+		_room_id = str((_net.room as Dictionary).get("id", ""))
 		_net.message.connect(_on_net_message)
 		_net.connection_changed.connect(func(_o: bool) -> void:
 			if screen == "home":
@@ -228,7 +231,7 @@ func _build_home() -> void:
 	box.add_theme_constant_override("separation", 14)
 	_body.add_child(box)
 	var entries := [
-		["JOGAR SOLO", "Corrida contra bots em Monza ou Mônaco · pit obrigatório", func() -> void: show_screen("solo"), false],
+		["JOGAR SOLO", "Corrida contra bots em Monza, Mônaco, Suzuka ou Las Vegas · pit obrigatório", func() -> void: show_screen("solo"), false],
 		["MULTIPLAYER", _multiplayer_subtitle(), func() -> void: show_screen("multiplayer"), false],
 		["GARAGEM", "Estúdio, galeria e loja", func() -> void: show_screen("garage"), false],
 		["CONFIGURAÇÕES", "Controles, tela, gráficos, desempenho e áudio", func() -> void: menu.open_settings(), false],
@@ -291,10 +294,14 @@ func _on_net_message(type: String, data: Dictionary) -> void:
 						toast(str(r.get("error", ""))),
 				Callable())
 		"room":
-			# Puxado para uma sala (grupo, convite, fila): abre a tela da sala
-			if not (data.get("room", {}) as Dictionary).is_empty() and screen != "multiplayer":
+			# Puxado para uma sala (grupo, convite, fila): abre a tela da sala. Só ao entrar nela: as
+			# atualizações da sala em que já está (ajustes do anfitrião, alguém pronto) não tiram o
+			# jogador do que está fazendo (garagem, loja…)
+			var id := str((data.get("room", {}) as Dictionary).get("id", ""))
+			if id != "" and id != _room_id and screen != "multiplayer":
 				MultiplayerPanel.tab = "rooms"
 				show_screen("multiplayer")
+			_room_id = id
 
 
 ## Cartão de convite (Aceitar / Recusar), some sozinho em 20 s.
@@ -357,19 +364,12 @@ func _panel(kicker: String, width_ratio: float) -> VBoxContainer:
 	return box
 
 
-## Jogar solo: duas colunas (corrida | classificatória e ambiente), cada opção com o nome em cima;
-## a área das opções rola se a janela for baixa e os botões ficam sempre embaixo.
+## Jogar solo: a pista num carrossel em cima e duas colunas (corrida | classificatória e
+## ambiente), cada opção com o nome em cima; a área das opções rola se a janela for baixa e os
+## botões ficam sempre embaixo.
 func _build_solo() -> void:
 	var box := _panel("JOGAR SOLO", 0.64)
-	var title := Label.new()
-	title.text = RaceSettings.track_name(RaceSettings.track).to_upper()
-	title.theme_type_variation = "RetroTitle"
-	box.add_child(title)
 	var race_rows := [
-		["Pista", RaceSettings.TRACKS.map(func(t: Dictionary) -> String: return t["name"]), RaceSettings.track_index(RaceSettings.track),
-			func(i: int) -> void:
-				RaceSettings.track = RaceSettings.TRACKS[i]["id"]
-				title.text = RaceSettings.track_name(RaceSettings.track).to_upper()],
 		["Modo", ["Corrida (pit obrigatório)", "Treino livre"], RaceSettings.mode, func(i: int) -> void: RaceSettings.mode = i as RaceSettings.Mode],
 		["Voltas", ["3", "5", "10", "15", "20"], [3, 5, 10, 15, 20].find(RaceSettings.laps), func(i: int) -> void: RaceSettings.laps = [3, 5, 10, 15, 20][i]],
 		["Adversários", ["3", "5", "9", "13"], maxi([3, 5, 9, 13].find(RaceSettings.opponents), 0), func(i: int) -> void: RaceSettings.opponents = [3, 5, 9, 13][i]],
@@ -392,10 +392,20 @@ func _build_solo() -> void:
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	box.add_child(scroll)
+	var inner := VBoxContainer.new()
+	inner.add_theme_constant_override("separation", 14)
+	inner.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.add_child(inner)
+	var carousel := TrackCarousel.new()
+	carousel.name = "TrackCarousel"
+	carousel.selected = RaceSettings.track_index(RaceSettings.track)
+	carousel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	carousel.track_changed.connect(func(i: int) -> void: RaceSettings.track = RaceSettings.TRACKS[i]["id"])
+	inner.add_child(carousel)
 	var cols := HBoxContainer.new()
 	cols.add_theme_constant_override("separation", 28)
 	cols.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	scroll.add_child(cols)
+	inner.add_child(cols)
 	var left := _solo_column(cols, "CORRIDA")
 	var right := _solo_column(cols, "CLASSIFICATÓRIA E AMBIENTE")
 	for r in race_rows:

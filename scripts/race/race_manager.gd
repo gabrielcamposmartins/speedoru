@@ -106,6 +106,8 @@ var net_setup := {}
 static var client_setup := {}
 ## Há uma corrida em rede aberta neste cliente (menus não pausam o jogo).
 static var online_race := false
+## Cliente: entrou na corrida só como observador (sem carro; o modo espectador fica ligado).
+var observer := false
 ## Servidor: entries dos humanos por id de conta.
 var humans := {}
 ## Todos os carros na ordem fixa (índice da rede), ao contrário de entries (ordenada por posição).
@@ -505,6 +507,7 @@ func _on_line_crossed(e: RaceEntry) -> void:
 	if state == State.PRACTICE:
 		return
 	if not e.finished and (e.laps_completed() >= laps or leader_finished):
+		e.finish_laps = e.laps_completed()
 		e.finished = true
 		e.finish_time = race_time
 		leader_finished = true
@@ -601,15 +604,27 @@ func interval_text(e: RaceEntry) -> String:
 	var ahead: RaceEntry = entries[e.position - 2]
 	var length := track.path.length
 	if e.finished and ahead.finished:
+		var down := ahead.laps_completed() - e.laps_completed()
+		if down >= 1:
+			return _laps_down_text(down)
 		return "+%.3f" % (e.finish_time - ahead.finish_time)
-	var lap_diff := int(floor((ahead.progress - e.progress) / length))
-	if lap_diff >= 1 and not ahead.finished:
-		return "+%d VOLTA%s" % [lap_diff, "S" if lap_diff > 1 else ""]
+	if e.finished:
+		# O da frente ainda corre com pelo menos as mesmas voltas: vai completar mais uma
+		return _laps_down_text(maxi(ahead.laps_completed() + 1 - e.laps_completed(), 1))
+	# Quem já terminou conta até a linha (depois da bandeirada o progresso segue a volta de desaceleração)
+	var ahead_progress := ahead.laps_completed() * length if ahead.finished else ahead.progress
+	var lap_diff := int(floor((ahead_progress - e.progress) / length))
+	if lap_diff >= 1:
+		return _laps_down_text(lap_diff)
 	var index := mini(e.checkpoint_times.size() - 1, ahead.checkpoint_times.size() - 1)
 	if index < 0:
 		return "--"
 	var gap := e.time_at_checkpoint(index) - ahead.time_at_checkpoint(index)
 	return "+%.3f" % maxf(gap, 0.0)
+
+
+static func _laps_down_text(n: int) -> String:
+	return "+%d VOLTA%s" % [n, "S" if n > 1 else ""]
 
 
 # ---------------------------------------------------------------------------
@@ -662,7 +677,7 @@ func _begin_player_pit(e: RaceEntry) -> void:
 func begin_player_pit(e: RaceEntry, repair_time: float) -> void:
 	e.in_pit_stop = true
 	e.car.hold = true
-	e.car.limiter_on = false
+	# O limitador fica como o jogador deixou (só ele desliga)
 	var damage := e.car.get_node_or_null("Damage") as CarDamage
 	var repair := repair_time > 0.0 or (damage != null and damage.get_overall() < 0.97)
 	# Parada sorteada entre 2 e 4 s (o conserto soma o tempo dele)
@@ -830,6 +845,11 @@ func _notify(e: RaceEntry, title: String, detail: String, is_penalty: bool) -> v
 # Resultado
 # ---------------------------------------------------------------------------
 ## Classificação final: terminaram (por voltas e tempo + penalidades), não terminaram, desclassificados.
+## Classificação final: desclassificados e abandonos no fim; os outros pelas voltas completadas (quem
+## levou volta e já recebeu a bandeirada fica atrás de quem completou mais, mesmo que esse ainda não
+## tenha cruzado a linha). Com as mesmas voltas: entre os que terminaram, o menor tempo total (com
+## as penalidades); quem ainda corre está na volta seguinte (à frente de quem já terminou); entre os
+## que correm, a distância percorrida.
 func final_classification() -> Array[RaceEntry]:
 	var out: Array[RaceEntry] = entries.duplicate()
 	out.sort_custom(func(a: RaceEntry, b: RaceEntry) -> bool:
@@ -837,12 +857,12 @@ func final_classification() -> Array[RaceEntry]:
 			return b.disqualified
 		if a.retired != b.retired:
 			return b.retired
-		if a.finished != b.finished:
-			return a.finished
-		if a.finished:
-			if a.laps_completed() != b.laps_completed():
-				return a.laps_completed() > b.laps_completed()
+		if a.laps_completed() != b.laps_completed():
+			return a.laps_completed() > b.laps_completed()
+		if a.finished and b.finished:
 			return a.total_time() < b.total_time()
+		if a.finished != b.finished:
+			return b.finished
 		return a.progress > b.progress)
 	return out
 
@@ -1156,7 +1176,8 @@ func net_state() -> Dictionary:
 	for e in roster:
 		list.append([e.position, e.crossings, e.progress, e.last_lap, e.best_lap, e.finished, e.finish_time,
 			e.penalty_seconds, e.penalty_log.map(func(x: Array) -> String: return "%s|%s|%s|%d" % [x[0], x[1], x[2], x[3]]), e.retired, e.disqualified, e.pit_count, e.in_pit, e.in_pit_stop,
-			interval_text(e), e.lap_start, e.track_limit_warnings, e.pit_timer, e.lap_invalid, e.lap_restart, e.car.drs_allowed])
+			interval_text(e), e.lap_start, e.track_limit_warnings, e.pit_timer, e.lap_invalid, e.lap_restart, e.car.drs_allowed,
+			e.finish_laps])
 	var inv := {}
 	if control:
 		for e: RaceEntry in control.involved:
@@ -1187,6 +1208,7 @@ func _start_net_client() -> void:
 	if daylight:
 		daylight.allow_cycle = false
 	var me := str(net_setup.get("me", ""))
+	observer = bool(net_setup.get("spectator", false)) or me == ""
 	var list: Array = net_setup.get("roster", [])
 	var own_used := false
 	for k in list.size():
@@ -1231,9 +1253,10 @@ func _start_net_client() -> void:
 		car.reset_physics_interpolation()
 		_init_position(entry)
 	if player_entry == null:
-		# Sem carro próprio (não deveria acontecer): esconde o carro da cena
+		# Sem carro próprio (observador da sala): esconde o carro da cena
 		player.visible = false
 		player.set_puppet(true)
+		player.freeze = true
 	control = RaceControl.new()
 	control.name = "RaceControl"
 	control.mirror = true
@@ -1250,6 +1273,8 @@ func _start_net_client() -> void:
 		LoadingScreen.done()
 	state_changed.emit(state)
 	_net_cmd({"cmd": "loaded"})
+	if observer and hud and hud.spectator:
+		hud.spectator.enter_observer()
 
 
 func _client_physics(delta: float) -> void:
@@ -1288,6 +1313,11 @@ func apply_net_state(d: Dictionary) -> void:
 		e.progress = float(v[2])
 		e.last_lap = float(v[3])
 		e.best_lap = float(v[4])
+		# Voltas na bandeirada (servidor antigo não manda: as que tinha quando chegou a notícia)
+		if v.size() > 21:
+			e.finish_laps = int(v[21])
+		elif bool(v[5]) and not e.finished:
+			e.finish_laps = maxi(crossings - 1, 0)
 		e.finished = bool(v[5])
 		e.finish_time = float(v[6])
 		e.penalty_seconds = float(v[7])

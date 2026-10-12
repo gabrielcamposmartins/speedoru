@@ -1,0 +1,428 @@
+[gd_resource type="Resource" script_class="TrackLayout" load_steps=33 format=3]
+
+[ext_resource type="Script" path="res://scripts/track/track_layout.gd" id="1_layout"]
+[ext_resource type="Script" path="res://scripts/track/track_feature.gd" id="2_feature"]
+
+[sub_resource type="Resource" id="F0"]
+script = ExtResource("2_feature")
+kind = 3
+label = "Escape curva 1"
+s_start = 190.0
+s_end = 280.0
+side = 1
+distance = 6.0
+rows = 12
+spacing = 40.0
+roof = false
+variant = 0
+
+[sub_resource type="Resource" id="F1"]
+script = ExtResource("2_feature")
+kind = 3
+label = "Escape curva 5"
+s_start = 430.0
+s_end = 510.0
+side = 0
+distance = 4.0
+rows = 12
+spacing = 40.0
+roof = false
+variant = 0
+
+[sub_resource type="Resource" id="F2"]
+script = ExtResource("2_feature")
+kind = 3
+label = "Escape chicane da Sphere"
+s_start = 2460.0
+s_end = 2525.0
+side = 2
+distance = 4.0
+rows = 12
+spacing = 40.0
+roof = false
+variant = 0
+
+[sub_resource type="Resource" id="F3"]
+script = ExtResource("2_feature")
+kind = 3
+label = "Escape entrada da Strip"
+s_start = 3110.0
+s_end = 3160.0
+side = 1
+distance = 5.0
+rows = 12
+spacing = 40.0
+roof = false
+variant = 0
+
+[sub_resource type="Resource" id="F4"]
+script = ExtResource("2_feature")
+kind = 3
+label = "Escape curva da Harmon"
+s_start = 5035.0
+s_end = 5075.0
+side = 1
+distance = 5.0
+rows = 12
+spacing = 40.0
+roof = false
+variant = 0
+
+[sub_resource type="Resource" id="F5"]
+script = ExtResource("2_feature")
+kind = 0
+label = "Arquibancada principal"
+s_start = -190.0
+s_end = -50.0
+side = 1
+distance = 2.0
+rows = 16
+spacing = 40.0
+roof = true
+variant = 0
+
+[sub_resource type="Resource" id="F6"]
+script = ExtResource("2_feature")
+kind = 0
+label = "Arquibancada curva 1"
+s_start = 170.0
+s_end = 270.0
+side = 1
+distance = 2.0
+rows = 14
+spacing = 40.0
+roof = false
+variant = 1
+
+[sub_resource type="Resource" id="F7"]
+script = ExtResource("2_feature")
+kind = 0
+label = "Arquibancada Koval"
+s_start = 900.0
+s_end = 1040.0
+side = 1
+distance = 2.0
+rows = 12
+spacing = 40.0
+roof = false
+variant = 2
+
+[sub_resource type="Resource" id="F8"]
+script = ExtResource("2_feature")
+kind = 0
+label = "Arquibancada Sphere"
+s_start = 2440.0
+s_end = 2500.0
+side = 0
+distance = 2.0
+rows = 14
+spacing = 40.0
+roof = true
+variant = 3
+
+[sub_resource type="Resource" id="F9"]
+script = ExtResource("2_feature")
+kind = 0
+label = "Arquibancada Harmon"
+s_start = 5000.0
+s_end = 5080.0
+side = 1
+distance = 2.0
+rows = 14
+spacing = 40.0
+roof = false
+variant = 1
+
+[sub_resource type="Resource" id="F10"]
+script = ExtResource("2_feature")
+kind = 4
+label = "Reta dos boxes"
+s_start = -300.0
+s_end = 170.0
+side = 1
+distance = 2.0
+rows = 12
+spacing = 40.0
+roof = false
+variant = 0
+
+[sub_resource type="Resource" id="F11"]
+script = ExtResource("2_feature")
+kind = 4
+label = "Curvas 1 a 7"
+s_start = 170.0
+s_end = 640.0
+side = 2
+distance = 2.0
+rows = 12
+spacing = 40.0
+roof = false
+variant = 2
+
+[sub_resource type="Resource" id="F12"]
+script = ExtResource("2_feature")
+kind = 4
+label = "Koval"
+s_start = 640.0
+s_end = 1500.0
+side = 2
+distance = 2.0
+rows = 12
+spacing = 40.0
+roof = false
+variant = 4
+
+[sub_resource type="Resource" id="F13"]
+script = ExtResource("2_feature")
+kind = 4
+label = "Sands"
+s_start = 1500.0
+s_end = 2300.0
+side = 2
+distance = 2.0
+rows = 12
+spacing = 40.0
+roof = false
+variant = 1
+
+[sub_resource type="Resource" id="F14"]
+script = ExtResource("2_feature")
+kind = 4
+label = "Sphere"
+s_start = 2300.0
+s_end = 3150.0
+side = 2
+distance = 2.0
+rows = 12
+spacing = 40.0
+roof = false
+variant = 6
+
+[sub_resource type="Resource" id="F15"]
+script = ExtResource("2_feature")
+kind = 4
+label = "Strip"
+s_start = 3150.0
+s_end = 5050.0
+side = 2
+distance = 2.0
+rows = 12
+spacing = 40.0
+roof = false
+variant = 3
+
+[sub_resource type="Resource" id="F16"]
+script = ExtResource("2_feature")
+kind = 4
+label = "Harmon"
+s_start = 5050.0
+s_end = 5856.0
+side = 2
+distance = 2.0
+rows = 12
+spacing = 40.0
+roof = false
+variant = 5
+
+[sub_resource type="Resource" id="F17"]
+script = ExtResource("2_feature")
+kind = 6
+label = "Postes da cidade"
+s_start = -300.0
+s_end = 5850.0
+side = 2
+distance = 1.0
+rows = 12
+spacing = 50.0
+roof = false
+variant = 1
+
+[sub_resource type="Resource" id="F18"]
+script = ExtResource("2_feature")
+kind = 8
+label = "Largada"
+s_start = 12.0
+s_end = 12.0
+side = 2
+distance = 2.0
+rows = 12
+spacing = 40.0
+roof = false
+variant = 0
+
+[sub_resource type="Resource" id="F19"]
+script = ExtResource("2_feature")
+kind = 7
+label = "Ponte reta dos boxes"
+s_start = -150.0
+s_end = -150.0
+side = 2
+distance = 2.0
+rows = 12
+spacing = 40.0
+roof = false
+variant = 0
+
+[sub_resource type="Resource" id="F20"]
+script = ExtResource("2_feature")
+kind = 7
+label = "Ponte Koval"
+s_start = 1100.0
+s_end = 1100.0
+side = 2
+distance = 2.0
+rows = 12
+spacing = 40.0
+roof = false
+variant = 4
+
+[sub_resource type="Resource" id="F21"]
+script = ExtResource("2_feature")
+kind = 7
+label = "Ponte Strip"
+s_start = 4000.0
+s_end = 4000.0
+side = 2
+distance = 2.0
+rows = 12
+spacing = 40.0
+roof = false
+variant = 8
+
+[sub_resource type="Resource" id="F22"]
+script = ExtResource("2_feature")
+kind = 9
+label = "Curva 1"
+s_start = 205.0
+s_end = 205.0
+side = 1
+distance = 2.0
+rows = 12
+spacing = 40.0
+roof = false
+variant = 0
+
+[sub_resource type="Resource" id="F23"]
+script = ExtResource("2_feature")
+kind = 9
+label = "Curva 5"
+s_start = 445.0
+s_end = 445.0
+side = 0
+distance = 2.0
+rows = 12
+spacing = 40.0
+roof = false
+variant = 0
+
+[sub_resource type="Resource" id="F24"]
+script = ExtResource("2_feature")
+kind = 9
+label = "Fim da Koval"
+s_start = 1495.0
+s_end = 1495.0
+side = 0
+distance = 2.0
+rows = 12
+spacing = 40.0
+roof = false
+variant = 0
+
+[sub_resource type="Resource" id="F25"]
+script = ExtResource("2_feature")
+kind = 9
+label = "Sphere"
+s_start = 1945.0
+s_end = 1945.0
+side = 1
+distance = 2.0
+rows = 12
+spacing = 40.0
+roof = false
+variant = 0
+
+[sub_resource type="Resource" id="F26"]
+script = ExtResource("2_feature")
+kind = 9
+label = "Entrada da Strip"
+s_start = 3120.0
+s_end = 3120.0
+side = 1
+distance = 2.0
+rows = 12
+spacing = 40.0
+roof = false
+variant = 0
+
+[sub_resource type="Resource" id="F27"]
+script = ExtResource("2_feature")
+kind = 9
+label = "Fim da Strip"
+s_start = 5045.0
+s_end = 5045.0
+side = 1
+distance = 2.0
+rows = 12
+spacing = 40.0
+roof = false
+variant = 0
+
+[sub_resource type="Resource" id="F28"]
+script = ExtResource("2_feature")
+kind = 10
+label = "Bandeirolas reta dos boxes"
+s_start = -300.0
+s_end = 170.0
+side = 2
+distance = 0.0
+rows = 0
+spacing = 80.0
+roof = false
+variant = 0
+
+[sub_resource type="Resource" id="F29"]
+script = ExtResource("2_feature")
+kind = 10
+label = "Bandeirolas Strip"
+s_start = 3200.0
+s_end = 5000.0
+side = 2
+distance = 0.0
+rows = 0
+spacing = 140.0
+roof = false
+variant = 0
+
+[resource]
+script = ExtResource("1_layout")
+centerline = "res://assets/track/las_vegas/las_vegas_centerline.csv"
+raceline = "res://assets/track/las_vegas/las_vegas_raceline.csv"
+line_margin = 2.0
+bot_pace = 0.95
+start_offset = 0.0
+width_scale = 1.0
+min_half_width = 5.0
+display_name = "Las Vegas"
+flag_colors = PackedColorArray(0.72, 0.1, 0.16, 1, 0.97, 0.97, 0.97, 1, 0.1, 0.16, 0.42, 1)
+flag_style = 1
+city = "res://assets/track/las_vegas/las_vegas_city.json"
+auto_kerbs = true
+kerb_max_radius = 90.0
+kerb_width = 1.1
+auto_gravel = false
+barrier_distance = 1.6
+has_pit = true
+pit_side = 1
+pit_entry_s = -230.0
+pit_exit_s = 150.0
+pit_taper = 80.0
+pit_lane_width = 12.0
+garage_count = 14
+garage_width = 9.0
+garage_center_s = -40.0
+pit_building_length = 140.0
+paddock_depth = 0.0
+grid_slots = 20
+grid_spacing = 8.0
+grid_lateral = 2.4
+features = Array[ExtResource("2_feature")]([SubResource("F0"), SubResource("F1"), SubResource("F2"), SubResource("F3"), SubResource("F4"), SubResource("F5"), SubResource("F6"), SubResource("F7"), SubResource("F8"), SubResource("F9"), SubResource("F10"), SubResource("F11"), SubResource("F12"), SubResource("F13"), SubResource("F14"), SubResource("F15"), SubResource("F16"), SubResource("F17"), SubResource("F18"), SubResource("F19"), SubResource("F20"), SubResource("F21"), SubResource("F22"), SubResource("F23"), SubResource("F24"), SubResource("F25"), SubResource("F26"), SubResource("F27"), SubResource("F28"), SubResource("F29")])

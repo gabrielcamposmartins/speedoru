@@ -73,6 +73,11 @@ const PARAMS := [
 
 const GROUPS := ["Aerodinâmica", "Freios", "Pneus", "Direção", "Motor e câmbio", "Suspensão", "Assistências"]
 
+## Padrão do jogador quando difere do de fábrica (os bots usam o de fábrica): direção mais calma em
+## alta velocidade (esterço em alta de 1,0°) e volante mais lento. Contas novas já começam com isso
+## gravado no ajuste; as que já existiam mantêm o que tinham. "Restaurar" volta a estes valores.
+const PLAYER_DEFAULTS := {"high_speed_steer_angle": 0.0174533, "steer_rate": 0.5}
+
 
 static func param(key: String) -> Array:
 	for p in PARAMS:
@@ -111,6 +116,13 @@ static func _read(car: F1Car, p: Array) -> float:
 		_:
 			var ws := _wheels(car, p[3])
 			return float(ws[0].get(p[4])) if not ws.is_empty() else float(p[5])
+
+
+## Padrão do jogador: o de fábrica com PLAYER_DEFAULTS por cima.
+static func standard(car: F1Car) -> Dictionary:
+	var d := defaults(car).duplicate()
+	d.merge(PLAYER_DEFAULTS, true)
+	return d
 
 
 ## Aplica um ajuste (só as chaves presentes; o resto volta ao de fábrica).

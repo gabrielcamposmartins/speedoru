@@ -32,6 +32,8 @@ const FREE_SPEED := 22.0
 
 var hud: RaceModeHud
 var active := false
+## Observador (entrou na sala só para assistir): sem carro próprio, o modo fica sempre ligado.
+var locked := false
 var view: View = View.TV_AUTO
 var spot := 0
 ## Carro seguido (índice em manager.entries).
@@ -71,6 +73,12 @@ func can_enter() -> bool:
 	return true
 
 
+## Observador da corrida online: entra no modo e não sai mais (não há carro para voltar).
+func enter_observer() -> void:
+	locked = true
+	enter()
+
+
 func toggle() -> void:
 	if active:
 		exit()
@@ -100,7 +108,7 @@ func enter() -> void:
 
 
 func exit() -> void:
-	if not active:
+	if not active or locked:
 		return
 	active = false
 	_stop_autopilot()
@@ -564,7 +572,8 @@ func status_text() -> Array:
 			what = "Câmera livre"
 		View.FOLLOW:
 			what = "Perseguição · %s" % _cam.get_mode_name()
-	var keys := "[1-%d] câmeras · [0] TV automática · [F] livre · [C] perseguição · [←/→] carro · [F6] sair" % spot_list.size()
+	var leave := "[Esc] menu" if locked else "[F6] sair"
+	var keys := "[1-%d] câmeras · [0] TV automática · [F] livre · [C] perseguição · [←/→] carro · %s" % [spot_list.size(), leave]
 	if view == View.FREE:
-		keys = "WASD/setas move · Q/E desce/sobe · Shift rápido · botão direito olha · [0] TV · [C] perseguição · [F6] sair"
-	return ["ESPECTADOR · %s" % what, ("seguindo %s · " % who if view != View.FREE else "") + keys]
+		keys = "WASD/setas move · Q/E desce/sobe · Shift rápido · botão direito olha · [0] TV · [C] perseguição · %s" % leave
+	return [("OBSERVADOR · %s" if locked else "ESPECTADOR · %s") % what, ("seguindo %s · " % who if view != View.FREE else "") + keys]

@@ -76,6 +76,9 @@ func _unhandled_input(event: InputEvent) -> void:
 		if mb.button_index == MOUSE_BUTTON_LEFT or mb.button_index == MOUSE_BUTTON_RIGHT:
 			_drag = mb.pressed
 			_idle = 0.0
+		elif mb.button_index in [MOUSE_BUTTON_WHEEL_UP, MOUSE_BUTTON_WHEEL_DOWN] and _over_ui():
+			# Rodinha em cima de um painel (que não rolou, ex.: já no fim): não mexe no zoom
+			return
 		elif mb.pressed and mb.button_index == MOUSE_BUTTON_WHEEL_UP:
 			_distance = maxf(_distance - 0.4, 3.5 if _focused else 7.0)
 		elif mb.pressed and mb.button_index == MOUSE_BUTTON_WHEEL_DOWN:
@@ -87,6 +90,12 @@ func _unhandled_input(event: InputEvent) -> void:
 		_yaw -= mm.relative.x * 0.006
 		_pitch = clampf(_pitch + mm.relative.y * 0.004, deg_to_rad(4.0), deg_to_rad(48.0))
 		_idle = 0.0
+
+
+## O mouse está sobre algum elemento da interface (painel, botão, lista…)? O fundo da tela do menu
+## ignora o mouse, então sobre a garagem não há nenhum.
+func _over_ui() -> bool:
+	return get_viewport().gui_get_hovered_control() != null
 
 
 func _update_camera(delta: float) -> void:

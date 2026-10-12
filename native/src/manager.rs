@@ -54,6 +54,10 @@ pub struct RaceEntryCore {
     pub finished_and_parked: bool,
     #[var]
     pub finish_time: f64,
+    /// Voltas completadas ao receber a bandeirada (o carro segue andando e cruzando a linha depois,
+    /// mas isso não conta mais).
+    #[var]
+    pub finish_laps: i64,
     #[var]
     pub is_player: bool,
     #[var]
@@ -206,20 +210,22 @@ impl RaceManagerCore {
         }
     }
 
-    /// Posições pela distância percorrida (quem terminou na frente, abandonos no fim).
+    /// Posições pela distância percorrida (abandonos no fim). Quem já recebeu a bandeirada conta
+    /// pelas voltas que tinha ao cruzar a linha (logo antes de quem ainda corre com as mesmas voltas:
+    /// esse está na volta seguinte); entre eles, quem chegou primeiro. Um carro que levou volta e
+    /// recebeu a bandeirada não passa à frente de quem completou mais voltas e ainda não cruzou.
     #[func]
     fn _native_update_positions(&mut self) {
         let entries_var = self.base().get("entries");
         let entries = entries_of(&entries_var);
         let Some(path) = self.path() else { return };
         let length = path.bind().length;
-        let laps = self.base().get("laps").try_to::<i64>().unwrap_or(0) as f64;
         let key = |e: &Gd<RaceEntryCore>| {
             let e = e.bind();
             if e.retired {
-                -1e6 + e.progress
+                -1e9 + e.progress
             } else if e.finished {
-                (laps + 2.0) * length + 1e5 - e.finish_time
+                e.finish_laps as f64 * length - 1e-3 - e.finish_time * 1e-7
             } else {
                 e.progress
             }

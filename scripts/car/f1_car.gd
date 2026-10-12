@@ -273,6 +273,7 @@ func _create_tire_smoke() -> void:
 	for i in get_wheels().size():
 		var smoke := CPUParticles3D.new()
 		smoke.name = "TireSmoke%d" % i
+		smoke.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		smoke.mesh = puff
 		smoke.amount = 40
 		smoke.lifetime = 0.9
@@ -310,6 +311,7 @@ func _create_dust() -> void:
 	for i in get_wheels().size():
 		var dust := CPUParticles3D.new()
 		dust.name = "Dust%d" % i
+		dust.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		dust.mesh = puff
 		dust.amount = 30
 		dust.lifetime = 1.2

@@ -9,6 +9,7 @@ const TRACKS := [
 	{"id": "monza", "name": "Monza", "scene": "res://scenes/tracks/monza.tscn"},
 	{"id": "monaco", "name": "Mônaco", "scene": "res://scenes/tracks/monaco.tscn"},
 	{"id": "suzuka", "name": "Suzuka", "scene": "res://scenes/tracks/suzuka.tscn"},
+	{"id": "las_vegas", "name": "Las Vegas", "scene": "res://scenes/tracks/las_vegas.tscn"},
 ]
 enum Grid { POLE, MIDDLE, BACK }
 

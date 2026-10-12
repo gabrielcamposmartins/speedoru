@@ -3,7 +3,7 @@ extends RaceEntryCore
 ## Estado de um piloto na corrida (jogador ou bot).
 ## Os campos que mudam a cada passo de física ficam no RaceEntryCore (native/src/manager.rs): s,
 ## lateral, race_time, crossings, progress, position, retired, finished, finished_and_parked,
-## finish_time, is_player, is_human, in_pit, in_pit_stop, pit_served, pit_speeding_flagged,
+## finish_time, finish_laps, is_player, is_human, in_pit, in_pit_stop, pit_served, pit_speeding_flagged,
 ## pit_timer, pit_count, garage, off_time, off_distance, off_start_progress, track_limit_warnings,
 ## wrong_way_time e checkpoint_times.
 
@@ -56,8 +56,10 @@ func current_lap() -> int:
 var compounds_used: Array[int] = []
 
 
+## Voltas completadas; depois da bandeirada, as que tinha ao recebê-la (finish_laps: o carro segue
+## andando e cruzando a linha, mas isso não conta).
 func laps_completed() -> int:
-	return maxi(crossings - 1, 0)
+	return finish_laps if finished else maxi(crossings - 1, 0)
 
 
 func total_time() -> float:
