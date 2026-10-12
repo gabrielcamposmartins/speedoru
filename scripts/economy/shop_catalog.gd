@@ -5,7 +5,8 @@ extends RefCounted
 ## * Moeda única: créditos, ganhos correndo (conta nova começa com 10.000).
 ## * Ticket = um giro numa roleta (2.500 créditos). Sem estoque, sem pacote, sem giro de 10, sem
 ##   desconto: cada giro é uma cobrança. Duas roletas temáticas, cada peça mora numa só.
-## * As roletas sorteiam PEÇAS de desempenho, DECALQUES e as cores de luz: BRILHO DO BOOST e NEON.
+## * As roletas sorteiam PEÇAS de desempenho, DECALQUES, as cores de luz (BRILHO DO BOOST e NEON) e
+##   RASTROS DE PARTÍCULAS (o carro solta bolhas, estrelas, fogo no chão, raios…: CarParticles).
 ##   As outras cores (carro, capacete, macacão, rodas) são livres no Estúdio; as pinturas prontas
 ##   (PAINTS) são atalhos grátis.
 ## * Cada giro sorteia um DEGRAU de raridade com fatia fixa (RARITIES) e, dentro dele, uma peça
@@ -39,13 +40,14 @@ const TYPES := [
 	["decal", "Decalques", 1.0],
 	["boost", "Brilho do boost", 1.0],
 	["neon", "Neon", 1.1],
+	["trail", "Partículas", 1.3],
 ]
 ## Campos de cor que só aceitam cores ganhas (itens desses tipos); os outros são livres.
 const GACHA_COLORS := ["boost", "neon"]
 
 const ROULETTES := {
-	"neon": {"name": "Roleta Neon", "theme": "luz fria, sakura, cometa e peças leves", "color": Color("05d9e8")},
-	"inferno": {"name": "Roleta Dragão", "theme": "dragões, fogo, garras, asas traseiras e rodas", "color": Color("ff4d2d")},
+	"neon": {"name": "Roleta Neon", "theme": "luz fria, sakura, cometa, raios e peças leves", "color": Color("05d9e8")},
+	"inferno": {"name": "Roleta Dragão", "theme": "dragões, fogo no chão, garras, asas traseiras e rodas", "color": Color("ff4d2d")},
 }
 
 ## Pinturas prontas (grátis): combinações de três cores aplicadas de uma vez. As cores do carro são
@@ -140,6 +142,11 @@ const ITEMS := {
 	"part_halo_ribbed": {"type": "part", "name": "Halo com costelas", "rarity": 0, "roulette": "neon", "slot": "halo", "variant": "ribbed"},
 	"part_mirrors_eye": {"type": "part", "name": "Retrovisores Olho", "rarity": 0, "roulette": "neon", "slot": "mirrors", "variant": "eye"},
 	"part_rim_disc": {"type": "part", "name": "Rodas Disco", "rarity": 0, "roulette": "neon", "slot": "rim", "variant": "disc"},
+	"trail_lightning": {"type": "trail", "name": "Raios", "rarity": 4, "roulette": "neon", "effect": "lightning"},
+	"trail_sakura": {"type": "trail", "name": "Pétalas de sakura", "rarity": 3, "roulette": "neon", "effect": "sakura"},
+	"trail_stars": {"type": "trail", "name": "Estrelinhas", "rarity": 2, "roulette": "neon", "effect": "stars"},
+	"trail_bubbles": {"type": "trail", "name": "Bolhas de sabão", "rarity": 1, "roulette": "neon", "effect": "bubbles"},
+	"trail_snow": {"type": "trail", "name": "Flocos de neve", "rarity": 0, "roulette": "neon", "effect": "snow"},
 	# --- Roleta Dragão (id "inferno", o nome antigo, que fica nos perfis e no servidor) --------
 	"part_rear_wing_lowdf": {"type": "part", "name": "Asa traseira de baixa carga", "rarity": 3, "roulette": "inferno", "slot": "rear_wing", "variant": "lowdf"},
 	"part_rear_wing_highdf": {"type": "part", "name": "Asa traseira de alta carga", "rarity": 3, "roulette": "inferno", "slot": "rear_wing", "variant": "highdf"},
@@ -181,6 +188,11 @@ const ITEMS := {
 	"part_sidepods_bulge": {"type": "part", "name": "Sidepods Musculoso", "rarity": 0, "roulette": "inferno", "slot": "sidepods", "variant": "bulge"},
 	"part_mirrors_spiked": {"type": "part", "name": "Retrovisores com espinhos", "rarity": 0, "roulette": "inferno", "slot": "mirrors", "variant": "spiked"},
 	"part_rim_yspoke": {"type": "part", "name": "Rodas Raios em Y", "rarity": 0, "roulette": "inferno", "slot": "rim", "variant": "yspoke"},
+	"trail_fire": {"type": "trail", "name": "Fogo no chão", "rarity": 4, "roulette": "inferno", "effect": "fire"},
+	"trail_embers": {"type": "trail", "name": "Brasas", "rarity": 3, "roulette": "inferno", "effect": "embers"},
+	"trail_coins": {"type": "trail", "name": "Chuva de moedas", "rarity": 2, "roulette": "inferno", "effect": "coins"},
+	"trail_smoke": {"type": "trail", "name": "Fumaça colorida", "rarity": 1, "roulette": "inferno", "effect": "smoke"},
+	"trail_sparks": {"type": "trail", "name": "Faíscas de titânio", "rarity": 0, "roulette": "inferno", "effect": "sparks"},
 }
 
 
@@ -283,6 +295,11 @@ static func colors_of(id: String) -> Array[Color]:
 ## Decalque (id do CarDecals) de um item do tipo "decal".
 static func decal_of(id: String) -> String:
 	return str(item(id).get("decal", ""))
+
+
+## Efeito (id do CarParticles) de um item do tipo "trail".
+static func effect_of(id: String) -> String:
+	return str(item(id).get("effect", ""))
 
 
 ## Id do item de um decalque padrão ("" se não existe).

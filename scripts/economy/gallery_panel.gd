@@ -8,7 +8,7 @@ extends HBoxContainer
 ## câmera vai até a peça) e o cartão de detalhes: raridade, roleta onde cai, chance exata, quanto
 ## devolve se sair repetida e o botão Equipar (se for sua) ou Ir à loja (se faltar).
 
-const TYPE_ICONS := {"part": "parts", "decal": "decals", "boost": "boost", "neon": "neon"}
+const TYPE_ICONS := {"part": "parts", "decal": "decals", "boost": "boost", "neon": "neon", "trail": "trail"}
 
 var type := "part"
 var selected_id := ""
@@ -127,6 +127,8 @@ func _tile(id: String) -> StudioPanel.OptionTile:
 			t.art_kind = "livery"
 		"boost", "neon":
 			t.art_kind = "glow"
+		"trail":
+			t.art_kind = "trail"
 		"part":
 			t.art_kind = "part"
 			t.part_slot = it["slot"]
@@ -341,6 +343,10 @@ class ItemCard extends Control:
 					var w := minf(box.size.x, box.size.y * aspect)
 					ci.draw_texture_rect(tex, Rect2(box.get_center() - Vector2(w, w / aspect) * 0.5, Vector2(w, w / aspect)), false,
 						Color(1, 1, 1, dim))
+			"trail":
+				# Abaixo do selo de raridade
+				CarParticles.draw_icon(ci, ShopCatalog.effect_of(id), Rect2(art.position.x, art.position.y + art.size.y * 0.22,
+					art.size.x, art.size.y * 0.78), dim)
 			"part":
 				# Abaixo do selo de raridade
 				var box := Rect2(art.position.x + 8.0, art.position.y + art.size.y * 0.32, art.size.x - 16.0, art.size.y * 0.6)

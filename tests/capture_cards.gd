@@ -1,6 +1,7 @@
 extends SceneTree
 ## Captura (com janela) das prévias novas: carrossel de pistas (Jogar solo, parado e girando),
-## peças do Estúdio e da Galeria (silhuetas, por categoria) e o giro da Roleta Dragão.
+## peças e partículas do Estúdio e da Galeria (silhuetas e ícones, por categoria) e o giro da Roleta
+## Dragão.
 ##   godot --path . -s res://tests/capture_cards.gd -- <pasta de saída>
 
 var out_dir := "user://captures"
@@ -36,6 +37,9 @@ func _run() -> void:
 	for id in ["part_rear_wing_lowdf", "part_nose_pointed", "part_rear_wing_dragon", "part_rim_spoked", "part_rim_star",
 			"part_front_wing_bat", "part_sidepods_gills", "part_halo_crown", "part_mirrors_winglet", "part_engine_cover_horns"]:
 		profile.owned[id] = true
+	for id in ["trail_fire", "trail_lightning", "trail_stars", "trail_bubbles", "trail_sakura", "trail_coins"]:
+		profile.owned[id] = true
+	profile.equip_trail("trail_fire")
 	var scene := (load("res://scenes/menu/main_menu.tscn") as PackedScene).instantiate()
 	root.add_child(scene)
 	current_scene = scene
@@ -60,6 +64,10 @@ func _run() -> void:
 	studio._build()
 	await _frames(30)
 	await _snap("estudio_pecas")
+	studio.category = "trail"
+	studio._build()
+	await _frames(60)
+	await _snap("estudio_particulas")
 	ui.garage_tab = 1
 	ui.show_screen("garage")
 	await _frames(20)
@@ -68,6 +76,10 @@ func _run() -> void:
 	gallery._rebuild()
 	await _frames(30)
 	await _snap("galeria_pecas")
+	gallery.type = "trail"
+	gallery._rebuild()
+	await _frames(30)
+	await _snap("galeria_particulas")
 	ui.garage_tab = 2
 	ui.show_screen("garage")
 	await _frames(20)

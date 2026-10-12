@@ -143,6 +143,7 @@ const FOCUS := {
 	"suit": [Vector3(0, 0.8, 0.2), -0.6, 34.0, 3.8],
 	"neon": [Vector3(0, 0.05, 0.0), -0.9, 6.0, 6.0],
 	"boost": [Vector3(-0.85, 0.33, -1.55), -PI / 2.0 - 0.4, 10.0, 4.0],
+	"trail": [Vector3(0, 0.7, -2.6), PI - 0.75, 18.0, 7.0],
 }
 
 
@@ -177,6 +178,9 @@ func preview_item(id: String) -> void:
 			cfg.neon_enabled = true
 			cfg.neon_color = cols[0]
 			focus_key = "neon"
+		"trail":
+			cfg.trail = ShopCatalog.effect_of(id)
+			focus_key = "trail"
 		"part":
 			cfg.set_part(it["slot"], it["variant"])
 			focus_key = it["slot"]
@@ -1325,6 +1329,8 @@ func _spawn_car() -> void:
 			car.remove_child(child)
 			child.free()
 	car.position = Vector3(0, 0.45, 0.2)
+	# Vitrine: o rastro de partículas aparece com o carro parado (CarParticles)
+	car.set_meta("showcase", true)
 	add_child(car)
 	if car.config:
 		car.config = car.config.duplicate(true)

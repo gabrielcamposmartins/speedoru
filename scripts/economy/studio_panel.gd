@@ -7,6 +7,7 @@ extends HBoxContainer
 ## grade de 2 colunas em que toda opção tem o mesmo tamanho (TILE).
 ## * Pinturas prontas (grátis) aplicam as 3 cores de uma vez; cada cor (carro, capacete, macacão,
 ##   rodas) é livre: seletor de qualquer cor e sugestões. Boost e neon: as cores ganhas nas roletas.
+## * Partículas: o rastro que o carro solta (bolhas, estrelas, fogo no chão, raios…), dos ganhos.
 ## * Peças: as variantes ganhas (a padrão sempre), com o efeito na aerodinâmica no tooltip.
 ## * Engenharia: o comportamento do carro (aerodinâmica, freios, pneus, direção, câmbio,
 ##   suspensão, assistências), com slider, ajuste grosso/fino e explicação de cada parâmetro.
@@ -33,6 +34,7 @@ const CATEGORIES := [
 	["rim", "Cor das rodas"],
 	["boost", "Brilho do boost"],
 	["neon", "Neon embaixo do carro"],
+	["trail", "Partículas"],
 	["parts", "Peças"],
 ]
 ## Explicação de cada aba (tooltip).
@@ -51,6 +53,7 @@ const CATEGORY_TIPS := {
 	"rim": "Cor das rodas.",
 	"boost": "Cor do brilho das rodas, do rastro e das partículas quando o boost está ligado. Ganhe mais cores nas roletas.",
 	"neon": "Luz de neon embaixo do carro (fica mais forte à noite). As cores saem nas roletas.",
+	"trail": "O rastro que o carro solta: bolhas, estrelinhas, fogo no chão, raios… Mais forte em velocidade; aparece para todos online. Saem nas roletas.",
 	"parts": "Peças de desempenho que você ganhou: trocam aderência por velocidade.",
 }
 
@@ -204,6 +207,23 @@ func _build() -> void:
 				t.pressed.connect(func() -> void:
 					_profile.equip_color("neon", col)
 					_profile.set_neon(true))
+				_add(t)
+		"trail":
+			var have := _profile.collection_count("trail")
+			_note.text = ("%d de %d rastros · mais forte em velocidade" % [have.x, have.y]) if have.x > 0 				else "nenhum rastro ainda · ganhe nas roletas Neon e Dragão"
+			var none := OptionTile.new()
+			none.title = "Nenhum"
+			none.art_kind = "off"
+			none.selected = str(eq.get("trail", "")) == ""
+			none.pressed.connect(_profile.equip_trail.bind(""))
+			_add(none)
+			for id in _profile.owned_of_type("trail"):
+				var t := OptionTile.new()
+				t.item_id = id
+				t.title = ShopCatalog.item(id)["name"]
+				t.art_kind = "trail"
+				t.selected = str(eq.get("trail", "")) == id
+				t.pressed.connect(_profile.equip_trail.bind(id))
 				_add(t)
 		"scheme":
 			_note.text = "como as 3 cores se dividem · todos grátis"
@@ -790,6 +810,8 @@ func _tab_tint(kind: String) -> Color:
 			return Color(str(eq[kind]))
 		"neon":
 			return Color(str(eq["neon"])) if eq["neon_on"] and str(eq["neon"]) != "" else Retro.c("muted")
+		"trail":
+			return Retro.c("accent") if str(eq.get("trail", "")) != "" else Retro.c("muted")
 	return Retro.c("text_2")
 
 
@@ -986,6 +1008,11 @@ class OptionTile extends Button:
 				for g in 4:
 					draw_circle(art.get_center(), art.size.y * (0.55 - g * 0.07), Color(color, 0.1))
 				draw_circle(art.get_center(), art.size.y * 0.26, Color(color, a_mul))
+			"trail":
+				CarParticles.draw_icon(self, ShopCatalog.effect_of(item_id), art.grow(-4.0), a_mul)
+				if ShopCatalog.ITEMS.has(item_id):
+					var rc: Color = ShopCatalog.RARITY_COLORS[ShopCatalog.item(item_id)["rarity"]]
+					draw_rect(Rect2(art.position.x, art.end.y - 3, art.size.x, 3), rc)
 			"finish":
 				StudioPanel.draw_finish_ball(self, art.get_center(), art.size.y * 0.4, color, finish)
 			"scheme":
@@ -1106,6 +1133,12 @@ class IconTab extends Button:
 			"boost":
 				draw_colored_polygon(PackedVector2Array([c + Vector2(3, -13), c + Vector2(-8, 2), c + Vector2(-1, 2), c + Vector2(-4, 13),
 					c + Vector2(8, -3), c + Vector2(1, -3)]), tint)
+			"trail":
+				# Estrelinhas saindo de um rastro
+				draw_line(c + Vector2(-14, 10), c + Vector2(4, 2), Color(tint, 0.5), 3.0)
+				draw_colored_polygon(CarParticles._star_points(c + Vector2(5, -3), 9.0, 4.0, 5, -PI / 2.0), tint)
+				draw_colored_polygon(CarParticles._star_points(c + Vector2(-8, -9), 4.5, 2.0, 5, -PI / 2.0), ink)
+				draw_circle(c + Vector2(12, 9), 2.5, ink)
 			"neon":
 				draw_rect(Rect2(c + Vector2(-13, -6), Vector2(26, 7)), ink)
 				for g in 3:

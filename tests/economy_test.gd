@@ -56,14 +56,21 @@ func _run() -> void:
 	_check(all_variants, "toda variante não padrão cai em alguma roleta")
 	var only_parts_decals := true
 	for id in ShopCatalog.ITEMS:
-		if not ShopCatalog.ITEMS[id]["type"] in ["part", "decal", "boost", "neon"]:
+		if not ShopCatalog.ITEMS[id]["type"] in ["part", "decal", "boost", "neon", "trail"]:
 			only_parts_decals = false
+		if ShopCatalog.ITEMS[id]["type"] == "trail" and not CarParticles.EFFECTS.has(ShopCatalog.effect_of(id)):
+			only_parts_decals = false
+			print("    rastro inexistente: ", id)
 		if ShopCatalog.ITEMS[id]["type"] in ["boost", "neon"] and not Color.html_is_valid(str(ShopCatalog.ITEMS[id].get("color", ""))):
 			only_parts_decals = false
 		if ShopCatalog.ITEMS[id]["type"] == "decal" and not CarDecals.is_preset(ShopCatalog.decal_of(id)):
 			only_parts_decals = false
 			print("    decalque inexistente: ", id)
-	_check(only_parts_decals, "roletas só com peças, decalques, boost e neon (que existem)")
+	_check(only_parts_decals, "roletas só com peças, decalques, boost, neon e partículas (que existem)")
+	var trail_effects := {}
+	for id in ShopCatalog.items_of_type("trail"):
+		trail_effects[ShopCatalog.effect_of(id)] = true
+	_check(trail_effects.size() == CarParticles.EFFECTS.size(), "todo rastro de partículas cai em alguma roleta (%d)" % trail_effects.size())
 	var legendaries := ShopCatalog.drops("neon", ShopCatalog.Rarity.LEGENDARY).size()
 	_check(is_equal_approx(1.0 / ShopCatalog.chance_of("decal_sakura"), 40.0 * legendaries),
 		"um lendário da roleta Neon: %d giros em média" % (40 * legendaries))
@@ -177,6 +184,21 @@ func _run() -> void:
 	_check(cfg.get_part("rear_wing") == "lowdf" and cfg.neon_enabled and cfg.neon_color.to_html(false) == "00e5ff",
 		"aplica peças, neon e cores na configuração do carro")
 	_check(cfg.paint_scheme == 4, "aplica o esquema de pintura na configuração do carro")
+	# Partículas: só os rastros ganhos
+	profile.equip_trail("trail_fire")
+	_check(profile.equipped["trail"] == "", "partículas: rastro não ganho é recusado")
+	profile.owned["trail_fire"] = true
+	profile.equip_trail("trail_fire")
+	profile.equip_trail("part_rear_wing_lowdf")
+	_check(profile.equipped["trail"] == "trail_fire", "partículas: rastro ganho é equipado (e item de outro tipo, não)")
+	profile.apply_to_config(cfg)
+	_check(cfg.trail == "fire", "aplica o rastro de partículas na configuração do carro")
+	profile.owned.erase("trail_fire")
+	profile.clamp_equipped()
+	profile.apply_to_config(cfg)
+	_check(profile.equipped["trail"] == "" and cfg.trail == "", "trava: rastro perdido sai do carro")
+	_check(PlayerProfile.sanitize_equipped({"trail": "trail_lightning"})["trail"] == "trail_lightning"
+		and PlayerProfile.sanitize_equipped({"trail": "nada"})["trail"] == "", "rastro passa pela validação do servidor")
 	var saved := PlayerProfile.sanitize_equipped({"paint_scheme": 7})
 	_check(saved["paint_scheme"] == 7, "esquema passa pela validação do servidor")
 
@@ -227,6 +249,21 @@ func _run() -> void:
 	_check((profile.equipped["setup"] as Dictionary).is_empty(), "conta salva antes da engenharia também continua igual")
 	profile.from_dict(state_before)
 	profile.save_profile()
+	# Cada rastro de partículas monta emissores no carro; "" tira tudo
+	var particles := car.find_child("Particles", true, false) as CarParticles
+	var built := 0
+	for fx: String in CarParticles.EFFECTS:
+		car.config.trail = fx
+		particles._sync()
+		var emitters := particles.find_children("*", "GPUParticles3D", false, false).size()
+		built += 1 if particles.effect == fx and emitters > 0 else 0
+		if emitters == 0:
+			print("    rastro sem emissores: ", fx)
+	_check(particles != null and built == CarParticles.EFFECTS.size(), "partículas: os %d rastros montam emissores" % built)
+	car.config.trail = ""
+	particles._sync()
+	await process_frame
+	_check(particles.effect == "" and particles.get_child_count() == 0, "partículas: sem rastro, sem emissores")
 	car.queue_free()
 
 	# --- Padrões de pintura do jogador (arquivo de teste)

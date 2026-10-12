@@ -81,6 +81,12 @@ const RIM_FINISHES := ["Polido", "Cromado", "Acetinado", "Fosco"]
 		boost_color = value
 		emit_changed()
 
+## Rastro de partículas (id do CarParticles.EFFECTS; "" = nenhum).
+@export var trail := "":
+	set(value):
+		trail = value
+		emit_changed()
+
 ## Esquema de divisão das 3 cores (ver PAINT_SCHEMES).
 @export var paint_scheme := 0:
 	set(value):

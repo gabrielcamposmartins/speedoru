@@ -9,6 +9,7 @@ extends CarEffectsCore
 ##    (CarConfig.boost_color), luz nas rodas, rastro de luz e partículas de pó mágico.
 ##  * Neon embaixo do carro (CarConfig.neon_enabled / neon_color): brilho no chão (Decal emissivo),
 ##    luzes sob o assoalho e tubos de neon nas laterais; bem mais forte à noite.
+##  * Rastro de partículas equipável (CarConfig.trail): ver CarParticles.
 ##  * Luz traseira de F1 (lanterna central + LEDs das placas da asa): pisca quando o carro freia
 ##    (recuperando energia para a bateria); apagada/fraca no resto do tempo.
 ## A cada quadro roda no código nativo (CarEffectsCore, native/src/fx.rs); aqui são montados os
@@ -101,6 +102,10 @@ func _setup() -> void:
 		_lights.append(light)
 	_build_neon()
 	_build_brake_light()
+	var particles := CarParticles.new()
+	particles.name = "Particles"
+	particles.car = car
+	add_child(particles)
 	car.parts_ready.connect(_on_parts_ready.call_deferred)
 	_on_parts_ready.call_deferred()
 	_core_setup(car, _skids, _trails, _dust, _lights, _dust_material, _neon_decal, _neon_lights, _neon_tubes,

@@ -5,7 +5,8 @@ extends Node
 ##
 ## Regras (ver ShopCatalog):
 ## * spin(roleta): cobra o ticket, sorteia com gerador criptográfico e entrega na mesma operação;
-##   repetida devolve 30% do preço de tabela. As roletas têm peças, decalques, boost e neon.
+##   repetida devolve 30% do preço de tabela. As roletas têm peças, decalques, boost, neon e rastros
+##   de partículas.
 ## * Cores livres: carro (3 cores), capacete, macacão e rodas aceitam qualquer cor; as pinturas
 ##   prontas (ShopCatalog.PAINTS) são atalhos grátis. Brilho do boost e neon: só as cores ganhas.
 ## * Peças de desempenho: só as variantes ganhas; decalques padrão: só os ganhos (ou grátis); os
@@ -71,6 +72,8 @@ static func default_equipped() -> Dictionary:
 		"primary": paint[0], "secondary": paint[1], "accent": paint[2],
 		"helmet": def["helmet"], "suit": def["suit"], "rim": def["rim"], "boost": def["boost"],
 		"neon_on": false, "neon": def["neon"],
+		# Rastro de partículas: id do item ("" = nenhum)
+		"trail": "",
 		"parts": {},
 		"paint_finish": 0,
 		"paint_scheme": 0,
@@ -458,6 +461,14 @@ func set_skin(h: String) -> void:
 	_commit()
 
 
+## Equipa um rastro de partículas (id do item; "" tira).
+func equip_trail(id: String) -> void:
+	if id != "" and (ShopCatalog.item(id).get("type", "") != "trail" or not owns(id)):
+		return
+	equipped["trail"] = id
+	_commit()
+
+
 func has_neon() -> bool:
 	return not owned_of_type("neon").is_empty()
 
@@ -600,6 +611,8 @@ func clamp_equipped() -> void:
 		if not CarPartCatalog.has_variant(slot, str(parts[slot])) or not str(parts[slot]) in owned_variants(slot):
 			parts.erase(slot)
 	equipped["neon_on"] = bool(equipped.get("neon_on", false)) and str(equipped["neon"]) != ""
+	var trail := str(equipped.get("trail", ""))
+	equipped["trail"] = trail if ShopCatalog.item(trail).get("type", "") == "trail" and owns(trail) else ""
 	# Decalques: só lugares/ids válidos, valores nos limites, e padrão só se a conta tiver
 	var decals := CarDecals.sanitize(equipped.get("decals", {}))
 	for slot in decals.keys():
@@ -669,7 +682,7 @@ func apply_setup(car: F1Car) -> void:
 		CarSetup.apply(car, equipped["setup"])
 
 
-## Aplica o que está equipado na configuração de um carro (peças, cores, neon, boost).
+## Aplica o que está equipado na configuração de um carro (peças, cores, neon, boost, partículas).
 func apply_to_config(config: CarConfig) -> void:
 	if config == null:
 		return
@@ -686,6 +699,9 @@ func apply_to_config(config: CarConfig) -> void:
 	config.rim_color = Color(equipped["rim"])
 	config.boost_color = Color(equipped["boost"])
 	config.neon_enabled = equipped["neon_on"]
+	var trail := ShopCatalog.effect_of(str(equipped["trail"]))
+	if config.trail != trail:
+		config.trail = trail
 	config.paint_finish = equipped["paint_finish"]
 	config.paint_scheme = equipped["paint_scheme"]
 	if var_to_str(config.decals) != var_to_str(equipped["decals"]):

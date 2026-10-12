@@ -420,11 +420,14 @@ e a meta de longo prazo). Catálogo e regras em `scripts/economy/shop_catalog.gd
   (bots fácil / médio / difícil; mista 300), ou seja 2.000 / 3.000 / 4.000 em 10 voltas; abandono recebe
   metade, desclassificado e treino livre não recebem. O resultado mostra quanto entrou.
 - **Ticket = um giro** numa roleta, 2.500 créditos. Sem estoque, sem pacote, sem giro de 10, sem
-  desconto. Duas roletas temáticas e sem sobreposição, com **peças, decalques e as cores de luz
-  (brilho do boost e neon)**: **Neon** (asas leves, bico, sidepods; sakura, asas, cometa, coração,
-  onda, listras, raio; boost Hiperluz, Gelo, Rosa choque, Violeta; neon Aurora, Ciano, Sakura) e
+  desconto. Duas roletas temáticas e sem sobreposição, com **peças, decalques, as cores de luz
+  (brilho do boost e neon) e rastros de partículas**: **Neon** (asas leves, bico, sidepods; sakura,
+  asas, cometa, coração, onda, listras, raio; boost Hiperluz, Gelo, Rosa choque, Violeta; neon
+  Aurora, Ciano, Sakura; partículas Raios, Pétalas de sakura, Estrelinhas, Bolhas de sabão e Flocos
+  de neve) e
   **Dragão** (id `inferno`, o nome antigo, que fica nos perfis e no servidor; asas traseiras, barbatana, rodas raiadas; chamas, garras, logo S, xadrez, shuriken,
-  faixas duplas; boost Chama solar, Rubi, Ouro; neon Lava, Âmbar, Carmesim, Violeta), 40 itens cada.
+  faixas duplas; boost Chama solar, Rubi, Ouro; neon Lava, Âmbar, Carmesim, Violeta; partículas
+  Fogo no chão, Brasas, Chuva de moedas, Fumaça colorida e Faíscas de titânio), 45 itens cada.
   Peças: a Neon tem as de luz, céu e máquina (asas traseiras Borboleta e Ômega, sidepods Turbina e
   Periscópio, asas dianteiras Gaivota, Anel e Delta, bicos de pato, Tubarão-martelo e Broca, rodas
   Turbina, Colmeia e Disco…); a Dragão, as de fogo e bicho (asas traseiras Fênix, Dragão, Dupla e
@@ -436,11 +439,11 @@ e a meta de longo prazo). Catálogo e regras em `scripts/economy/shop_catalog.gd
 
 | Raridade | Fatia | Itens (Neon / Dragão) | Chance de cada (Neon / Dragão) | Repetida devolve |
 |---|---|---|---|---|
-| Lendário | 2,5% | 5 / 5 | 0,5% | 3.600 a 4.320 |
-| Épico | 6% | 6 / 9 | 1% / 0,67% | 2.100 a 2.520 |
-| Raro | 10% | 10 / 10 | 1% | 1.350 a 1.620 |
-| Incomum | 26% | 12 / 9 | 2,17% / 2,89% | 900 a 1.080 |
-| Comum | 55,5% | 7 / 7 | 7,93% | 600 a 720 |
+| Lendário | 2,5% | 6 / 6 | 0,42% | 3.600 a 4.680 |
+| Épico | 6% | 7 / 10 | 0,86% / 0,6% | 2.100 a 2.730 |
+| Raro | 10% | 11 / 11 | 0,91% | 1.350 a 1.755 |
+| Incomum | 26% | 13 / 10 | 2% / 2,6% | 900 a 1.170 |
+| Comum | 55,5% | 8 / 8 | 6,94% | 600 a 780 |
 
 - **Som do giro** (`scripts/audio/ui_sounds.gd`, gerado por código): um "toc" macio de lingueta de plástico a cada
   cartão que passa pelo marcador (no máximo 20 por segundo no começo, mais grave ao desacelerar) e
@@ -450,10 +453,11 @@ e a meta de longo prazo). Catálogo e regras em `scripts/economy/shop_catalog.gd
   (`UiSounds.discovery`: acorde de dó com sétima e nona entrando nota a nota e três pingos agudos
   baixinhos). Repetidas não têm.
 - **Repetida vira créditos:** 30% do preço de tabela; o giro nunca sai vazio. Um lendário
-  específico custa em média 200 giros (500 mil créditos).
+  específico custa em média 240 giros (600 mil créditos).
 - **O que se coleciona:** peças de desempenho (asas, bico, sidepods, cobertura, rodas raiadas:
-  trocam aderência por velocidade, nunca melhores em tudo), decalques e as cores do **brilho do
-  boost** e do **neon** (`ShopCatalog.GACHA_COLORS`: só se equipa cor ganha). Vêm com a conta, fora
+  trocam aderência por velocidade, nunca melhores em tudo), decalques, as cores do **brilho do
+  boost** e do **neon** (`ShopCatalog.GACHA_COLORS`: só se equipa cor ganha) e os **rastros de
+  partículas** (tipo `trail`, um equipado por vez, ou nenhum). Vêm com a conta, fora
   do sorteio: todas as peças padrão, os decalques Estrela e Disco de número e o boost Ciano. Conta
   nova não tem neon (desligado até ganhar um).
 - **Cores livres:** pintura (3 cores), capacete, macacão e rodas são de graça e com qualquer cor
@@ -485,10 +489,10 @@ e a meta de longo prazo). Catálogo e regras em `scripts/economy/shop_catalog.gd
   acetinadas ou foscas (`CarLivery.apply_paint_finish`, shader `car_rim` com reflexo e rugosidade
   por acabamento; na pintura, `CarLivery.PAINT_FINISH_PARAMS` → parâmetros do shader `car_paint`).
 - **Estúdio** (garagem e Tab na corrida): coluna de abas só com ícones (pinturas, esquema, cor 1/2/3,
-  capacete, macacão, rodas, boost, neon, decalques, peças; o nome no tooltip) e uma grade de 2
+  capacete, macacão, rodas, boost, neon, partículas, decalques, peças; o nome no tooltip) e uma grade de 2
   colunas em que toda opção tem o mesmo tamanho. As abas de cor livre têm o seletor (o carro muda
   enquanto se arrasta) e uma grade de sugestões; boost e neon mostram só as cores ganhas (o neon
-  com Desligado). Peças e decalques só os da conta. Tudo é conferido de novo antes de ir para o
+  com Desligado; as partículas, os rastros ganhos e Nenhum). Peças e decalques só os da conta. Tudo é conferido de novo antes de ir para o
   carro (peça, decalque, boost ou neon que a conta não tem volta para o gratuito; cor livre só
   precisa ser válida).
 - **Decalques** (aba do Estúdio com a estrela, grátis; `scripts/car/car_decals.gd`): adesivos SVG
@@ -568,7 +572,7 @@ e a meta de longo prazo). Catálogo e regras em `scripts/economy/shop_catalog.gd
   bots usam o de fábrica. No controle, ↑/↓ andam pelos sliders (←/→ ajustam). Fica salvo no perfil
   (`equipped.setup`) e vale na corrida. Potência, desgaste e regras não entram
   (são iguais para todos). Catálogo em `scripts/economy/car_setup.gd`.
-- **Galeria:** mesmo layout do Estúdio (abas Peças, Decalques, Boost e Neon, grade de 2 colunas); cada item
+- **Galeria:** mesmo layout do Estúdio (abas Peças, Decalques, Boost, Neon e Partículas, grade de 2 colunas); cada item
   com arte, raridade e selo ("✓", "FALTA", "GRÁTIS"). Clicar mostra **no carro** como ficaria (sem
   equipar): a câmera orbita até a peça (ou até a lateral, onde o decalque aparece) e a centraliza,
   alternando o sentido a cada clique (horário, anti-horário). O cartão de detalhes traz raridade, roleta, chance exata, quanto devolve
@@ -699,6 +703,23 @@ Garagem). O item focado ganha um contorno no acento secundário, e as listas rol
 - **Rodas no boost:** aro, pneu e faixa do pneu bem brilhantes na cor do boost, além da luz no chão.
 - **Neon embaixo do carro** (garagem → Pintura: "Neon embaixo do carro" + cor): brilho no chão
   (`Decal` emissivo), luzes sob o assoalho e tubos de neon nas laterais; fraco de dia e forte à noite.
+- **Rastro de partículas** (`scripts/car/car_particles.gd`, `CarConfig.trail`; garagem → Partículas):
+  o carro solta **raios** (arcos estalando na carroceria, raios caindo no chão, faíscas e clarões
+  azuis), **pétalas de sakura**, **estrelinhas** coloridas, **bolhas de sabão** (iridescentes, que
+  estouram), **flocos de neve**, **fogo no chão** (uma faixa de fogo contínua atrás de cada roda
+  traseira — fita virada para a câmera, presa ao chão —, brilho no asfalto, chamas curtas e brasas,
+  com luz laranja), **brasas** com fumaça escura, **chuva de moedas**
+  de ouro girando, **fumaça colorida** (nas 3 cores da pintura) ou **faíscas de titânio** saindo do
+  assoalho. As formas são desenhadas no shader (`shaders/car/car_particle.gdshader`, sem textura;
+  as faixas de fogo em `car_fire_trail.gdshader`). Parado, só aparece na vitrine da garagem (fraco,
+  de amostra; meta `showcase` do carro do menu); na pista só sai com o carro andando, cheio a partir
+  de ~140 km/h. Tamanho: `CarParticles.SIZE` (0,6). As partículas nascem no mundo e herdam parte da velocidade
+  do carro, com um arrasto que cresce com a velocidade: formam o rastro logo atrás do carro, visível
+  na câmera de perseguição (a velocidade vai ao `RenderingServer` no `frame_pre_draw`, porque o
+  `GPUParticles3D` grava a dele a cada quadro). A turbulência (bolhas, pétalas, neve, brasas) só vale
+  com o carro devagar. Somem perto da câmera. A velocidade sai do quanto o carro andou, então vale
+  também nos carros dos outros jogadores online (o rastro vai no equipamento). O servidor nem cria
+  (tira o `Effects` inteiro).
 - **Luz traseira de F1:** a lanterna central e os LEDs das placas da asa traseira ganham material
   próprio e piscam (~4 Hz) quando o carro freia (recuperando energia), com clarão e, à noite, luz
   vermelha no chão atrás do carro. Os LEDs do volante não são afetados.
@@ -1435,6 +1456,7 @@ godot --headless --path . -s res://tests/damage_test.gd     # dano: dirigir sem 
 godot --path . -s res://tests/capture_crash.gd -- <pasta>    # screenshots de uma batida
 godot --path . -s res://tests/capture_moods.gd -- <pasta>    # todos os horários × ambientes
 godot --path . -s res://tests/capture_boost.gd -- <pasta>    # boost, marcas de pneu, sombra, fantasia
+godot --path . -s res://tests/capture_trails.gd -- <pasta> [efeito ...]   # rastros de partículas: perseguição, lado, parado e à noite
 godot --headless --path . -s res://tests/race_test.gd -- 3 9 3  # corrida de 3 voltas, 9 bots, dificuldade mista (+ monaco, suzuka ou las_vegas no fim = nessa pista)
 godot --headless --path . -s res://tests/monaco_test.gd     # Mônaco: traçado, desnível, pisos, túnel coberto, cidade, porto, carro na rampa
 godot --path . -s res://tests/monaco_shots.gd -- <pasta> [horário] [ambiente] [prefixo]  # screenshots de Mônaco (+ calçadas, navios, balões, dirigíveis e o céu visto da pista)
@@ -1451,10 +1473,10 @@ godot --headless --path . -s res://tests/race_control_test.gd # bandeira amarela
 godot --headless --path . -s res://tests/last_lap_yellow_test.gd # amarela de 10 s só na última volta
 godot --path . -s res://tests/capture_yellow.gd -- <pasta>   # instrução da amarela, safety car
 godot --headless --path . -s res://tests/ui_nav_test.gd     # menus pelo controle: foco, D-pad, A/B, LB/RB
-godot --headless --path . -s res://tests/economy_test.gd    # economia: chances, sorteio, giro, repetidas, loja, estúdio, prêmios
+godot --headless --path . -s res://tests/economy_test.gd    # economia: chances, sorteio, giro, repetidas, loja, estúdio, partículas, prêmios
 godot --path . -s res://tests/capture_menu.gd -- <pasta>     # menu principal: início, jogar solo, estúdio, galeria, loja, giro
 godot --headless --path . -s res://tests/track_carousel_test.gd # carrossel de pistas, peças por categoria na Galeria, Roleta Dragão
-godot --path . -s res://tests/capture_cards.gd -- <pasta>    # capturas: carrossel, silhuetas no Estúdio/Galeria, giro da Dragão
+godot --path . -s res://tests/capture_cards.gd -- <pasta>    # capturas: carrossel, silhuetas e partículas no Estúdio/Galeria, giro da Dragão
 godot --path . -s res://tests/part_silhouette_probe.gd -- <pasta> # folha com a silhueta de todas as peças
 godot --path . -s res://tests/capture_settings.gd -- <pasta> # menu de configurações + monitor de desempenho
 godot --headless --path . -s res://tests/compile_check.gd   # carrega todos os scripts (erros de compilação)
