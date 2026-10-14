@@ -4,7 +4,7 @@
 #   docker compose pull && docker compose up -d
 #   docker compose logs -f server
 #
-# Os jogadores conectam em speedoru.padoru.org:7350 (UDP). O banco não publica porta: só o
+# Os jogadores conectam em play.speedoru.padoru.org:7350 (UDP). O banco não publica porta: só o
 # servidor do jogo o alcança, pela rede deste Compose.
 #
 # Para usar o Turso na nuvem em vez do banco local: apague o serviço "libsql" e o depends_on, e troque

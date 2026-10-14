@@ -1,20 +1,23 @@
 # Servidor oficial do Speedoru
 
 ```
-jogador ──UDP 7350──> speedoru.padoru.org (VM "speedoru", São Paulo) ──> server ──rede do Compose──> libsql
+jogador ──UDP 7350──> play.speedoru.padoru.org (VM "speedoru", São Paulo) ──> server ──rede do Compose──> libsql
 ```
 
 | | |
 |---|---|
 | Projeto GCP | `gen-lang-client-0425635607` |
-| VM | `speedoru`, `southamerica-east1-a`, e2-small, Ubuntu 26.04 mínimo |
+| VM | `speedoru`, `southamerica-east1-a`, e2-standard-2, Ubuntu 26.04 mínimo |
 | IP fixo | `speedoru-ip` (35.215.209.73, nível Standard) |
-| DNS | registro A `speedoru.padoru.org` na zona `padoru-org` |
+| DNS | registro A `play.speedoru.padoru.org` na zona `padoru-org` |
 | Firewall | regra `speedoru-server` (UDP 7350, tag `speedoru-server`) |
 | Imagem | `southamerica-east1-docker.pkg.dev/gen-lang-client-0425635607/speedoru/server` |
 | Compose | `/srv/speedoru/compose.yml` (este diretório) |
 
-O jogo conecta em `speedoru.padoru.org:7350` por padrão (`NetProtocol.DEFAULT_HOST`).
+O jogo conecta em `play.speedoru.padoru.org:7350` por padrão (`NetProtocol.DEFAULT_HOST`). Até a
+0.12.0 o endereço era `speedoru.padoru.org`, que agora é o site do jogo (VM de Iowa, nginx de borda
+em `/srv/edge` e arquivos em `/srv/speedoru-site`); o cliente troca o endereço antigo salvo no
+aparelho pelo novo (`NetProtocol.OLD_HOSTS`).
 
 ## Publicar uma versão do servidor
 

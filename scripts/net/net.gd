@@ -70,6 +70,9 @@ func _ready() -> void:
 			account_file = "user://account_%s.cfg" % a.substr(10).validate_filename()
 	var cfg := ConfigFile.new()
 	if cfg.load(account_file) == OK:
+		if not is_server:
+			# testes (sem janela ou --offline) não regravam o arquivo da conta do jogador
+			_migrate_old_hosts(cfg, DisplayServer.get_name() != "headless" and not "--offline" in args)
 		server_host = str(cfg.get_value("server", "host", server_host))
 		server_port = int(cfg.get_value("server", "port", server_port))
 	for a in args:
@@ -247,6 +250,49 @@ func _remember_connection() -> void:
 	var list := server_history().filter(func(e: Dictionary) -> bool: return not _same(e, server_host, server_port))
 	list.push_front({"host": server_host, "port": server_port, "t": int(Time.get_unix_time_from_system())})
 	_cfg_store("history", list.slice(0, NetProtocol.SERVER_HISTORY_MAX))
+
+
+## Troca, no arquivo da conta, os endereços antigos do servidor oficial (NetProtocol.OLD_HOSTS) pelo
+## atual: servidor escolhido, servidores salvos, histórico e coleção guardada por servidor. Sem
+## persist, só muda o cfg em memória.
+func _migrate_old_hosts(cfg: ConfigFile, persist := true) -> void:
+	var fix := func(h: Variant) -> Variant:
+		return NetProtocol.DEFAULT_HOST if str(h) in NetProtocol.OLD_HOSTS else h
+	var changed := false
+	var host_name: Variant = cfg.get_value("server", "host", "")
+	if fix.call(host_name) != host_name:
+		cfg.set_value("server", "host", NetProtocol.DEFAULT_HOST)
+		changed = true
+	for key in ["saved", "history"]:
+		var list: Variant = cfg.get_value("servers", key, [])
+		if not list is Array:
+			continue
+		var out := []
+		for e: Variant in list:
+			if not e is Dictionary:
+				continue
+			if fix.call(e.get("host", "")) != e.get("host", ""):
+				e = (e as Dictionary).duplicate()
+				e["host"] = NetProtocol.DEFAULT_HOST
+				changed = true
+			# o mesmo servidor pode já estar na lista com o endereço novo: fica a primeira
+			if out.any(func(o: Dictionary) -> bool: return _same(o, str(e.get("host", "")), int(e.get("port", 0)))):
+				continue
+			out.append(e)
+		cfg.set_value("servers", key, out)
+	var by: Variant = cfg.get_value("collection", "by_server", {})
+	if by is Dictionary:
+		for addr: Variant in (by as Dictionary).keys():
+			var a := NetProtocol.parse_address(str(addr))
+			if str(a["host"]) in NetProtocol.OLD_HOSTS:
+				var new_addr := NetProtocol.format_address(NetProtocol.DEFAULT_HOST, int(a["port"]))
+				if not by.has(new_addr):
+					by[new_addr] = by[addr]
+				by.erase(addr)
+				changed = true
+		cfg.set_value("collection", "by_server", by)
+	if changed and persist:
+		cfg.save(account_file)
 
 
 static func _same(e: Dictionary, host_name: String, port: int) -> bool:

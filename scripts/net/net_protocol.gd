@@ -20,7 +20,10 @@ const TRUST_CLIENT_CAR := true
 const DEFAULT_PORT := 7350
 ## Servidor oficial (VM em São Paulo, docker/server/compose.yml). Quem escolheu outro endereço na
 ## aba SERVIDOR continua nele: o escolhido fica salvo no aparelho.
-const DEFAULT_HOST := "speedoru.padoru.org"
+const DEFAULT_HOST := "play.speedoru.padoru.org"
+## Endereços antigos do servidor oficial: o que estiver salvo no aparelho vira o DEFAULT_HOST
+## (speedoru.padoru.org agora é o site do jogo).
+const OLD_HOSTS: Array[String] = ["speedoru.padoru.org"]
 const MAX_CLIENTS := 64
 ## Tolerância da conexão (ENet: mínimo e máximo, ms) antes de dar um jogador por desconectado. O
 ## padrão (~5 s) derrubava quem engasgava gerando a pista ao carregar a corrida (PCs mais lentos).

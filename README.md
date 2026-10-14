@@ -1669,6 +1669,7 @@ godot --path . -s res://tests/audio_hum_probe.gd -- <pasta>  # grava o som silen
 godot --path . -s res://tests/capture_spectator.gd -- <pasta> [monaco|monza]  # modo espectador: TV automática, câmeras fixas, livre, perseguição
 godot --path . -s res://tests/capture_showcase.gd -- <pasta> [monza|monaco]  # balões de personagem vistos da pista, outdoors, murais e dirigível com imagem
 godot --headless --path . -s res://tests/user_data_migration_test.gd # nome Speedoru e cópia da pasta antiga (F1 Gatcha), sem copiar por cima
+godot --headless --path . -s res://tests/server_host_migration_test.gd -- --offline  # endereço antigo do servidor oficial (speedoru.padoru.org) vira play.speedoru.padoru.org no arquivo da conta
 godot --headless --path . -s res://tests/parts_test.gd     # cada variante de peça monta no carro, com dano, DRS e retrovisores, e está numa roleta
 godot --headless --path . -s res://tests/return_pit_test.gd # voltar aos boxes com confirmação, dano replicado na rede, contadores das ações
 godot --headless --path . -s res://tests/offtrack_probe.gd  # fora da pista: velocidade perdida e aderência lateral por piso
