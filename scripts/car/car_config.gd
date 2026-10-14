@@ -87,6 +87,13 @@ const RIM_FINISHES := ["Polido", "Cromado", "Acetinado", "Fosco"]
 		trail = value
 		emit_changed()
 
+## Luz de ultrapassagem (os LEDs dos retrovisores ao pedir passagem): "" âmbar, "police" sirene
+## (vermelho e azul alternando).
+@export var pass_light := "":
+	set(value):
+		pass_light = value
+		emit_changed()
+
 ## Esquema de divisão das 3 cores (ver PAINT_SCHEMES).
 @export var paint_scheme := 0:
 	set(value):

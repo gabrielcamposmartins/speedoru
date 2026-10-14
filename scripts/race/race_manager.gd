@@ -31,6 +31,10 @@ signal state_changed(state: int)
 signal net_grid_ready
 ## Rede (servidor): acontecimento para mandar aos clientes (luzes, peça arrancada…).
 signal net_event(data: Dictionary)
+## O primeiro recebeu a bandeirada (offline, no servidor e, pelo evento, nos clientes).
+signal leader_flag(entry: RaceEntry)
+## O servidor pagou a corrida do jogador: {reward, extras: {missions, week, achievements, spin}}.
+signal reward_received(data: Dictionary)
 
 enum Net { OFF, SERVER, CLIENT }
 
@@ -77,8 +81,19 @@ var _loading_base := -1.0
 var line_guide: RacingLineGuide
 ## Bandeira amarela, safety car e regras sob amarela.
 var control: RaceControl
+## Pista no céu: quedas da plataforma (volta pelos boxes). Nulo nas outras pistas.
+var fall_watch: FallWatch
 ## Créditos pagos ao jogador nesta corrida (-1 = ainda não pagou).
 var player_reward := -1
+## O que veio junto com o prêmio (servidor): missões e conquistas completas, prêmio da semana e se
+## ganhou a roleta do vencedor.
+var player_reward_extras := {}
+## Servidor: quem liderava ao entrar na reta final da última volta (Nightmare) e início da reta.
+var _final_leader: RaceEntry
+var _final_straight := -1.0
+## Servidor: culpa de colisão e batida forte recentes por vítima (Winged Death): [culpado, hora] e hora.
+var _blame := {}
+var _crash_at := {}
 
 ## Rede: OFF (solo), SERVER (servidor dedicado) ou CLIENT (espelho do servidor).
 var net := Net.OFF
@@ -372,6 +387,10 @@ func _make_entry(car: F1Car, is_player: bool, slot: int, garage: int) -> RaceEnt
 	e.garage = garage
 	if is_player:
 		e.name = "Você"
+		# Conectado ao servidor: o título equipado da conta
+		var net := get_node_or_null("/root/Net")
+		if net and net.online:
+			e.title = str((net.account as Dictionary).get("title", ""))
 		var n := car.config.car_name if car.config else "VOC"
 		e.code = n.substr(0, 3).to_upper() if n.length() >= 3 else "VOC"
 		e.color = car.config.primary_color if car.config else Color.RED
@@ -467,6 +486,10 @@ func _physics_process(delta: float) -> void:
 		race_time += delta
 	# Posição na pista, voltas, boxes, limites de pista e contramão de cada carro (código nativo)
 	_native_update_entries(delta, racing)
+	if fall_watch == null and track and track.layout and track.layout.sky and track.is_built:
+		fall_watch = FallWatch.new(self)
+	if fall_watch and state != State.GRID:
+		fall_watch.physics_update(delta)
 	if state == State.GRID:
 		_check_jump_start()
 	if state == State.QUALIFYING:
@@ -476,6 +499,8 @@ func _physics_process(delta: float) -> void:
 	_native_update_positions()
 	_native_update_drs_rule()
 	_update_give_backs()
+	if net == Net.SERVER and state == State.RACING and not leader_finished and _final_leader == null:
+		_track_final_straight()
 	Slipstream.update_all(_cars(), delta)
 	if control:
 		control.physics_update(delta)
@@ -507,10 +532,13 @@ func _on_line_crossed(e: RaceEntry) -> void:
 	if state == State.PRACTICE:
 		return
 	if not e.finished and (e.laps_completed() >= laps or leader_finished):
+		var first := not leader_finished
 		e.finish_laps = e.laps_completed()
 		e.finished = true
 		e.finish_time = race_time
 		leader_finished = true
+		if first:
+			_on_leader_flag(e)
 		if e.pit_count < RaceSettings.mandatory_pits:
 			e.disqualified = true
 			e.dsq_reason = "Pit stop obrigatório não cumprido"
@@ -549,10 +577,12 @@ func _report_solo_result(e: RaceEntry) -> void:
 		"race_time": e.finish_time if e.finished else race_time, "best_lap": e.best_lap, "finished": e.finished and not e.retired,
 		"dsq": e.disqualified, "pos": final_classification().find(e) + 1, "total": entries.size(), "grid": e.grid_slot + 1,
 		"penalty": e.penalty_seconds, "lap_times": Array(e.lap_times), "fastest": fastest_entry == e,
-		"track": RaceSettings.track,
+		"track": RaceSettings.track, "time_of_day": RaceSettings.time_of_day,
 	})
 	if res.get("ok", false):
 		player_reward = int(res.get("reward", 0))
+		player_reward_extras = res.get("extras", {}) if res.get("extras") is Dictionary else {}
+		reward_received.emit(res)
 	else:
 		notify_entry(e, "SERVIDOR", str(res.get("error", "Resultado não registrado")), false)
 
@@ -688,6 +718,33 @@ func begin_player_pit(e: RaceEntry, repair_time: float) -> void:
 	_notify(e, "PIT STOP", "Pneus %s%s" % [CarConfig.COMPOUND_NAMES[e.pit_compound], " + reparo" if repair else ""], false)
 
 
+## Teletransporte para o box da equipe (voltar aos boxes, batida, queda da pista no céu).
+## `at`: outro lugar na pista dos boxes (vaga livre ao lado, quando o box está ocupado).
+func teleport_to_box(e: RaceEntry, at := Transform3D()) -> void:
+	var car := e.car
+	var box := track.get_pit_box_transform(e.garage) if at == Transform3D() else at
+	car.global_transform = box
+	car.linear_velocity = Vector3.ZERO
+	car.angular_velocity = Vector3.ZERO
+	car.reset_physics_interpolation()
+	# Recomeça a volta em andamento. O box fica antes da linha: volta um cruzamento, e o próximo
+	# (saindo do box) só marca o novo início da mesma volta. Se ficasse depois, recomeçaria já.
+	var length := track.path.length
+	var pr := track.path.project(car.global_position)
+	e.s = pr.x
+	e.lateral = pr.y
+	if e.s > length * 0.5:
+		e.crossings -= 1
+		e.lap_restart = true
+	e.progress = (e.crossings - 1) * length + e.s
+	e.lap_start = race_time
+	e.lap_invalid = false
+	# Marcas de progresso (intervalos) da parte que vai ser refeita são apagadas
+	var index := int(floor((e.progress + length) / CHECKPOINT))
+	if index < e.checkpoint_times.size():
+		e.checkpoint_times = e.checkpoint_times.slice(0, maxi(index + 1, 0))
+
+
 func _end_player_pit(e: RaceEntry) -> void:
 	e.pit_served = true
 	var damage := e.car.get_node_or_null("Damage") as CarDamage
@@ -815,7 +872,61 @@ func _check_jump_start() -> void:
 				_penalize(e, 10.0, "LARGADA QUEIMADA", "Se moveu antes de as luzes apagarem")
 
 
+## O primeiro recebeu a bandeirada: avisa todos e confere o Nightmare (venceu passando o líder
+## humano na reta final da última volta).
+func _on_leader_flag(e: RaceEntry) -> void:
+	if net == Net.SERVER:
+		if _final_leader and _final_leader != e and _final_leader.is_human and e.is_human:
+			e.nightmare = true
+		net_event.emit({"event": "leader_finished", "idx": e.index})
+	leader_flag.emit(e)
+
+
+## Servidor: anota quem lidera quando ele entra na reta final da última volta.
+func _track_final_straight() -> void:
+	if _final_straight < 0.0:
+		_final_straight = track.final_straight_s() if track else 0.0
+	var leader: RaceEntry = null
+	for e in entries:
+		if not e.retired and (leader == null or e.progress > leader.progress):
+			leader = e
+	if leader and leader.laps_completed() == laps - 1 and leader.s >= _final_straight:
+		_final_leader = leader
+
+
+## Servidor: batida forte (peça arrancada) de [param victim]; com a culpa de uma colisão de outro
+## jogador logo antes (ou logo depois), conta para quem causou.
+func note_crash(victim: RaceEntry) -> void:
+	if net != Net.SERVER:
+		return
+	_crash_at[victim] = race_time
+	_match_crash(victim)
+
+
+func _match_crash(victim: RaceEntry) -> void:
+	if not _blame.has(victim) or not _crash_at.has(victim):
+		return
+	var culprit: RaceEntry = _blame[victim][0]
+	if absf(float(_blame[victim][1]) - float(_crash_at[victim])) <= 2.0:
+		if culprit.is_human and victim.is_human and culprit != victim:
+			culprit.crashes_caused += 1
+		_blame.erase(victim)
+		_crash_at.erase(victim)
+
+
+func _entry_by_code(code: String) -> RaceEntry:
+	for e in entries:
+		if e.code == code:
+			return e
+	return null
+
+
 func _penalize(e: RaceEntry, seconds: float, title: String, detail: String) -> void:
+	if net == Net.SERVER and title == "COLISÃO" and detail.begins_with("Causou um acidente com "):
+		var victim := _entry_by_code(detail.trim_prefix("Causou um acidente com "))
+		if victim:
+			_blame[victim] = [e, race_time]
+			_match_crash(victim)
 	if state == State.QUALIFYING:
 		# Na classificatória a penalidade só anula a volta
 		quali.invalidate(e, title)
@@ -1003,6 +1114,7 @@ func _build_net_grid() -> void:
 			entry.is_human = true
 			entry.net_id = str(p["id"])
 			entry.name = str(p.get("name", "Jogador"))
+			entry.title = str(p.get("title", ""))
 			entry.code = _code_of(entry.name)
 			humans[entry.net_id] = entry
 			continue
@@ -1103,6 +1215,7 @@ func net_roster() -> Array:
 			"color": e.color.to_html(), "difficulty": e.difficulty}
 		if e.is_human:
 			d["profile"] = _profile_for(e)
+			d["title"] = e.title
 		elif cfg:
 			d["colors"] = [cfg.primary_color.to_html(), cfg.secondary_color.to_html(), cfg.accent_color.to_html(),
 				cfg.helmet_color.to_html(), cfg.suit_color.to_html(), cfg.rim_color.to_html()]
@@ -1244,6 +1357,7 @@ func _start_net_client() -> void:
 		entry.is_human = str(d.get("id", "")) != ""
 		entry.net_id = str(d.get("id", ""))
 		entry.name = "Você" if mine else str(d["name"])
+		entry.title = str(d.get("title", ""))
 		entry.code = str(d["code"])
 		entry.color = Color.html(str(d["color"]))
 		entry.difficulty = int(d.get("difficulty", -1))
@@ -1410,6 +1524,12 @@ func apply_net_event(d: Dictionary) -> void:
 				_notify(player_entry, str(d.get("title", "")), str(d.get("detail", "")), bool(d.get("penalty", false)))
 		"reward":
 			player_reward = int(d.get("reward", 0))
+			player_reward_extras = d.get("extras", {}) if d.get("extras") is Dictionary else {}
+			reward_received.emit(d)
+		"leader_finished":
+			var li := int(d.get("idx", -1))
+			if li >= 0 and li < roster.size():
+				leader_flag.emit(roster[li])
 		"give_back":
 			if player_entry and int(d.get("idx", -1)) == player_entry.index:
 				_client_give_back = {"target": str(d.get("target", "")), "until": race_time + float(d.get("left", GIVE_BACK_TIME)),

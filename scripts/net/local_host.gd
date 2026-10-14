@@ -53,6 +53,9 @@ var _beat := 0
 var _joined := false
 var _upnp: UPNP
 var _upnp_thread: Thread
+## Tarefa de arquivos (batimento e status) em andamento (-1 = nenhuma) e o status que ela leu.
+var _io_task := -1
+var _io_status := ""
 
 
 func is_running() -> bool:
@@ -157,12 +160,16 @@ func _process(delta: float) -> void:
 	_poll = 0.5
 	_timer -= 0.5
 	_beat += 1
-	if _beat % 4 == 0:
-		_heartbeat()
 	if not OS.is_process_running(_pid):
 		_on_exited()
 		return
-	_read_status()
+	# Batimento e status.json numa tarefa em segundo plano (o disco não trava o jogo); o status
+	# lido é tratado no próximo meio segundo
+	if _io_task >= 0 and WorkerThreadPool.is_task_completed(_io_task):
+		_wait_io()
+		_apply_status(_io_status)
+	if _io_task < 0:
+		_io_task = WorkerThreadPool.add_task(_io.bind(_beat % 4 == 0))
 	match state:
 		State.STARTING:
 			if _timer <= 0.0:
@@ -180,11 +187,24 @@ func _heartbeat() -> void:
 		f.close()
 
 
-func _read_status() -> void:
+## Em segundo plano: grava o batimento (se for a vez) e lê o status.json ("" se não há).
+func _io(beat: bool) -> void:
+	if beat:
+		_heartbeat()
 	var path := host_dir_abs().path_join(HostControl.STATUS)
-	if not FileAccess.file_exists(path):
+	_io_status = FileAccess.get_file_as_string(path) if FileAccess.file_exists(path) else ""
+
+
+func _wait_io() -> void:
+	if _io_task >= 0:
+		WorkerThreadPool.wait_for_task_completion(_io_task)
+		_io_task = -1
+
+
+func _apply_status(text: String) -> void:
+	if text == "":
 		return
-	var data: Variant = JSON.parse_string(FileAccess.get_file_as_string(path))
+	var data: Variant = JSON.parse_string(text)
 	if not data is Dictionary or str(data.get("session", "")) != _session:
 		return
 	# Só avisa a tela quando muda algo além do tempo no ar (a tela conta o tempo sozinha)
@@ -211,6 +231,7 @@ func _join() -> void:
 
 
 func _on_exited() -> void:
+	_wait_io()
 	_read_output()
 	var code := OS.get_process_exit_code(_pid)
 	if state == State.STARTING and last_error == "":
@@ -266,6 +287,7 @@ func _add_log(line: String) -> void:
 
 
 func _exit_tree() -> void:
+	_wait_io()
 	# O jogo está fechando: o servidor grava e fecha (também fecharia sozinho, sem o batimento)
 	if state != State.STOPPED:
 		_send_command({"cmd": "stop"})

@@ -1,7 +1,9 @@
 class_name CarParticles
 extends Node3D
 ## Rastro de partículas equipável (itens "trail" das roletas, CarConfig.trail): o carro solta
-## bolhas, estrelinhas, fogo no chão, raios, pétalas, neve, brasas, moedas, fumaça ou faíscas.
+## bolhas, estrelinhas, fogo no chão, raios, pétalas, neve, brasas, moedas, fumaça ou um arco-íris.
+## Além do rastro, todo carro solta faíscas do assoalho numa frenagem forte: começando a frear a
+## 250 km/h ou mais e segurando o freio por mais de BRAKE_SPARK_HOLD s (não é item da loja).
 ## Filho do Effects do carro (o servidor nem cria: tira o Effects inteiro). As partículas nascem
 ## no mundo (ficam para trás formando o rastro), exceto os raios que estalam na carroceria.
 ## Parado, só na garagem (vitrine) o efeito aparece, fraco; cheio a partir de ~140 km/h. A velocidade
@@ -19,7 +21,7 @@ const EFFECTS := {
 	"embers": "Brasas",
 	"coins": "Chuva de moedas",
 	"smoke": "Fumaça colorida",
-	"sparks": "Faíscas de titânio",
+	"rainbow": "Arco-íris",
 }
 
 enum Shape { BUBBLE, STAR, FLAME, BOLT, PETAL, SNOW, COIN, SPARK, SMOKE, EMBER }
@@ -31,6 +33,13 @@ enum Orient { BILLBOARD, VELOCITY, UPRIGHT }
 const FULL_SPEED := 40.0
 ## Escala do tamanho de todas as partículas (e da faixa de fogo).
 const SIZE := 0.6
+## Faíscas de frenagem: velocidade mínima ao começar a frear (km/h), freio mínimo, quanto tempo
+## freando até soltar faíscas (s) e até que velocidade continuam (km/h).
+const BRAKE_SPARK_KMH := 250.0
+const BRAKE_SPARK_INPUT := 0.3
+const BRAKE_SPARK_HOLD := 1.0
+const BRAKE_SPARK_MIN_KMH := 120.0
+const BRAKE_SPARK_ARM := 0.25
 
 var car: F1Car
 var effect := ""
@@ -45,9 +54,14 @@ var _speed := 0.0
 var _velocity := Vector3.ZERO
 var _poll := 0.0
 var _time := 0.0
+var _brake_sparks: GPUParticles3D
+## Freando há quanto tempo (s) e se a frenagem começou rápida o bastante para soltar faíscas.
+var _brake_time := 0.0
+var _brake_armed := false
 
 static var _shader: Shader
 static var _fire_shader: Shader
+static var _rainbow_shader: Shader
 
 
 func _enter_tree() -> void:
@@ -64,6 +78,8 @@ func _push_velocity() -> void:
 	for e in _emitters:
 		if is_instance_valid(e) and not e.local_coords:
 			RenderingServer.particles_set_emitter_velocity(e.get_base(), _velocity)
+	if is_instance_valid(_brake_sparks):
+		RenderingServer.particles_set_emitter_velocity(_brake_sparks.get_base(), _velocity)
 
 
 func _ready() -> void:
@@ -71,6 +87,8 @@ func _ready() -> void:
 		car = get_parent().get_parent() as F1Car if get_parent() else null
 	if car:
 		_last_pos = car.global_position
+		if not car.get_meta("showcase", false):
+			_build_brake_sparks()
 	_sync()
 
 
@@ -81,7 +99,12 @@ func _process(delta: float) -> void:
 	if _poll <= 0.0:
 		_poll = 0.25
 		_sync()
-	if effect == "":
+	if _brake_sparks:
+		var state := brake_spark_state(_brake_time, _brake_armed, car.speed_kmh, car.brake_input, delta)
+		_brake_time = state[0]
+		_brake_armed = state[1]
+		_brake_sparks.emitting = state[2]
+	if effect == "" and _brake_sparks == null:
 		return
 	_time += delta
 	var pos := car.global_position
@@ -91,6 +114,8 @@ func _process(delta: float) -> void:
 		vel = _velocity  # teleporte (largada, boxes, replay)
 	_velocity = _velocity.lerp(vel, clampf(delta * 8.0, 0.0, 1.0))
 	_speed = _velocity.length()
+	if effect == "":
+		return
 	var f := clampf((_speed - 1.0) / (FULL_SPEED - 1.0), 0.0, 1.0)
 	var showcase: bool = car.get_meta("showcase", false)
 	for e in _emitters:
@@ -117,6 +142,19 @@ func _process(delta: float) -> void:
 	_update_light(f, 1.0 if showcase else clampf(f * 6.0, 0.0, 1.0), delta)
 
 
+## Faíscas de frenagem: [tempo freando, armado, soltando faíscas] depois de [param delta] s.
+## Arma se estiver a BRAKE_SPARK_KMH ou mais logo no começo da frenagem (BRAKE_SPARK_ARM s);
+## solta faíscas depois de BRAKE_SPARK_HOLD s com o freio apertado e para ao soltar o freio ou
+## abaixo de BRAKE_SPARK_MIN_KMH.
+static func brake_spark_state(time: float, armed: bool, kmh: float, brake: float, delta: float) -> Array:
+	if brake < BRAKE_SPARK_INPUT:
+		return [0.0, false, false]
+	if time < BRAKE_SPARK_ARM and kmh >= BRAKE_SPARK_KMH:
+		armed = true
+	time += delta
+	return [time, armed, armed and time > BRAKE_SPARK_HOLD and kmh >= BRAKE_SPARK_MIN_KMH]
+
+
 ## Confere o efeito do carro (e as cores, que a fumaça usa) e remonta se mudou.
 func _sync() -> void:
 	var want := car.config.trail if car and car.config and EFFECTS.has(car.config.trail) else ""
@@ -131,6 +169,8 @@ func _sync() -> void:
 
 func _clear() -> void:
 	for c in get_children():
+		if c == _brake_sparks:
+			continue
 		remove_child(c)
 		c.queue_free()
 	_emitters.clear()
@@ -272,14 +312,34 @@ func _build(id: String) -> void:
 			var cfg := car.config
 			pm.color_initial_ramp = _palette([cfg.primary_color, cfg.secondary_color, cfg.accent_color])
 			pm.color_ramp = _alpha_ramp([[0.0, 0.0], [0.1, 1.0], [1.0, 0.0]])
-		"sparks":
-			var e := _emitter(Shape.SPARK, Orient.VELOCITY, Vector2(0.06, 0.7), 220, 0.45, 0.2)
-			e.position = Vector3(0, 0.06, -0.9)
-			var pm := _box(e, Vector3(0.45, 0.01, 0.9), Vector3(0, 0.22, -1), 18.0, 5.0, 13.0, Vector3(0, -9.8, 0))
-			_motion(e, 0.6, 0.0, 0.0)
-			pm.particle_flag_align_y = true
-			_scale(pm, 0.7, 1.3, [])
-			pm.color_ramp = _ramp([[0.0, Color("ffffff")], [0.25, Color("ffd27a")], [0.6, Color("ff7a1a")], [1.0, Color(1.0, 0.16, 0.0, 0.0)]])
+		"rainbow":
+			# Faixa de arco-íris saindo da traseira (fita virada para a câmera) e estrelinhas
+			var ribbon := TrailRibbon.new()
+			ribbon.name = "RainbowTrail"
+			ribbon.mode = TrailRibbon.Mode.BILLBOARD
+			ribbon.width = 1.5 * SIZE
+			ribbon.lifetime = 0.9
+			ribbon.max_points = 240
+			ribbon.min_spacing = 0.3
+			ribbon.fade_start = 0.0
+			ribbon.taper = false
+			ribbon.color = Color.WHITE
+			if _rainbow_shader == null:
+				_rainbow_shader = load("res://shaders/car/car_rainbow_trail.gdshader")
+			var mat := ShaderMaterial.new()
+			mat.shader = _rainbow_shader
+			ribbon.material_override = mat
+			add_child(ribbon)
+			ribbon.global_transform = Transform3D.IDENTITY
+			ribbon.set_meta("anchor", Vector3(0, 0.55, rear_z - 0.5))
+			_ribbons.append(ribbon)
+			var glints := _emitter(Shape.STAR, Orient.BILLBOARD, Vector2(0.3, 0.3), 90, 1.0, 0.4)
+			glints.position = Vector3(0, 0.6, rear_z - 0.8)
+			var pg := _box(glints, Vector3(0.6, 0.35, 0.4), Vector3(0, 0.3, -1), 70.0, 0.5, 1.8, Vector3.ZERO)
+			_motion(glints, 0.85, 1.0, 12.0)
+			_spin(pg, 90.0)
+			_scale(pg, 0.5, 1.2, [Vector2(0, 0.0), Vector2(0.2, 1.0), Vector2(1, 0.0)])
+			pg.color_initial_ramp = _palette([Color("ffffff"), Color("fff3b0"), Color("bff6ff"), Color("ffd1f5")])
 
 
 ## Rastro visto da câmera de perseguição: a partícula herda parte da velocidade do carro e um
@@ -291,6 +351,22 @@ func _motion(e: GPUParticles3D, inherit: float, damp: float, drag: float) -> voi
 	pm.damping_max = damp * 1.6
 	e.set_meta("damp", damp)
 	e.set_meta("drag", drag)
+
+
+## Faíscas de frenagem (todo carro): saem do assoalho raspando no chão, fora da lista do rastro.
+func _build_brake_sparks() -> void:
+	var e := _emitter(Shape.SPARK, Orient.VELOCITY, Vector2(0.1, 1.1), 480, 0.5, 0.0)
+	_emitters.erase(e)
+	e.name = "BrakeSparks"
+	e.position = Vector3(0, 0.06, -0.3)
+	var pm := _box(e, Vector3(0.55, 0.01, 1.3), Vector3(0, 0.3, -1), 24.0, 6.0, 15.0, Vector3(0, -9.8, 0))
+	pm.inherit_velocity_ratio = 0.6
+	pm.particle_flag_align_y = true
+	_scale(pm, 0.8, 1.5, [])
+	# Cores acima de 1: brilham (glow) mesmo de dia
+	pm.color_ramp = _ramp([[0.0, Color(3.0, 2.8, 2.2)], [0.25, Color(2.6, 1.7, 0.6)], [0.6, Color(1.8, 0.7, 0.15)], [1.0, Color(1.0, 0.16, 0.0, 0.0)]])
+	e.emitting = false
+	_brake_sparks = e
 
 
 # ---------------------------------------------------------------------------
@@ -458,6 +534,12 @@ func _update_ribbons() -> void:
 	var up := car.global_basis.y
 	var fwd := car.global_basis.z
 	for r in _ribbons:
+		if r.has_meta("anchor"):
+			if _speed < 2.0:
+				r.stop()
+			else:
+				r.add_point(car.to_global(r.get_meta("anchor")), up, fwd)
+			continue
 		var w := r.get_meta("wheel") as VehicleWheel3D
 		if w == null or _speed < 2.0:
 			r.stop()
@@ -566,13 +648,16 @@ static func draw_icon(ci: CanvasItem, id: String, r: Rect2, alpha := 1.0) -> voi
 		"smoke":
 			for pf in [[Vector2(-12, 8), 11.0, Retro.c("accent")], [Vector2(4, 0), 13.0, Retro.c("accent_2")], [Vector2(15, -10), 9.0, Color("ff3dd8")]]:
 				ci.draw_circle(c + (pf[0] as Vector2) * s, pf[1] * s, Color(pf[2], 0.75 * a))
-		"sparks":
-			for sp in [[Vector2(-20, 14), Vector2(4, -10)], [Vector2(-14, 18), Vector2(16, 0)], [Vector2(-22, 6), Vector2(-4, -18)],
-					[Vector2(-10, 20), Vector2(20, 14)]]:
-				var p0: Vector2 = c + (sp[0] as Vector2) * s
-				var p1: Vector2 = c + (sp[1] as Vector2) * s
-				ci.draw_line(p0, p1, Color("ff7a1a", 0.6 * a), 3.0 * s)
-				ci.draw_line(p0.lerp(p1, 0.4), p1, Color("ffe8a8", a), 1.6 * s)
+		"rainbow":
+			var cols := [Color("ff3b3b"), Color("ff9a1f"), Color("ffe03a"), Color("3ddc6b"), Color("2f9bff"), Color("6a5cff"), Color("c04dff")]
+			for k in cols.size():
+				var rad := (22.0 - k * 2.6) * s
+				var arc := PackedVector2Array()
+				for q in 17:
+					arc.append(c + Vector2(0, 10 * s) + Vector2.from_angle(PI + PI * q / 16.0) * rad)
+				ci.draw_polyline(arc, Color(cols[k], a), 2.8 * s)
+			for st: Vector2 in [Vector2(-18, 14), Vector2(19, 12)]:
+				ci.draw_colored_polygon(_star_points(c + st * s, 5.0 * s, 2.2 * s, 4, 0.0), Color(1, 1, 1, a))
 
 
 static func _star_points(c: Vector2, outer: float, inner: float, n: int, start: float) -> PackedVector2Array:

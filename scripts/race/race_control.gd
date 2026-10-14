@@ -82,6 +82,7 @@ func report_crash(e: RaceEntry) -> void:
 		return
 	var lap := e.best_lap if e.best_lap > 0.0 else DEFAULT_LAP
 	involved[e] = {"time_left": lap, "bot_delay": BOT_PIT_DELAY, "in_box": false}
+	manager.note_crash(e)
 	manager.notify_entry(e, "BATIDA", "Vá aos boxes para consertar o carro", false)
 	if not yellow:
 		_start_yellow()
@@ -134,7 +135,7 @@ func send_to_pit(e: RaceEntry) -> void:
 	if not involved.has(e) or involved[e]["in_box"]:
 		return
 	involved[e]["in_box"] = true
-	_teleport_to_box(e)
+	manager.teleport_to_box(e)
 	if e.bot:
 		e.bot.force_pit_stop(REPAIR_TIME)
 	else:
@@ -159,33 +160,8 @@ func return_to_pit(e: RaceEntry) -> void:
 	if involved.has(e):
 		send_to_pit(e)
 		return
-	_teleport_to_box(e)
+	manager.teleport_to_box(e)
 	manager.begin_player_pit(e, 0.0)
-
-
-func _teleport_to_box(e: RaceEntry) -> void:
-	var car := e.car
-	var box := manager.track.get_pit_box_transform(e.garage)
-	car.global_transform = box
-	car.linear_velocity = Vector3.ZERO
-	car.angular_velocity = Vector3.ZERO
-	car.reset_physics_interpolation()
-	# Recomeça a volta em andamento. O box fica antes da linha: volta um cruzamento, e o próximo
-	# (saindo do box) só marca o novo início da mesma volta. Se ficasse depois, recomeçaria já.
-	var length := manager.track.path.length
-	var pr := manager.track.path.project(car.global_position)
-	e.s = pr.x
-	e.lateral = pr.y
-	if e.s > length * 0.5:
-		e.crossings -= 1
-		e.lap_restart = true
-	e.progress = (e.crossings - 1) * length + e.s
-	e.lap_start = manager.race_time
-	e.lap_invalid = false
-	# Marcas de progresso (intervalos) da parte que vai ser refeita são apagadas
-	var index := int(floor((e.progress + length) / RaceManager.CHECKPOINT))
-	if index < e.checkpoint_times.size():
-		e.checkpoint_times = e.checkpoint_times.slice(0, maxi(index + 1, 0))
 
 
 ## Fim de um pit stop (chamado pelo RaceManager): se era um envolvido, sai da lista.

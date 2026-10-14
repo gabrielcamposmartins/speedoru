@@ -126,6 +126,12 @@ var _orbit_yaw := 0.0
 var _orbit_pitch := 0.3
 var _orbit_distance := 7.0
 var _orbit_idle := 0.0
+## Pista no céu: a pista (achada uma vez) e as bordas da plataforma; durante a queda a câmera para
+## onde estava e acompanha o carro caindo (_fall_eye), até ele voltar pelos boxes.
+var _sky_track: RaceTrack
+var _sky_edges: Array = []
+var _sky_checked := false
+var _fall_eye := Vector3.INF
 
 
 func _ready() -> void:
@@ -199,6 +205,8 @@ func _process(delta: float) -> void:
 	if target == null or cinematic:
 		return
 	var xf := target.get_global_transform_interpolated()
+	if _update_fall(xf, delta):
+		return
 	looking_back = mode != Mode.ORBIT and Input.is_action_pressed("look_back")
 	_back_t = move_toward(_back_t, 1.0 if looking_back else 0.0, look_back_speed * delta)
 	var back := smoothstep(0.0, 1.0, _back_t)
@@ -229,6 +237,42 @@ func _process(delta: float) -> void:
 	fov = lerpf(fov, target_fov, 1.0 - exp(-(12.0 if looking_back else 3.0) * delta))
 	if _onboard_gear:
 		_onboard_gear.mirrors_active = mode in [Mode.DRIVER, Mode.T_CAM, Mode.HOOD]
+
+
+# --- Queda (pista no céu) -------------------------------------------------------
+## O carro está caindo da plataforma? (Visto daqui mesmo: vale offline e online.)
+func is_target_falling() -> bool:
+	if not _sky_checked:
+		_sky_checked = true
+		for n in get_tree().get_nodes_in_group("mood_aware"):
+			if n is RaceTrack and (n as RaceTrack).layout and (n as RaceTrack).layout.sky:
+				_sky_track = n
+	if _sky_track == null or not _sky_track.is_built or target == null:
+		return false
+	if _sky_edges.is_empty():
+		_sky_edges = [SkyDeck.edges(_sky_track, 1), SkyDeck.edges(_sky_track, -1)]
+	if FallWatch.grounded(target):
+		return false
+	var pos := target.global_position
+	var pr := _sky_track.path.project(pos)
+	return FallWatch.off_deck(_sky_track, _sky_edges, pos, pr.x, pr.y)
+
+
+## Câmera da queda: fica parada na borda olhando o carro cair. Retorna true enquanto ela manda.
+func _update_fall(xf: Transform3D, delta: float) -> bool:
+	if not is_target_falling():
+		if _fall_eye != Vector3.INF:
+			_fall_eye = Vector3.INF
+			reset_after_cinematic()
+		return false
+	if _fall_eye == Vector3.INF:
+		_fall_eye = global_position + Vector3.UP * 1.5
+	var to := xf.origin - _fall_eye
+	if to.length_squared() > 0.01:
+		var up := Vector3.UP if absf(to.normalized().y) < 0.98 else Vector3.BACK
+		global_transform = Transform3D(Basis.looking_at(to, up), _fall_eye)
+	fov = lerpf(fov, base_fov - 8.0, 1.0 - exp(-2.0 * delta))
+	return true
 
 
 # --- Perseguição ---------------------------------------------------------------
@@ -407,7 +451,7 @@ func _update_orbit(xf: Transform3D, delta: float) -> void:
 		Vector3(pos.x, maxf(pos.y, pivot.y) + 2.0, pos.z), pos - Vector3.UP * 50.0, 1, exclude))
 	if ground:
 		pos.y = maxf(pos.y, ground.position.y + orbit_ground_clearance)
-	else:
+	elif _sky_track == null:
 		pos.y = maxf(pos.y, orbit_ground_clearance)
 	global_transform = Transform3D(Basis(), pos).looking_at(pivot, Vector3.UP)
 

@@ -109,19 +109,115 @@ func get_steering_wheel_rest() -> Transform3D:
 
 # ---------------------------------------------------------------------------
 # Pedir passagem: pisca a luz dos retrovisores (como a seta dos carros de rua). O tempo do pisca
-# corre no F1CarCore (signal_time / signal_on); aqui ficam as luzes.
+# corre no F1CarCore (signal_time / signal_on); aqui ficam as luzes e o som. Com a luz "Sirene"
+# (CarConfig.pass_light = "police"), os dois LEDs alternam vermelho e azul enquanto acesos e toca a
+# sirene; no âmbar, o relé do pisca (CarSignalSounds).
 # ---------------------------------------------------------------------------
 const SIGNAL_COLOR := Color(1.0, 0.62, 0.08)
+const SIREN_COLORS := [Color(1.0, 0.08, 0.1), Color(0.1, 0.35, 1.0)]
+## Trocas de cor da sirene por segundo.
+const SIREN_RATE := 8.0
 var _signal_leds: Array[MeshInstance3D] = []
+var _signal_style := ""
+var _siren: SirenBlinker
+var _signal_sound: SignalSound
+var _signal_lit := false
 
 
-## Chamado pelo F1CarCore quando o pisca acende ou apaga.
+## Chamado pelo F1CarCore quando o pisca acende ou apaga (e a cada quadro pela prévia da garagem).
 func _show_signal_leds(on: bool) -> void:
-	if on and _signal_leds.is_empty():
+	var style := config.pass_light if config else ""
+	if on and (_signal_leds.is_empty() or style != _signal_style):
 		_build_signal_leds()
 	for led in _signal_leds:
 		if is_instance_valid(led):
 			led.visible = on
+	if _siren:
+		_siren.set_process(on)
+	if on != _signal_lit:
+		_signal_lit = on
+		_signal_audio(on, style)
+
+
+## Som do pisca: o relé a cada acender/apagar no âmbar; a sirene em loop enquanto a Sirene pisca
+## (continua entre uma piscada e outra e para SignalSound.SIREN_HOLD s depois da última).
+func _signal_audio(on: bool, style: String) -> void:
+	if NetProtocol.is_server_process():
+		return
+	if _signal_sound == null:
+		# No bus geral (fora do compressor dos motores): bem mais alto que os carros
+		_signal_sound = SignalSound.new()
+		_signal_sound.name = "SignalSound"
+		add_child(_signal_sound)
+		_signal_sound.position = Vector3(0, 0.8, 0.4)
+	if style == "police":
+		if on:
+			_signal_sound.siren_on()
+	else:
+		_signal_sound.relay(on)
+
+
+## Toca o som do pisca do carro (posicionado nele: os outros também ouvem).
+class SignalSound extends AudioStreamPlayer3D:
+	## Quanto a sirene segue tocando depois da última piscada (cobre o intervalo apagado).
+	const SIREN_HOLD := 1.2
+	var _keep := 0.0
+
+	## Volumes (dB) do relé e da sirene; o motor fica por volta de 0 dB no bus dos carros.
+	const RELAY_DB := 10.0
+	const SIREN_DB := 8.0
+
+	func _ready() -> void:
+		bus = &"Master"
+		unit_size = 24.0
+		max_db = 14.0
+		set_process(false)
+
+	func relay(on: bool) -> void:
+		set_process(false)
+		stream = CarSignalSounds.relay(on)
+		volume_db = RELAY_DB
+		play()
+
+	func siren_on() -> void:
+		_keep = SIREN_HOLD
+		var s := CarSignalSounds.siren()
+		if stream != s or not playing:
+			stream = s
+			volume_db = SIREN_DB
+			play()
+		set_process(true)
+
+	func _process(delta: float) -> void:
+		_keep -= delta
+		if _keep <= 0.0:
+			stop()
+			set_process(false)
+
+
+## Troca as cores dos LEDs da sirene (um vermelho e outro azul, invertendo SIREN_RATE vezes/s).
+class SirenBlinker extends Node:
+	var leds: Array[MeshInstance3D] = []
+	var _t := 0.0
+
+	func _process(delta: float) -> void:
+		_t += delta
+		var phase := int(_t * SIREN_RATE) % 2
+		for k in leds.size():
+			var led := leds[k]
+			if is_instance_valid(led):
+				F1Car._paint_led(led, SIREN_COLORS[(k + phase) % 2])
+
+
+## Cor de um LED do pisca (material próprio, halo e luz).
+static func _paint_led(led: MeshInstance3D, color: Color) -> void:
+	var mat := led.get_meta("mat") as StandardMaterial3D
+	if mat == null or mat.albedo_color == color:
+		return
+	mat.albedo_color = color
+	mat.emission = color
+	(led.get_meta("halo_mat") as StandardMaterial3D).albedo_color = Color(color, 0.9)
+	(led.get_meta("light") as OmniLight3D).light_color = color
 
 
 ## Faixa de LED âmbar na borda de fora de cada retrovisor (presa ao vidro: some se ele quebrar).
@@ -131,13 +227,23 @@ func _build_signal_leds() -> void:
 	var mirrors := assembly.get_part_node("mirrors")
 	if mirrors == null:
 		return
-	var mat := StandardMaterial3D.new()
-	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	mat.albedo_color = SIGNAL_COLOR
-	mat.emission_enabled = true
-	mat.emission = SIGNAL_COLOR
-	mat.emission_energy_multiplier = 6.0
+	for led in _signal_leds:
+		if is_instance_valid(led):
+			led.queue_free()
+	# Lista nova (a sirene antiga, que só sai no fim do quadro, guarda a dela)
+	_signal_leds = []
+	if _siren:
+		_siren.set_process(false)
+		_siren.queue_free()
+		_siren = null
+	_signal_style = config.pass_light if config else ""
 	for suffix in ["L", "R"]:
+		var mat := StandardMaterial3D.new()
+		mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		mat.albedo_color = SIGNAL_COLOR
+		mat.emission_enabled = true
+		mat.emission = SIGNAL_COLOR
+		mat.emission_energy_multiplier = 6.0
 		var glass := mirrors.find_child("MirrorGlass" + suffix + "*", true, false) as MeshInstance3D
 		if glass == null:
 			continue
@@ -159,6 +265,8 @@ func _build_signal_leds() -> void:
 		# Halo (visível de longe, nos retrovisores dos outros) e uma luz âmbar pequena
 		var halo := MeshInstance3D.new()
 		halo.mesh = _signal_halo_mesh()
+		var halo_mat := (halo.mesh.surface_get_material(0) as StandardMaterial3D).duplicate() as StandardMaterial3D
+		halo.material_override = halo_mat
 		halo.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		led.add_child(halo)
 		var light := OmniLight3D.new()
@@ -167,7 +275,18 @@ func _build_signal_leds() -> void:
 		light.omni_range = 2.2
 		light.shadow_enabled = false
 		led.add_child(light)
+		led.set_meta("mat", mat)
+		led.set_meta("halo_mat", halo_mat)
+		led.set_meta("light", light)
 		_signal_leds.append(led)
+	if _signal_style == "police" and not _signal_leds.is_empty():
+		_siren = SirenBlinker.new()
+		_siren.name = "Siren"
+		_siren.leds = _signal_leds.duplicate()
+		_siren.set_process(false)
+		add_child(_siren)
+		for k in _signal_leds.size():
+			_paint_led(_signal_leds[k], SIREN_COLORS[k % 2])
 
 
 static var _halo_mesh: QuadMesh

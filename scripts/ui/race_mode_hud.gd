@@ -19,6 +19,10 @@ var spectator_bar: SpectatorBar
 var info: RaceInfo
 var menu: Control
 var results: Control
+## Tela final: onde vai o prêmio e se a roleta do vencedor já foi girada.
+var _prize: VBoxContainer
+var _wheel_used := false
+var _podium: PodiumScreen
 var pause_menu: Control
 ## Popup "voltar aos boxes?" (Select/K).
 var pit_confirm: Control
@@ -71,8 +75,15 @@ func _ready() -> void:
 	banner.position = Vector2(-640, -170)
 	banner.size = Vector2(640, 150)
 	add_child(banner)
+	# Pista no céu: aviso quando o próprio carro cai da plataforma
+	if manager.track and manager.track.layout and manager.track.layout.sky:
+		var fall := FallAlert.new()
+		fall.hud = self
+		add_child(fall)
 	manager.infraction.connect(_on_infraction)
 	manager.state_changed.connect(_on_state)
+	manager.leader_flag.connect(_on_leader_flag)
+	manager.reward_received.connect(func(_d: Dictionary) -> void: _refresh_prize())
 	_on_state(manager.state)
 	_move_base_hud()
 
@@ -201,7 +212,16 @@ func _on_state(state: int) -> void:
 	# Resultado: quem terminou, no online quando a prova acaba, e o observador (sem carro)
 	var observer := manager.observer and manager.player_entry == null
 	if state == RaceManager.State.FINISHED and (observer or (manager.player_entry and (manager.player_entry.finished or manager.net == RaceManager.Net.CLIENT))):
-		get_tree().create_timer(2.5).timeout.connect(_show_results)
+		get_tree().create_timer(2.5).timeout.connect(_show_podium)
+
+
+## O primeiro cruzou a linha: avisa quem ainda está correndo (e quem assiste).
+func _on_leader_flag(entry: RaceEntry) -> void:
+	var me := manager.player_entry
+	if me == entry or (me and me.finished):
+		return
+	var who := "Você" if me == null else entry.name
+	banner.push("BANDEIRADA!", "%s venceu — complete sua última volta" % who if me else "%s venceu a corrida" % entry.name, false)
 
 
 func _on_infraction(entry: RaceEntry, title: String, detail: String, is_penalty: bool) -> void:
@@ -334,6 +354,28 @@ func _show_menu() -> void:
 	cfg.custom_minimum_size.x = 190
 
 
+## Tela de vitória: os três primeiros no pódio; ao fechar, a tabela de resultado.
+func _show_podium() -> void:
+	if results or is_instance_valid(_podium):
+		return
+	var top: Array[RaceEntry] = []
+	for e in manager.final_classification():
+		if top.size() < 3 and not e.disqualified and not e.retired:
+			top.append(e)
+	if top.is_empty():
+		_show_results()
+		return
+	_podium = PodiumScreen.new()
+	_podium.entries = top
+	_podium.manager = manager
+	_podium.closed.connect(func() -> void:
+		if is_instance_valid(results):
+			results.visible = true
+		else:
+			_show_results())
+	get_tree().root.add_child(_podium)
+
+
 func _show_results() -> void:
 	if results:
 		return
@@ -405,13 +447,10 @@ func _show_results() -> void:
 		scroll.custom_minimum_size = Vector2(0, clampf(body.get_combined_minimum_size().y, 60.0, room))
 	fit.call()
 	get_tree().process_frame.connect(fit, CONNECT_ONE_SHOT)
-	if manager.player_reward > 0:
-		var reward := Label.new()
-		reward.text = "+%s %s" % [PlayerProfile.format_credits(manager.player_reward), ShopCatalog.CURRENCY]
-		reward.add_theme_font_override("font", Retro.display(800))
-		reward.add_theme_font_size_override("font_size", 22)
-		reward.add_theme_color_override("font_color", Retro.c("good"))
-		box.add_child(reward)
+	_prize = VBoxContainer.new()
+	_prize.add_theme_constant_override("separation", 4)
+	box.add_child(_prize)
+	_refresh_prize()
 	var buttons := HBoxContainer.new()
 	buttons.add_theme_constant_override("separation", 16)
 	box.add_child(buttons)
@@ -420,9 +459,82 @@ func _show_results() -> void:
 	else:
 		_button(buttons, "Correr de novo", func() -> void: manager.restart(true), true)
 		_button(buttons, "Menu", func() -> void: manager.restart(false))
+	_button(buttons, "Pódio", func() -> void:
+		results.visible = false
+		_show_podium_again())
 	_button(buttons, "Continuar dirigindo", func() -> void:
 		results.queue_free()
 		results = null)
+
+
+func _show_podium_again() -> void:
+	var keep := results
+	results = null
+	_show_podium()
+	results = keep
+
+
+## Prêmio da corrida na tela final: créditos (online chegam depois que a sala fecha: "Calculando
+## prêmio…" até lá), missões e conquistas completas, prêmio da semana e, para quem venceu online, o
+## botão da roleta do vencedor.
+func _refresh_prize() -> void:
+	if not is_instance_valid(_prize):
+		return
+	for c in _prize.get_children():
+		c.queue_free()
+	var profile := get_node_or_null("/root/Profile") as PlayerProfile
+	var from_server := manager.net == RaceManager.Net.CLIENT or (profile and profile.mode == "remote")
+	if manager.player_reward > 0:
+		var reward := Label.new()
+		reward.text = "+%s %s" % [PlayerProfile.format_credits(manager.player_reward), ShopCatalog.CURRENCY]
+		reward.add_theme_font_override("font", Retro.display(800))
+		reward.add_theme_font_size_override("font_size", 22)
+		reward.add_theme_color_override("font_color", Retro.c("good"))
+		_prize.add_child(reward)
+	elif manager.player_reward < 0 and from_server and manager.player_entry:
+		var wait := Label.new()
+		wait.text = "Calculando prêmio…"
+		wait.theme_type_variation = "RetroMuted"
+		_prize.add_child(wait)
+	var ex := manager.player_reward_extras
+	for m: Dictionary in ex.get("missions", []):
+		_prize_line("MISSÃO  %s · +%s" % [m.get("text", ""), PlayerProfile.format_credits(int(m.get("credits", 0)))], Retro.c("accent_2"))
+	var week: Dictionary = ex.get("week", {}) if ex.get("week") is Dictionary else {}
+	if not week.is_empty():
+		var item := str(week.get("item", ""))
+		_prize_line("SEMANA COMPLETA!  +%s%s" % [PlayerProfile.format_credits(int(week.get("credits", 0))),
+			(" · " + str(ShopCatalog.item(item).get("name", ""))) if item != "" else ""], ShopCatalog.RARITY_COLORS[4])
+	for a: Dictionary in ex.get("achievements", []):
+		var item := str(a.get("item", ""))
+		_prize_line("CONQUISTA  %s · +%s%s" % [a.get("name", ""), PlayerProfile.format_credits(int(a.get("credits", 0))),
+			(" · " + str(ShopCatalog.item(item).get("name", ""))) if item != "" else ""], Retro.c("warn"))
+	if bool(ex.get("spin", false)) and not _wheel_used:
+		var b := Button.new()
+		b.text = "GIRAR A ROLETA DO VENCEDOR"
+		b.theme_type_variation = "PrimaryButton"
+		b.custom_minimum_size = Vector2(320, 44)
+		b.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+		b.pressed.connect(_open_wheel)
+		_prize.add_child(b)
+		b.grab_focus.call_deferred()
+
+
+func _prize_line(text: String, color: Color) -> void:
+	var l := Label.new()
+	l.text = text
+	l.add_theme_font_size_override("font_size", 14)
+	l.add_theme_color_override("font_color", color)
+	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_prize.add_child(l)
+
+
+func _open_wheel() -> void:
+	if _wheel_used:
+		return
+	_wheel_used = true
+	var wheel := PrizeWheel.new()
+	get_tree().root.add_child(wheel)
+	wheel.closed.connect(_refresh_prize)
 
 
 ## Detalhe das penalidades dos jogadores (você no solo; todos os humanos online).
@@ -679,6 +791,20 @@ class Minimap extends Control:
 # ---------------------------------------------------------------------------
 # Banner de infrações (lateral direita)
 # ---------------------------------------------------------------------------
+## Avisa no banner quando o carro seguido pela câmera começa a cair (a câmera de corrida detecta a
+## queda sozinha, então vale também online).
+class FallAlert extends Node:
+	var hud: RaceModeHud
+	var _was := false
+
+	func _process(_d: float) -> void:
+		var cam := get_viewport().get_camera_3d() as RaceCamera
+		var falling := cam != null and cam.is_target_falling()
+		if falling and not _was:
+			hud.banner.push("VOCÊ CAIU!", "Voltando pelos boxes para um pit stop", true)
+		_was = falling
+
+
 class Banner extends Control:
 	var hud: RaceModeHud
 	var _queue: Array = []

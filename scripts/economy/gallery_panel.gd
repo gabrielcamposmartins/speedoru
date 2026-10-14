@@ -8,7 +8,8 @@ extends HBoxContainer
 ## câmera vai até a peça) e o cartão de detalhes: raridade, roleta onde cai, chance exata, quanto
 ## devolve se sair repetida e o botão Equipar (se for sua) ou Ir à loja (se faltar).
 
-const TYPE_ICONS := {"part": "parts", "decal": "decals", "boost": "boost", "neon": "neon", "trail": "trail"}
+const TYPE_ICONS := {"part": "parts", "decal": "decals", "boost": "boost", "neon": "neon", "trail": "trail", "signal": "signal",
+	"title": "title"}
 
 var type := "part"
 var selected_id := ""
@@ -62,6 +63,7 @@ func _rebuild_deferred() -> void:
 
 
 func _rebuild() -> void:
+	StudioPanel.keep_scroll(self)
 	for c in _tabs.get_children():
 		c.queue_free()
 	for t in ShopCatalog.TYPES:
@@ -129,6 +131,8 @@ func _tile(id: String) -> StudioPanel.OptionTile:
 			t.art_kind = "glow"
 		"trail":
 			t.art_kind = "trail"
+		"signal", "title":
+			t.art_kind = it["type"]
 		"part":
 			t.art_kind = "part"
 			t.part_slot = it["slot"]
@@ -148,8 +152,14 @@ func _tile(id: String) -> StudioPanel.OptionTile:
 		t.badge = "GRÁTIS"
 		t.badge_color = Retro.c("muted")
 	elif owned:
-		t.badge = "✓"
-		t.badge_color = Retro.c("good")
+		# Só de um lado (conta no servidor ou este aparelho): o selo diz qual
+		var origin := _profile.badge_of(id)
+		t.badge = "✓" if origin[0] == "" else "✓ " + str(origin[0])
+		t.badge_color = Retro.c("good") if origin[0] == "" else Retro.c(origin[1])
+	elif _profile.known(id):
+		# Ganha do outro lado (SÓ ONLINE / SÓ OFFLINE): não dá para usar agora
+		t.badge = _profile.badge_of(id)[0]
+		t.badge_color = Retro.c("muted")
 	else:
 		t.badge = "FALTA"
 		t.badge_color = ShopCatalog.RARITY_COLORS[it["rarity"]]
@@ -163,13 +173,32 @@ func _tip_rows(id: String, owned: bool) -> Array:
 	if ShopCatalog.is_free(id):
 		return [["Estado", "já vem com o jogo", Retro.c("muted")]]
 	var it := ShopCatalog.item(id)
-	return [
+	var rows := [
 		["Raridade", ShopCatalog.RARITY_NAMES[it["rarity"]], ShopCatalog.RARITY_COLORS[it["rarity"]]],
 		["Estado", "sua" if owned else "falta", Retro.c("good") if owned else Retro.c("warn")],
+	]
+	var where := _where(id)
+	if where != "":
+		rows.append(["Coleção", where, Retro.c(_profile.badge_of(id)[1])])
+	if ShopCatalog.is_exclusive(id):
+		rows.append(["Origem", "exclusivo: conquistas, missões da semana e roleta do vencedor"])
+		return rows
+	rows.append_array([
 		["Roleta", ShopCatalog.ROULETTES[it["roulette"]]["name"]],
 		["Chance", ShopPanel._pct(ShopCatalog.chance_of(id)) + " por giro"],
 		["Repetida", "devolve %s" % PlayerProfile.format_credits(ShopCatalog.refund_of(id))],
-	]
+	])
+	return rows
+
+
+## Em qual coleção está um item que só um lado tem ("" = nos dois, grátis, não tem ou não se sabe).
+func _where(id: String) -> String:
+	match _profile.origin(id):
+		"account":
+			return "só na conta do servidor" + ("" if _profile.owns(id) else " (conecte para usar)")
+		"device":
+			return "só neste aparelho" + ("" if _profile.owns(id) else " (este servidor não aceita)")
+	return ""
 
 
 func _select(id: String) -> void:
@@ -209,8 +238,14 @@ func _build_details() -> void:
 	_details.add_child(rarity_l)
 	if not free:
 		var info := Label.new()
-		info.text = "%s · chance %s por giro · repetida devolve %s" % ["✓ Sua" if owned else "Falta",
-			ShopPanel._pct(ShopCatalog.chance_of(selected_id)), PlayerProfile.format_credits(ShopCatalog.refund_of(selected_id))]
+		var state := "✓ Sua" if owned else "Falta"
+		if _where(selected_id) != "":
+			state = ("✓ Sua, " if owned else "Sua, ") + _where(selected_id)
+		if ShopCatalog.is_exclusive(selected_id):
+			info.text = "%s · prêmio exclusivo (conquistas, missões da semana e roleta do vencedor)" % state
+		else:
+			info.text = "%s · chance %s por giro · repetida devolve %s" % [state,
+				ShopPanel._pct(ShopCatalog.chance_of(selected_id)), PlayerProfile.format_credits(ShopCatalog.refund_of(selected_id))]
 		info.add_theme_font_size_override("font_size", 12)
 		info.add_theme_color_override("font_color", Retro.c("good") if owned else Retro.c("text_2"))
 		info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -223,7 +258,16 @@ func _build_details() -> void:
 		_details.add_child(st)
 	var b := Button.new()
 	b.custom_minimum_size = Vector2(0, 34)
-	if owned:
+	if it["type"] == "title":
+		b.text = "Escolha o título no seu perfil online" if owned else "Prêmio exclusivo"
+		b.disabled = true
+	elif not owned and _profile.known(selected_id):
+		b.text = "Conecte para usar" if _profile.mode == "local" else "Só vale offline"
+		b.disabled = true
+	elif not owned and ShopCatalog.is_exclusive(selected_id):
+		b.text = "Prêmio exclusivo"
+		b.disabled = true
+	elif owned:
 		b.text = "EQUIPAR"
 		b.theme_type_variation = "PrimaryButton"
 		b.add_theme_font_size_override("font_size", 12)
@@ -250,6 +294,12 @@ func _equip(id: String) -> void:
 			_profile.set_neon(true)
 		"part":
 			_profile.equip_part(it["slot"], it["variant"])
+		"trail":
+			_profile.equip_trail(id)
+		"signal":
+			_profile.equip_signal(id)
+		"title":
+			pass
 		"decal":
 			# Nas laterais (o lugar mais visível); o Estúdio troca de lugar, cor, posição e tamanho
 			_profile.set_decal("sidepods", ShopCatalog.decal_of(id))
@@ -347,6 +397,12 @@ class ItemCard extends Control:
 				# Abaixo do selo de raridade
 				CarParticles.draw_icon(ci, ShopCatalog.effect_of(id), Rect2(art.position.x, art.position.y + art.size.y * 0.22,
 					art.size.x, art.size.y * 0.78), dim)
+			"signal":
+				StudioPanel.draw_signal_art(ci, Rect2(art.position.x, art.position.y + art.size.y * 0.22, art.size.x,
+					art.size.y * 0.78), ShopCatalog.signal_of(id), dim)
+			"title":
+				StudioPanel.draw_title_art(ci, Rect2(art.position.x, art.position.y + art.size.y * 0.22, art.size.x,
+					art.size.y * 0.78), ShopCatalog.title_of(id), dim)
 			"part":
 				# Abaixo do selo de raridade
 				var box := Rect2(art.position.x + 8.0, art.position.y + art.size.y * 0.32, art.size.x - 16.0, art.size.y * 0.6)

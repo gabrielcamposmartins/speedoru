@@ -1,6 +1,6 @@
 class_name TrackTunnel
 extends RefCounted
-## Túnel de um circuito de rua (trecho [s0, s1] da pista, dado pela cidade): paredes de azulejo
+## Túnel de um circuito de rua (trecho [s0, s1] da pista, dado pela cidade, ou layout.tunnel na pista no céu): paredes de azulejo
 ## atrás das barreiras, teto com laje grossa (o terreno da cidade fica em cima dela), duas fileiras
 ## de luminárias, luzes alaranjadas e os portais nas duas bocas. Sondas de reflexo com ambiente
 ## escuro deixam o interior na penumbra mesmo de dia (o céu não ilumina lá dentro).
@@ -18,8 +18,19 @@ const LAMP := Color(1.0, 0.84, 0.58)
 const LIGHT_SPACING := 24.0
 
 
+## Cores do túnel: azulejo e sódio na cidade; na pista no céu, painéis metálicos e luz azulada.
+static func _palette(track: RaceTrack) -> Dictionary:
+	if track.layout.sky:
+		return {"tile": Color(0.62, 0.66, 0.74), "tile_low": Color(0.2, 0.22, 0.27), "ceiling": Color(0.16, 0.17, 0.21),
+			"portal": SkyBase.HULL, "lamp": Color(0.7, 0.9, 1.0), "top": SkyDeck.HULL, "light": Color(0.62, 0.82, 1.0),
+			"shade": Color(0.1, 0.13, 0.18)}
+	return {"tile": TILE, "tile_low": TILE_LOW, "ceiling": CEILING, "portal": PORTAL, "lamp": LAMP, "top": TrackCity.PAVEMENT,
+		"light": Color(1.0, 0.78, 0.5), "shade": Color(0.16, 0.14, 0.12)}
+
+
 static func build(track: RaceTrack, s0: float, s1: float, parent: Node3D) -> void:
 	var p := track.path
+	var pal := _palette(track)
 	var root := Node3D.new()
 	root.name = "Tunnel"
 	parent.add_child(root)
@@ -41,36 +52,36 @@ static func build(track: RaceTrack, s0: float, s1: float, parent: Node3D) -> voi
 			var b1 := track.edge_point(j, side, d_j, 2.6)
 			var a2 := track.edge_point(i, side, d_i, HEIGHT)
 			var b2 := track.edge_point(j, side, d_j, HEIGHT)
-			walls.quad(a0, b0, b1, a1, TILE_LOW, inward)
-			var tile := TILE if (i / 2) % 2 == 0 else TILE * 0.96
+			walls.quad(a0, b0, b1, a1, pal.tile_low, inward)
+			var tile: Color = pal.tile if (i / 2) % 2 == 0 else pal.tile * 0.96
 			walls.quad(a1, b1, b2, a2, tile, inward)
 			# Parede por fora (vista de quem olha do mar ou do terreno ao lado)
 			var o_i := d_i + WALL_THICK
 			var o_j := d_j + WALL_THICK
 			walls.quad(track.edge_point(i, side, o_i, -1.0), track.edge_point(j, side, o_j, -1.0),
-				track.edge_point(j, side, o_j, HEIGHT), track.edge_point(i, side, o_i, HEIGHT), PORTAL * 0.9, -inward)
+				track.edge_point(j, side, o_j, HEIGHT), track.edge_point(i, side, o_i, HEIGHT), pal.portal * 0.9, -inward)
 		# Teto (face de baixo) e laje (face de cima, com o mesmo piso da cidade)
 		var li := track.barrier[0][i] + 0.6
 		var lj := track.barrier[0][j] + 0.6
 		var ri := track.barrier[1][i] + 0.6
 		var rj := track.barrier[1][j] + 0.6
 		walls.quad(track.edge_point(i, 1, li, HEIGHT), track.edge_point(j, 1, lj, HEIGHT),
-			track.edge_point(j, -1, rj, HEIGHT), track.edge_point(i, -1, ri, HEIGHT), CEILING, Vector3.DOWN)
+			track.edge_point(j, -1, rj, HEIGHT), track.edge_point(i, -1, ri, HEIGHT), pal.ceiling, Vector3.DOWN)
 		var top := HEIGHT + SLAB
 		walls.quad(track.edge_point(i, 1, li + SLAB_OVERHANG, top), track.edge_point(j, 1, lj + SLAB_OVERHANG, top),
 			track.edge_point(j, -1, rj + SLAB_OVERHANG, top), track.edge_point(i, -1, ri + SLAB_OVERHANG, top),
-			TrackCity.PAVEMENT, Vector3.UP)
+			pal.top, Vector3.UP)
 		for side: int in [1, -1]:
 			var si := RaceTrack._si(side)
 			var d_i := track.barrier[si][i] + 0.6 + SLAB_OVERHANG
 			var d_j := track.barrier[si][j] + 0.6 + SLAB_OVERHANG
 			walls.quad(track.edge_point(i, side, d_i, top - 3.0), track.edge_point(j, side, d_j, top - 3.0),
-				track.edge_point(j, side, d_j, top), track.edge_point(i, side, d_i, top), PORTAL * 0.85, p.lefts[i] * side)
+				track.edge_point(j, side, d_j, top), track.edge_point(i, side, d_i, top), pal.portal * 0.85, p.lefts[i] * side)
 		# Luminárias: duas fileiras no teto
 		if k % 2 == 0:
 			for lat: float in [2.6, -2.6]:
 				var f := p.frame_at(p.s_at(i), lat, HEIGHT - 0.12)
-				lamps.box(f, Vector3(0.5, 0.16, 2.4), LAMP)
+				lamps.box(f, Vector3(0.5, 0.16, 2.4), pal.lamp)
 	_portal(track, walls, s0, 1.0)
 	_portal(track, walls, s1, -1.0)
 	var mi := MeshInstance3D.new()
@@ -96,7 +107,7 @@ static func build(track: RaceTrack, s0: float, s1: float, parent: Node3D) -> voi
 	for n in count:
 		var s := s0 + (n + 0.5) * length / count
 		var light := OmniLight3D.new()
-		light.light_color = Color(1.0, 0.78, 0.5)
+		light.light_color = pal.light
 		light.light_energy = 1.6
 		light.omni_range = 20.0
 		light.omni_attenuation = 1.2
@@ -112,7 +123,7 @@ static func build(track: RaceTrack, s0: float, s1: float, parent: Node3D) -> voi
 		probe.name = "Shade%d" % n
 		probe.interior = true
 		probe.ambient_mode = ReflectionProbe.AMBIENT_COLOR
-		probe.ambient_color = Color(0.16, 0.14, 0.12)
+		probe.ambient_color = pal.shade
 		probe.ambient_color_energy = 1.0
 		probe.intensity = 0.35
 		probe.blend_distance = 6.0
@@ -170,6 +181,7 @@ static func _wing_walls(track: RaceTrack, mb: MeshBuilder, s_portal: float, dir:
 ## dir = +1 na entrada (a fachada olha para trás), -1 na saída.
 static func _portal(track: RaceTrack, mb: MeshBuilder, s: float, dir: float) -> void:
 	var p := track.path
+	var pal := _palette(track)
 	var i := p.index_at(s)
 	var f := p.frame_at(s)
 	f.basis = Basis(f.basis.x, Vector3.UP, f.basis.x.cross(Vector3.UP).normalized())
@@ -196,14 +208,14 @@ static func _portal(track: RaceTrack, mb: MeshBuilder, s: float, dir: float) -> 
 	var lintel_w := inner_l + inner_r + 2.0 * outer
 	var center_lat := (inner_l - inner_r) * 0.5
 	mb.box(Transform3D(f.basis, f.origin + f.basis.x * center_lat + Vector3.UP * (HEIGHT + (top - HEIGHT) * 0.5) + back),
-		Vector3(lintel_w, top - HEIGHT, depth), PORTAL)
+		Vector3(lintel_w, top - HEIGHT, depth), pal.portal)
 	# Friso escuro no alto da viga (dá escala à frente alta)
 	mb.box(Transform3D(f.basis, f.origin + f.basis.x * center_lat + Vector3.UP * (top - 0.3) + back - f.basis.z * dir * 0.1),
-		Vector3(lintel_w, 0.6, depth + 0.2), TILE_LOW)
+		Vector3(lintel_w, 0.6, depth + 0.2), pal.tile_low)
 	mb.box(Transform3D(f.basis, f.origin + f.basis.x * center_lat + Vector3.UP * (HEIGHT + 0.25) + back - f.basis.z * dir * 0.35),
-		Vector3(inner_l + inner_r, 0.5, 0.3), TILE_LOW)
+		Vector3(inner_l + inner_r, 0.5, 0.3), pal.tile_low)
 	for side: int in [1, -1]:
 		var inner := inner_l if side > 0 else inner_r
 		var lat := side * (inner + outer * 0.5)
 		mb.box(Transform3D(f.basis, f.origin + f.basis.x * lat + Vector3.UP * (pillar * 0.5 - 1.0) + back),
-			Vector3(outer, pillar + 1.0, depth), PORTAL)
+			Vector3(outer, pillar + 1.0, depth), pal.portal)

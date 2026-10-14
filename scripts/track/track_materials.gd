@@ -5,6 +5,10 @@ extends RefCounted
 
 static var _cache := {}
 static var _textures := {}
+## Pista no céu (Sky Aerobase): as construções (building() e tudo o que passa por ele: barreiras,
+## boxes, arquibancadas, estruturas, túnel) viram placas de metal escuro com parafusos. O RaceTrack
+## liga/desliga ao gerar cada pista.
+static var metal := false
 
 
 static func _cached(key: String, maker: Callable) -> Material:
@@ -14,10 +18,12 @@ static func _cached(key: String, maker: Callable) -> Material:
 
 
 ## Piso (asfalto, zebra, cascalho, pintura): cor de vértice + granulação.
+## Na pista no céu (metal) sem o sombreamento toon.
 static func surface(kind: String) -> Material:
-	return _cached("surface_" + kind, func() -> Material:
+	var smooth := metal
+	return _cached("surface_%s_%s" % [kind, smooth], func() -> Material:
 		var mat := ShaderMaterial.new()
-		mat.shader = load("res://shaders/track/track_surface.gdshader")
+		mat.shader = load("res://shaders/track/track_surface_smooth.gdshader" if smooth else "res://shaders/track/track_surface.gdshader")
 		match kind:
 			"asphalt":
 				mat.set_shader_parameter("grain_strength", 0.07)
@@ -76,6 +82,8 @@ const TEXTURE_DIR := "res://assets/track/textures/"
 ## Material texturizado das construções (shaders/track/building*.gdshader): cor de vértice +
 ## grão do material, manchas/escorridos e normal map de deformidades. `params` ajusta o shader.
 static func building(key: String, two_sided := false, params := {}) -> Material:
+	if metal:
+		return metal_plate(key, two_sided, params.get("no_outline", false))
 	return _cached("building_" + key, func() -> Material:
 		var mat := ShaderMaterial.new()
 		mat.shader = load("res://shaders/track/building_two_sided.gdshader" if two_sided else "res://shaders/track/building.gdshader")
@@ -84,6 +92,17 @@ static func building(key: String, two_sided := false, params := {}) -> Material:
 		mat.set_shader_parameter("normal_tex", load(TEXTURE_DIR + "deform_normal.png"))
 		for k in params:
 			mat.set_shader_parameter(k, params[k])
+		return mat)
+
+
+## Placas de metal escuro com parafusos (shaders/track/metal_plate*.gdshader). A cor de vértice
+## cinza/branca vira metal; cores fortes ficam (escurecidas).
+static func metal_plate(key: String, two_sided := false, no_outline := false) -> Material:
+	return _cached("metal_%s_%s_%s" % [key, two_sided, no_outline], func() -> Material:
+		var mat := ShaderMaterial.new()
+		mat.shader = load("res://shaders/track/metal_plate_two_sided.gdshader" if two_sided else "res://shaders/track/metal_plate.gdshader")
+		mat.set_shader_parameter("grime_tex", load(TEXTURE_DIR + "grime.png"))
+		mat.set_shader_parameter("no_outline", no_outline)
 		return mat)
 
 
@@ -170,6 +189,9 @@ static func tree() -> Material:
 ## Anúncios: textura do atlas (UV) multiplicada pela cor de vértice.
 ## no_outline: rugosidade 0 (sem contorno anime, usado no prédio dos boxes).
 static func ads(no_outline := false) -> Material:
+	# Pista no céu: todos os anúncios em holograma (fundo transparente, letras flutuando)
+	if metal:
+		return TrackAds.holo_material(false)
 	return _cached("ads_%s" % no_outline, func() -> Material:
 		var mat := StandardMaterial3D.new()
 		mat.albedo_texture = TrackAds.load_atlas()

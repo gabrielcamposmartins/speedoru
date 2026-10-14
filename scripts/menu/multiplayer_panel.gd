@@ -16,8 +16,8 @@ extends VBoxContainer
 ##   endereços para os amigos, UPnP e o log.
 ## Sem conexão: mostra só a parte do servidor (o solo continua offline).
 
-const TABS := [["rooms", "SALAS"], ["friends", "AMIGOS"], ["party", "GRUPO"], ["ranking", "RANKING"], ["profile", "PERFIL"],
-	["server", "SERVIDOR"]]
+const TABS := [["rooms", "SALAS"], ["friends", "AMIGOS"], ["party", "GRUPO"], ["missions", "MISSÕES"], ["ranking", "RANKING"],
+	["profile", "PERFIL"], ["server", "SERVIDOR"]]
 const DIFFICULTIES := ["Fácil", "Médio", "Difícil", "Mista"]
 
 static var tab := "rooms"
@@ -28,6 +28,7 @@ var _header: VBoxContainer
 var _tabs: HBoxContainer
 var _content: VBoxContainer
 var _scroll: ScrollContainer
+var _missions_asked := false
 var _friends := {}
 var _rank_tab := "geral"
 var _ranking := {}
@@ -158,11 +159,14 @@ func _rebuild() -> void:
 			b.text += " (%d)" % (net.party.get("members", []) as Array).size()
 		if t[0] == "friends" and not (_friends.get("incoming", []) as Array).is_empty():
 			b.text += " •"
+		if t[0] == "missions" and int(net.account.get("race_spins", 0)) > 0:
+			b.text += " •"
 		if t[0] == tab:
 			b.theme_type_variation = "PrimaryButton"
 		b.pressed.connect(func() -> void:
 			tab = t[0]
 			_profile_view = {}
+			_missions_asked = false
 			_rebuild())
 		_tabs.add_child(b)
 	var back := Button.new()
@@ -180,6 +184,8 @@ func _rebuild() -> void:
 			_build_friends()
 		"party":
 			_build_party()
+		"missions":
+			_build_missions()
 		"ranking":
 			_build_ranking()
 		"profile":
@@ -191,6 +197,88 @@ func _rebuild() -> void:
 # ---------------------------------------------------------------------------
 # Peças
 # ---------------------------------------------------------------------------
+## Título de jogador (os especiais com fonte e animação próprias: TitleLabel).
+func _title_label(title: String, size := 13) -> TitleLabel:
+	var t := TitleLabel.new()
+	t.font_size = size
+	t.grade = maxi(Progression.title_grade(title), 1)
+	t.text = title
+	t.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	return t
+
+
+# ---------------------------------------------------------------------------
+# Missões (servidor): as 3 do dia, a semana e as roletas do vencedor que faltam girar
+# ---------------------------------------------------------------------------
+func _build_missions() -> void:
+	var ms: Dictionary = net.account.get("missions", {})
+	_section("MISSÕES DE HOJE")
+	var list: Array = ms.get("missions", [])
+	if list.is_empty():
+		_content.add_child(_label("Carregando missões…", "RetroMuted"))
+	for m: Dictionary in list:
+		var panel := PanelContainer.new()
+		panel.add_theme_stylebox_override("panel", Retro.panel_style(8.0, 0.7 if m.get("done", false) else 0.45))
+		_content.add_child(panel)
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 12)
+		panel.add_child(row)
+		var v := VBoxContainer.new()
+		v.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		row.add_child(v)
+		v.add_child(_label(str(m.get("text", "")), "", 15, Retro.c("good") if m.get("done", false) else Retro.c("text")))
+		var bar := ProgressBar.new()
+		bar.show_percentage = false
+		bar.custom_minimum_size = Vector2(0, 8)
+		bar.max_value = maxi(int(m.get("goal", 1)), 1)
+		bar.value = int(m.get("progress", 0))
+		v.add_child(bar)
+		var right := "✓ CONCLUÍDA" if m.get("done", false) else "%d / %d" % [int(m.get("progress", 0)), int(m.get("goal", 1))]
+		row.add_child(_label(right, "RetroKicker", 12))
+		row.add_child(_label("+%s" % PlayerProfile.format_credits(int(m.get("credits", 0))), "", 15, Retro.c("good")))
+	var left := int(ms.get("reset_in", 0))
+	if left > 0:
+		_content.add_child(_label("Novas missões em %dh%02d (horário de Brasília). Contam as corridas online e as solo com a conta conectada." % [
+			left / 3600, (left % 3600) / 60], "RetroMuted", 12))
+	_section("SEMANA")
+	var done := int(ms.get("week_done", 0))
+	var goal := maxi(int(ms.get("week_goal", 21)), 1)
+	var wbar := ProgressBar.new()
+	wbar.show_percentage = false
+	wbar.custom_minimum_size = Vector2(0, 12)
+	wbar.max_value = goal
+	wbar.value = done
+	_content.add_child(wbar)
+	if ms.get("week_paid", false):
+		_content.add_child(_label("Semana completa: prêmio recebido ✓", "", 14, Retro.c("good")))
+	else:
+		_content.add_child(_label("%d de %d missões da semana. Complete todas para ganhar %s %s e um prêmio exclusivo (título ou peça)." % [
+			done, goal, PlayerProfile.format_credits(int(ms.get("week_credits", Missions.WEEK_CREDITS))), ShopCatalog.CURRENCY], "", 14))
+	var spins := int(net.account.get("race_spins", 0))
+	var tickets := int((net.account.get("profile", {}) as Dictionary).get("tickets", 0))
+	if spins > 0 or tickets > 0:
+		_section("PRÊMIOS")
+	if spins > 0:
+		var row := _row(_content)
+		row.add_child(_label("Roleta do vencedor para girar: %d" % spins, "", 15, ShopCatalog.RARITY_COLORS[4]))
+		var b := _button("GIRAR", func() -> void:
+			var wheel := PrizeWheel.new()
+			get_tree().root.add_child(wheel)
+			wheel.closed.connect(_queue_rebuild))
+		b.theme_type_variation = "PrimaryButton"
+		row.add_child(b)
+	if tickets > 0:
+		_content.add_child(_label("Tickets da roleta da loja: %d (use na Loja)" % tickets, "", 14))
+	# O dia pode ter virado com o menu aberto: pede as missões de novo
+	if not _missions_asked:
+		_missions_asked = true
+		var r := await _ask("missions", {})
+		if r.has("missions") and is_inside_tree():
+			net.account["missions"] = r
+			if tab == "missions":
+				_queue_rebuild()
+
+
 func _label(text: String, variation := "", size := 0, color := Color(0, 0, 0, 0)) -> Label:
 	var l := Label.new()
 	l.text = text
@@ -709,9 +797,13 @@ func _build_room() -> void:
 	carousel.name = "TrackCarousel"
 	carousel.editable = editable
 	carousel.selected = RaceSettings.track_index(str(st.get("track", "monza")))
-	carousel.start_pos = _carousel.pos if is_instance_valid(_carousel) else -1.0
+	carousel.category = RaceSettings.category_of(str(st.get("track", "monza")))
+	carousel.start_pos = _carousel.pos if is_instance_valid(_carousel) and _carousel.category == carousel.category else -1.0
 	carousel.custom_minimum_size = Vector2(0, 190)
 	carousel.track_changed.connect(func(i: int) -> void: _ask("room_settings", {"track": RaceSettings.TRACKS[i]["id"]}))
+	# Abas Reais/Fantasia (só o anfitrião troca; a categoria segue a pista da sala)
+	if editable:
+		card.add_child(TrackCarousel.category_tabs(carousel))
 	card.add_child(carousel)
 	_carousel = carousel
 	var grid := GridContainer.new()
@@ -772,7 +864,7 @@ func _build_room() -> void:
 		n.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		row.add_child(n)
 		if str(m.get("title", "")) != "":
-			row.add_child(_label(str(m["title"]), "RetroMuted", 12, Progression.GRADE_COLORS[clampi(Progression.title_grade(m["title"]) - 1, 0, 4)]))
+			row.add_child(_title_label(str(m["title"]), 12))
 		# Pedir amizade na mesa
 		if m["id"] != me and not m["id"] in friend_ids:
 			if m["id"] in outgoing:
@@ -921,9 +1013,13 @@ func _build_friends() -> void:
 		var row := _row(_content)
 		row.add_child(_status_dot(f["online"], f["in_race"]))
 		row.add_child(_level_badge(int(f["level"])))
-		var n := _label(str(f["name"]) + ("  ·  " + str(f["title"]) if str(f.get("title", "")) != "" else ""), "", 15)
-		n.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		var n := _label(str(f["name"]), "", 15)
 		row.add_child(n)
+		if str(f.get("title", "")) != "":
+			row.add_child(_title_label(str(f["title"]), 12))
+		var gap := Control.new()
+		gap.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		row.add_child(gap)
 		row.add_child(_button("Perfil", func() -> void: _open_profile(f["id"])))
 		var in_party: bool = (party.get("members", []) as Array).any(func(m: Dictionary) -> bool: return m["id"] == f["id"])
 		if f["online"] and leader and not in_party:
@@ -1127,11 +1223,15 @@ func _build_profile() -> void:
 			o.add_item(str(t))
 			if str(t) == str(p.get("title", "")):
 				o.selected = o.item_count - 1
+		var preview := _title_label(str(p.get("title", "")), 15)
 		o.item_selected.connect(func(i: int) -> void:
+			preview.text = "" if i == 0 else str(titles[i - 1])
+			preview.grade = maxi(Progression.title_grade(preview.text), 1)
 			_ask("set_title", {"title": "" if i == 0 else str(titles[i - 1])}))
 		title_row.add_child(o)
+		title_row.add_child(preview)
 	elif str(p.get("title", "")) != "":
-		card.add_child(_label(str(p["title"]), "", 14, Progression.GRADE_COLORS[clampi(Progression.title_grade(p["title"]) - 1, 0, 4)]))
+		card.add_child(_title_label(str(p["title"]), 15))
 	# Como você pilota (últimas 10 corridas; 0,5 sem histórico)
 	_section("COMO %s PILOTA" % ("VOCÊ" if own else str(p.get("name", "")).to_upper()))
 	var traits: Array = p.get("traits", [])
@@ -1182,7 +1282,10 @@ func _build_profile() -> void:
 		var color: Color = Progression.GRADE_COLORS[clampi(int(a["grade"]) - 1, 0, 4)]
 		v.add_child(_label(str(a["name"]), "", 13, color if a["done"] else Retro.c("muted")))
 		v.add_child(_label("%s / %s" % [_short(int(a["value"])), _short(int(a["goal"]))] if not a["done"] else "Título: " + str(a["title"]), "RetroMuted", 11))
-		panel.tooltip_text = "%s — meta %d. Libera o título \"%s\"." % [a["name"], int(a["goal"]), a["title"]]
+		var prize := "%s %s" % [PlayerProfile.format_credits(int(a.get("credits", 0))), ShopCatalog.CURRENCY]
+		if str(a.get("item", "")) != "":
+			prize += " e " + str(ShopCatalog.item(str(a["item"])).get("name", ""))
+		panel.tooltip_text = "%s — meta %d. Libera o título \"%s\" e paga %s." % [a["name"], int(a["goal"]), a["title"], prize]
 
 
 static func _short(n: int) -> String:

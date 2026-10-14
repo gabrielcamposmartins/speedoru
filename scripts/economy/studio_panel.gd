@@ -35,6 +35,7 @@ const CATEGORIES := [
 	["boost", "Brilho do boost"],
 	["neon", "Neon embaixo do carro"],
 	["trail", "Partículas"],
+	["signal", "Luz de ultrapassagem"],
 	["parts", "Peças"],
 ]
 ## Explicação de cada aba (tooltip).
@@ -55,6 +56,7 @@ const CATEGORY_TIPS := {
 	"neon": "Luz de neon embaixo do carro (fica mais forte à noite). As cores saem nas roletas.",
 	"trail": "O rastro que o carro solta: bolhas, estrelinhas, fogo no chão, raios… Mais forte em velocidade; aparece para todos online. Saem nas roletas.",
 	"parts": "Peças de desempenho que você ganhou: trocam aderência por velocidade.",
+	"signal": "A luz que pisca nos retrovisores quando você pede passagem (tecla X). A Sirene, vermelha e azul, é prêmio da conquista Interceptor.",
 }
 
 var car: F1Car
@@ -75,6 +77,8 @@ const DECAL_FOCUS := {"sidepods": "sidepods", "nose": "nose", "airbox": "airbox"
 
 ## Pede à garagem para levar a câmera até um ponto do carro ("" = volta à órbita).
 signal focus_request(key: String)
+## Abas que acendem a luz no carro da garagem (prévia): o pedido de foco leva o nome da aba.
+const LIGHT_PREVIEW := ["boost", "signal"]
 
 var _profile: PlayerProfile
 var _tabs: VBoxContainer
@@ -84,6 +88,11 @@ var _grid: GridContainer
 ## Aba de decalques: prévia do lugar e sliders (atualizados juntos sem reconstruir a tela).
 var _pad: PositionPad
 var _decal_sliders := {}
+## Selos de origem que aparecem na aba atual (a legenda embaixo da nota explica só esses).
+var _origin_shown := {}
+var _legend: Label
+const ORIGIN_LEGEND := {"CONTA": "só na conta do servidor", "APARELHO": "só neste aparelho",
+	"SÓ ONLINE": "na conta, conecte para usar", "SÓ OFFLINE": "só neste aparelho, este servidor não aceita"}
 
 
 func setup(target: F1Car, _compact := false) -> void:
@@ -105,6 +114,12 @@ func setup(target: F1Car, _compact := false) -> void:
 	_note.theme_type_variation = "RetroMuted"
 	_note.add_theme_font_size_override("font_size", 12)
 	right.add_child(_note)
+	_legend = Label.new()
+	_legend.theme_type_variation = "RetroMuted"
+	_legend.add_theme_font_size_override("font_size", 11)
+	_legend.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_legend.visible = false
+	right.add_child(_legend)
 	_grid = GridContainer.new()
 	_grid.columns = 2
 	_grid.add_theme_constant_override("h_separation", 8)
@@ -130,7 +145,32 @@ func _on_profile_changed() -> void:
 	_build.call_deferred()
 
 
+## Mantém a rolagem ao remontar o painel (trocar de aba, escolher uma opção, a conta mudar no
+## servidor): sem isto a lista volta para o topo (conteúdo novo e o foco puxando o ScrollContainer,
+## que segue o foco). Repõe a posição nos quadros seguintes, depois do layout e do foco.
+static func keep_scroll(node: Control) -> void:
+	if not node.is_inside_tree():
+		return
+	var sc: ScrollContainer = null
+	var p := node.get_parent()
+	while p:
+		if p is ScrollContainer:
+			sc = p
+			break
+		p = p.get_parent()
+	if sc == null:
+		return
+	var v := sc.scroll_vertical
+	var tree := node.get_tree()
+	for k in 3:
+		await tree.process_frame
+		if not is_instance_valid(sc):
+			return
+		sc.scroll_vertical = v
+
+
 func _build() -> void:
+	keep_scroll(self)
 	# Controle: o foco volta ao mesmo lugar depois de reconstruir (escolher uma opção refaz a tela)
 	var focus_index := -1
 	var owner := get_viewport().gui_get_focus_owner() if is_inside_tree() else null
@@ -148,10 +188,14 @@ func _build() -> void:
 		t.tint = _tab_tint(cat[0])
 		t.pressed.connect(func() -> void:
 			var was_decals := category == "decals"
+			var was_light := category in LIGHT_PREVIEW
 			category = cat[0]
 			if category == "decals" and not was_decals:
 				focus_request.emit(DECAL_FOCUS.get(decal_slot, ""))
-			elif was_decals:
+			elif category in LIGHT_PREVIEW:
+				# Boost e luz de ultrapassagem: a garagem acende a luz no carro parado
+				focus_request.emit(category)
+			elif was_decals or was_light:
 				focus_request.emit("")
 			_build())
 		_tabs.add_child(t)
@@ -160,6 +204,7 @@ func _build() -> void:
 	_pad = null
 	_decal_sliders.clear()
 	_grid.columns = 1 if category in ["engineering", "decals", "skin"] else 2
+	_origin_shown = {}
 	var eq := _profile.equipped
 	for cat in CATEGORIES:
 		if cat[0] == category:
@@ -177,14 +222,15 @@ func _build() -> void:
 		"boost":
 			var have := _profile.collection_count("boost")
 			_note.text = "%d de %d cores ganhas · mais nas roletas" % [have.x, have.y]
-			for c in _profile.owned_colors("boost"):
+			for c in _profile.owned_colors("boost", true):
 				var t := OptionTile.new()
 				t.item_id = c[0]
 				t.title = c[1]
 				t.art_kind = "glow"
 				t.color = c[2]
 				t.selected = str(eq["boost"]) == (c[2] as Color).to_html(false)
-				t.pressed.connect(_profile.equip_color.bind("boost", c[2]))
+				if _origin(t, c[0]):
+					t.pressed.connect(_profile.equip_color.bind("boost", c[2]))
 				_add(t)
 		"neon":
 			var have := _profile.collection_count("neon")
@@ -196,7 +242,7 @@ func _build() -> void:
 			off.selected = not eq["neon_on"]
 			off.pressed.connect(_profile.set_neon.bind(false))
 			_add(off)
-			for c in _profile.owned_colors("neon"):
+			for c in _profile.owned_colors("neon", true):
 				var col: Color = c[2]
 				var t := OptionTile.new()
 				t.item_id = c[0]
@@ -204,9 +250,10 @@ func _build() -> void:
 				t.art_kind = "glow"
 				t.color = col
 				t.selected = eq["neon_on"] and str(eq["neon"]) == col.to_html(false)
-				t.pressed.connect(func() -> void:
-					_profile.equip_color("neon", col)
-					_profile.set_neon(true))
+				if _origin(t, c[0]):
+					t.pressed.connect(func() -> void:
+						_profile.equip_color("neon", col)
+						_profile.set_neon(true))
 				_add(t)
 		"trail":
 			var have := _profile.collection_count("trail")
@@ -217,13 +264,31 @@ func _build() -> void:
 			none.selected = str(eq.get("trail", "")) == ""
 			none.pressed.connect(_profile.equip_trail.bind(""))
 			_add(none)
-			for id in _profile.owned_of_type("trail"):
+			for id in _profile.owned_of_type("trail", true):
 				var t := OptionTile.new()
 				t.item_id = id
 				t.title = ShopCatalog.item(id)["name"]
 				t.art_kind = "trail"
 				t.selected = str(eq.get("trail", "")) == id
-				t.pressed.connect(_profile.equip_trail.bind(id))
+				if _origin(t, id):
+					t.pressed.connect(_profile.equip_trail.bind(id))
+				_add(t)
+		"signal":
+			_note.text = "pisca nos retrovisores ao pedir passagem (X)"
+			var amber := OptionTile.new()
+			amber.title = "Âmbar"
+			amber.art_kind = "signal"
+			amber.selected = str(eq.get("signal", "")) == ""
+			amber.pressed.connect(_profile.equip_signal.bind(""))
+			_add(amber)
+			for id in _profile.owned_of_type("signal", true):
+				var t := OptionTile.new()
+				t.item_id = id
+				t.title = ShopCatalog.item(id)["name"]
+				t.art_kind = "signal"
+				t.selected = str(eq.get("signal", "")) == id
+				if _origin(t, id):
+					t.pressed.connect(_profile.equip_signal.bind(id))
 				_add(t)
 		"scheme":
 			_note.text = "como as 3 cores se dividem · todos grátis"
@@ -254,6 +319,12 @@ func _build() -> void:
 		"parts":
 			_note.text = "trocam aderência por velocidade · por categoria"
 			_build_parts()
+	var legend := PackedStringArray()
+	for b in ORIGIN_LEGEND:
+		if _origin_shown.has(b):
+			legend.append("%s = %s" % [b, ORIGIN_LEGEND[b]])
+	_legend.text = " · ".join(legend)
+	_legend.visible = not legend.is_empty()
 
 
 ## Controles focáveis do painel (abas e conteúdo), na ordem da árvore; ignora o que vai ser apagado.
@@ -431,9 +502,9 @@ func _build_parts() -> void:
 		var total := CarPartCatalog.variants(slot).size()
 		if total < 2:
 			continue
-		var owned := _profile.owned_variants(slot)
+		var owned := _profile.owned_variants(slot, true)
 		var head := Label.new()
-		head.text = "%s · %d de %d" % [CarPartCatalog.slot_label(slot).to_upper(), owned.size(), total]
+		head.text = "%s · %d de %d" % [CarPartCatalog.slot_label(slot).to_upper(), _profile.owned_variants(slot).size(), total]
 		head.theme_type_variation = "RetroKicker"
 		head.add_theme_font_size_override("font_size", 11)
 		_grid.add_child(head)
@@ -449,7 +520,9 @@ func _build_parts() -> void:
 			t.selected = variant == current
 			t.tip_title = "%s: %s" % [CarPartCatalog.slot_label(slot), t.title]
 			t.tip_rows = _stats_rows(slot, variant)
-			t.pressed.connect(_profile.equip_part.bind(slot, variant))
+			var item := PlayerProfile.part_item(slot, variant)
+			if item == "" or _origin(t, item):
+				t.pressed.connect(_profile.equip_part.bind(slot, variant))
 			_add(t)
 		if owned.size() % 2 == 1:
 			_grid.add_child(Control.new())
@@ -489,7 +562,7 @@ func _build_decals() -> void:
 	none.pressed.connect(_profile.set_decal.bind(decal_slot, ""))
 	tiles.add_child(none)
 	var tint := Color(str(cur.get("color", "ffffff")))
-	var ids: Array = _profile.owned_decals()
+	var ids: Array = _profile.owned_decals(true)
 	ids.append_array(CarDecals.custom_ids())
 	for id: String in ids:
 		var t := OptionTile.new()
@@ -501,7 +574,9 @@ func _build_decals() -> void:
 		t.selected = str(cur.get("id", "")) == id
 		t.tip_text = "Seu arquivo em decals/%s (só você vê online)." % id.substr(CarDecals.CUSTOM_PREFIX.length()) \
 			if id.begins_with(CarDecals.CUSTOM_PREFIX) else "Decalque padrão."
-		t.pressed.connect(_profile.set_decal.bind(decal_slot, id))
+		var item := ShopCatalog.decal_item(id)
+		if item == "" or _origin(t, item):
+			t.pressed.connect(_profile.set_decal.bind(decal_slot, id))
 		tiles.add_child(t)
 	var files := HBoxContainer.new()
 	files.add_theme_constant_override("separation", 8)
@@ -803,6 +878,39 @@ func _build_engineering() -> void:
 				_grid.add_child(row)
 
 
+## Arte de uma luz de ultrapassagem: dois retrovisores com o LED aceso ([param style] "police" =
+## sirene vermelha e azul).
+static func draw_signal_art(ci: CanvasItem, art: Rect2, style: String, alpha: float) -> void:
+	var c := art.get_center()
+	var s := minf(art.size.x, art.size.y * 1.6) / 70.0
+	var cols := [F1Car.SIGNAL_COLOR, F1Car.SIGNAL_COLOR]
+	if style == "police":
+		cols = [F1Car.SIREN_COLORS[0], F1Car.SIREN_COLORS[1]]
+	for k in 2:
+		var side := -1.0 if k == 0 else 1.0
+		var p := c + Vector2(side * 16.0 * s, 0)
+		var lc: Color = cols[k]
+		for g in 4:
+			ci.draw_circle(p + Vector2(side * 9.0 * s, 0), (12.0 - g * 2.8) * s, Color(lc, 0.12 * alpha))
+		ci.draw_rect(Rect2(p - Vector2(11, 7) * s, Vector2(22, 14) * s), Color(0.12, 0.13, 0.17, alpha))
+		ci.draw_rect(Rect2(p - Vector2(9, 5) * s, Vector2(18, 10) * s), Color(0.45, 0.55, 0.65, 0.6 * alpha))
+		ci.draw_rect(Rect2(p + Vector2(side * 9.0 - 1.5, -6.0) * s, Vector2(3.0, 12.0) * s), Color(lc, alpha))
+
+
+## Arte de um título: o próprio título no estilo dele, centrado e cabendo no espaço.
+static func draw_title_art(ci: CanvasItem, art: Rect2, title: String, alpha: float) -> void:
+	if title == "":
+		return
+	var font := TitleLabel.font_of(title)
+	var fs := int(clampf(art.size.y * 0.32, 12.0, 26.0))
+	var w := font.get_string_size(title, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
+	if w > art.size.x - 12.0:
+		fs = maxi(int(fs * (art.size.x - 12.0) / w), 8)
+		w = font.get_string_size(title, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
+	TitleLabel.draw_title(ci, Vector2(art.get_center().x - w * 0.5, art.get_center().y + fs * 0.35), title, fs,
+		Time.get_ticks_msec() / 1000.0, Retro.c("text"), alpha)
+
+
 func _tab_tint(kind: String) -> Color:
 	var eq := _profile.equipped
 	match kind:
@@ -812,11 +920,34 @@ func _tab_tint(kind: String) -> Color:
 			return Color(str(eq["neon"])) if eq["neon_on"] and str(eq["neon"]) != "" else Retro.c("muted")
 		"trail":
 			return Retro.c("accent") if str(eq.get("trail", "")) != "" else Retro.c("muted")
+		"signal":
+			return Color(1.0, 0.62, 0.08) if str(eq.get("signal", "")) == "" else Retro.c("accent")
 	return Retro.c("text_2")
 
 
 func _add(tile: OptionTile) -> void:
 	_grid.add_child(tile)
+
+
+## Selo de origem de um item ganho (Profile.badge_of): CONTA (só no servidor), APARELHO (só aqui) ou,
+## apagado e sem clique, o que só vale do outro lado (SÓ ONLINE / SÓ OFFLINE). Devolve se dá para
+## usar agora.
+func _origin(t: OptionTile, item_id: String) -> bool:
+	var b := _profile.badge_of(item_id)
+	var usable: bool = b[2]
+	if b[0] == "":
+		return usable
+	_origin_shown[b[0]] = true
+	t.badge = b[0]
+	t.badge_color = Retro.c(b[1])
+	var where := "só na conta do servidor" if _profile.origin(item_id) == "account" else "só neste aparelho"
+	t.tip_rows = t.tip_rows + [["Coleção", where, Retro.c(b[1])]]
+	if not usable:
+		t.dim = true
+		t.disabled = true
+		t.focus_mode = Control.FOCUS_NONE
+		t.tip_text = "Está na sua conta do servidor: conecte para usar." if b[0] == "SÓ ONLINE" else "Só neste aparelho: este servidor não aceita os itens do aparelho."
+	return usable
 
 
 func _tile(id: String, title: String, selected: bool, on_press: Callable) -> void:
@@ -1008,6 +1139,13 @@ class OptionTile extends Button:
 				for g in 4:
 					draw_circle(art.get_center(), art.size.y * (0.55 - g * 0.07), Color(color, 0.1))
 				draw_circle(art.get_center(), art.size.y * 0.26, Color(color, a_mul))
+			"signal":
+				StudioPanel.draw_signal_art(self, art, ShopCatalog.signal_of(item_id), a_mul)
+				if ShopCatalog.ITEMS.has(item_id):
+					var rc: Color = ShopCatalog.RARITY_COLORS[ShopCatalog.item(item_id)["rarity"]]
+					draw_rect(Rect2(art.position.x, art.end.y - 3, art.size.x, 3), rc)
+			"title":
+				StudioPanel.draw_title_art(self, art, ShopCatalog.title_of(item_id), a_mul)
 			"trail":
 				CarParticles.draw_icon(self, ShopCatalog.effect_of(item_id), art.grow(-4.0), a_mul)
 				if ShopCatalog.ITEMS.has(item_id):
@@ -1139,6 +1277,18 @@ class IconTab extends Button:
 				draw_colored_polygon(CarParticles._star_points(c + Vector2(5, -3), 9.0, 4.0, 5, -PI / 2.0), tint)
 				draw_colored_polygon(CarParticles._star_points(c + Vector2(-8, -9), 4.5, 2.0, 5, -PI / 2.0), ink)
 				draw_circle(c + Vector2(12, 9), 2.5, ink)
+			"signal":
+				# Dois LEDs de retrovisor, um em cada cor da luz equipada
+				var cols := [tint, tint] if tint != Retro.c("accent") else [F1Car.SIREN_COLORS[0], F1Car.SIREN_COLORS[1]]
+				for k in 2:
+					var p := c + Vector2(-8 if k == 0 else 8, 0)
+					draw_rect(Rect2(p - Vector2(6, 4), Vector2(12, 8)), ink, false, 1.5)
+					draw_circle(p, 3.5, cols[k])
+			"title":
+				# Faixa de título com uma estrela
+				draw_colored_polygon(PackedVector2Array([c + Vector2(-14, -5), c + Vector2(14, -5), c + Vector2(11, 0), c + Vector2(14, 5),
+					c + Vector2(-14, 5), c + Vector2(-11, 0)]), Color(tint, 0.85))
+				draw_colored_polygon(CarParticles._star_points(c + Vector2(0, -9), 5.0, 2.2, 5, -PI / 2.0), ink)
 			"neon":
 				draw_rect(Rect2(c + Vector2(-13, -6), Vector2(26, 7)), ink)
 				for g in 3:

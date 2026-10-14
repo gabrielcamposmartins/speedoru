@@ -66,7 +66,7 @@ static var _warming := {}
 ## Esta instância é a que gera a pista para o cache (não espera por ela mesma).
 var _for_cache := false
 const SERVER_SKIP := ["arquibancadas", "atrações", "árvores", "folhas", "pinheiros", "cenário", "grama", "prédios", "túnel", "porto",
-	"jardins", "entorno", "navios", "detalhes", "vitrine", "marcos", "neon"]
+	"jardins", "entorno", "navios", "detalhes", "vitrine", "marcos", "neon", "plataforma", "mar e nuvens", "base aérea"]
 
 var terrain: TrackTerrain
 ## Circuito de rua: dados da cidade (layout.city); nulo nos circuitos de campo.
@@ -77,6 +77,8 @@ var _root: Node3D
 var _rebuild_queued := false
 
 const PIT_WALL_STRIP := 3.0
+## Luzes da largada já dosadas (NightLightBalance) desde a última geração.
+var _light_dim_done := false
 
 
 func _ready() -> void:
@@ -104,6 +106,7 @@ func _queue_rebuild() -> void:
 ## para os carros não caírem antes de o chão existir.
 func rebuild(staged := false) -> void:
 	is_built = false
+	_light_dim_done = false
 	if _root:
 		remove_child(_root)
 		_root.queue_free()
@@ -130,6 +133,7 @@ func rebuild(staged := false) -> void:
 	terrain = null
 	leaves = null
 	city = TrackCity.load_city(layout.city) if layout.city != "" else null
+	TrackMaterials.metal = layout.sky
 	_compute_profile()
 	# [nome no log, texto na tela de carregamento, peso (≈ ms), etapa]
 	var steps := [
@@ -161,6 +165,16 @@ func rebuild(staged := false) -> void:
 		])
 		if city.has_sea():
 			steps.append(["navios", "Navios e balões", 80, func(): TrackOffshore.build(self, city, _root)])
+	elif layout.sky:
+		# Pista no céu: plataforma com motores a jato (com a borda que segura o carro), túnel, mar e
+		# nuvens lá embaixo e a base aérea em volta; nada de chão
+		steps.append(["plataforma", "Plataforma e motores a jato", 250, func(): SkyDeck.build(self, _root)])
+		if has_tunnel():
+			steps.append(["túnel", "Nave do túnel", 60, func(): SkyShip.build(self, layout.tunnel.x, layout.tunnel.y, _root)])
+		steps.append_array([
+			["mar e nuvens", "Mar e nuvens", 200, func(): SkyWorld.build(self, _root)],
+			["base aérea", "Base aérea", 300, func(): SkyBase.build(self, _root)],
+		])
 	else:
 		steps.append_array([
 			["terreno", "Terreno e montanhas", 550, func(): terrain = TrackTerrain.build(self, _root)],
@@ -373,9 +387,46 @@ func pit_lateral(i: int, d: float) -> float:
 	return side * (path.half_width(i, side) + d)
 
 
+## Onde começa a reta final (s, m): andando para trás a partir da linha até a última curva.
+func final_straight_s() -> float:
+	var p := path
+	var s := p.length - 5.0
+	while s > p.length - 1500.0:
+		var a := p.tangent_at(s - 30.0)
+		var b := p.tangent_at(s + 30.0)
+		if absf(Vector2(a.x, a.z).angle_to(Vector2(b.x, b.z))) > deg_to_rad(8.0):
+			return s + 30.0
+		s -= 10.0
+	return s
+
+
 ## Se o índice i da pista está dentro de um túnel.
 func in_tunnel(i: int) -> bool:
-	return city != null and city.in_tunnel(path.s_at(i))
+	if city:
+		return city.in_tunnel(path.s_at(i))
+	return has_tunnel() and in_span(path.s_at(i), layout.tunnel.x, layout.tunnel.y)
+
+
+## Pista com túnel fora de cidade (layout.tunnel).
+func has_tunnel() -> bool:
+	return layout.tunnel.x != layout.tunnel.y
+
+
+## Pista no céu: borda aberta (sem barreira, fora do prédio dos boxes) no índice i, do lado `side`.
+func open_edge(i: int, side: int) -> bool:
+	if barrier_kind[_si(side)][i] != Barrier.NONE:
+		return false
+	return not (layout.has_pit and side == layout.pit_side and pit_width[i] > 0.0)
+
+
+## Pista no céu: distância da linha central até a borda da plataforma (onde começa o vazio).
+## Na borda aberta é o fim da área de escape; nos boxes passa do prédio; no resto, um pouco atrás
+## da barreira, das arquibancadas e dos postes.
+func deck_edge(i: int, side: int) -> float:
+	var hw := path.half_width(i, side)
+	if open_edge(i, side):
+		return hw + barrier[_si(side)][i]
+	return structure_extent(i, side) - 2.0
 
 
 ## Ponto a `d` metros além da borda da pista, do lado `side` (+1 esquerda, -1 direita).
@@ -428,11 +479,13 @@ func in_span(s: float, s0: float, s1: float) -> bool:
 ## postes e luzes dos boxes à noite (fracos no entardecer), lâmpadas mais fortes e folhas soltas.
 func apply_mood(time_of_day: int, biome: int) -> void:
 	var night := DaylightPresets.night_amount(time_of_day)
-	for light in get_tree().get_nodes_in_group("night_lights"):
-		if not is_ancestor_of(light):
-			continue
+	var lights := get_tree().get_nodes_in_group("night_lights").filter(func(l: Node) -> bool: return is_ancestor_of(l))
+	if is_built and not _light_dim_done and night > 0.05:
+		_light_dim_done = true
+		NightLightBalance.apply(self, lights)
+	for light in lights:
 		light.visible = night > 0.05
-		light.light_energy = float(light.get_meta("base_energy", 8.0)) * night
+		light.light_energy = float(light.get_meta("base_energy", 8.0)) * float(light.get_meta("dim", 1.0)) * night
 	var lamp := TrackMaterials.lamp(lamp_energy) as StandardMaterial3D
 	lamp.emission_energy_multiplier = lamp_energy * (1.0 + 5.0 * night)
 	if leaves:
@@ -440,6 +493,8 @@ func apply_mood(time_of_day: int, biome: int) -> void:
 	if city and _root:
 		TrackCity.apply_biome(_root, biome)
 		TrackCity.set_night(night)
+	if layout and layout.sky and _root:
+		SkyWorld.apply_mood(self, time_of_day)
 
 
 func _apply_current_mood() -> void:
@@ -542,7 +597,7 @@ func _compute_profile() -> void:
 				TrackFeature.Kind.BARRIER:
 					for idx in span_indices(f.s_start, f.s_end):
 						barrier[k][idx] = f.distance
-						barrier_kind[k][idx] = Barrier.CONCRETE if f.variant == 1 else Barrier.ARMCO
+						barrier_kind[k][idx] = [Barrier.ARMCO, Barrier.CONCRETE, Barrier.NONE][clampi(f.variant, 0, 2)]
 						# Muro colado na pista: sem caixa de brita automática
 						if f.distance < 3.0:
 							gravel[k][idx] = 0.0

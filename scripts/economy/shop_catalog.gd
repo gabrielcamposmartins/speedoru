@@ -41,6 +41,8 @@ const TYPES := [
 	["boost", "Brilho do boost", 1.0],
 	["neon", "Neon", 1.1],
 	["trail", "Partículas", 1.3],
+	["signal", "Luz de ultrapassagem", 1.2],
+	["title", "Títulos", 1.5],
 ]
 ## Campos de cor que só aceitam cores ganhas (itens desses tipos); os outros são livres.
 const GACHA_COLORS := ["boost", "neon"]
@@ -48,7 +50,35 @@ const GACHA_COLORS := ["boost", "neon"]
 const ROULETTES := {
 	"neon": {"name": "Roleta Neon", "theme": "luz fria, sakura, cometa, raios e peças leves", "color": Color("05d9e8")},
 	"inferno": {"name": "Roleta Dragão", "theme": "dragões, fogo no chão, garras, asas traseiras e rodas", "color": Color("ff4d2d")},
+	# Não é vendida: prêmios de conquistas, do prêmio semanal das missões e da roleta do vencedor
+	"exclusive": {"name": "Exclusivos", "theme": "conquistas, missões da semana e roleta do vencedor", "color": Color("ffd84d"), "hidden": true},
 }
+
+## Itens que saíram do catálogo: créditos devolvidos (uma vez) a quem tinha.
+## As faíscas viraram efeito de todo carro (frenagem forte), fora da loja.
+const RETIRED := {"trail_sparks": 780}
+
+## Roleta do vencedor (fim de corrida online, 1º lugar): [prêmio, fatia %, créditos]. O servidor
+## sorteia; a roleta da tela final desenha as mesmas fatias.
+const WINNER_WHEEL := [["exclusive", 5.0, 0], ["credits", 50.0, 500], ["credits", 30.0, 1000], ["ticket", 15.0, 0]]
+## Créditos no lugar do exclusivo quando a conta já tem todos.
+const WINNER_ALL_OWNED := 2000
+
+
+## Fatia da roleta do vencedor para um número uniforme em [0, 1).
+static func winner_slice(roll: float) -> int:
+	var x := roll * 100.0
+	var acc := 0.0
+	for k in WINNER_WHEEL.size():
+		acc += float(WINNER_WHEEL[k][1])
+		if x < acc:
+			return k
+	return WINNER_WHEEL.size() - 1
+
+
+## Prêmios exclusivos sorteáveis (roleta do vencedor e prêmio da semana). A Sirene não entra: só
+## sai pela conquista Interceptor.
+const EXCLUSIVE_POOL := ["part_rear_wing_royal", "part_nose_lance", "title_storm", "title_phantom", "title_sovereign"]
 
 ## Pinturas prontas (grátis): combinações de três cores aplicadas de uma vez. As cores do carro são
 ## livres; as pinturas são só atalhos.
@@ -147,6 +177,7 @@ const ITEMS := {
 	"trail_stars": {"type": "trail", "name": "Estrelinhas", "rarity": 2, "roulette": "neon", "effect": "stars"},
 	"trail_bubbles": {"type": "trail", "name": "Bolhas de sabão", "rarity": 1, "roulette": "neon", "effect": "bubbles"},
 	"trail_snow": {"type": "trail", "name": "Flocos de neve", "rarity": 0, "roulette": "neon", "effect": "snow"},
+	"trail_rainbow": {"type": "trail", "name": "Arco-íris", "rarity": 3, "roulette": "neon", "effect": "rainbow"},
 	# --- Roleta Dragão (id "inferno", o nome antigo, que fica nos perfis e no servidor) --------
 	"part_rear_wing_lowdf": {"type": "part", "name": "Asa traseira de baixa carga", "rarity": 3, "roulette": "inferno", "slot": "rear_wing", "variant": "lowdf"},
 	"part_rear_wing_highdf": {"type": "part", "name": "Asa traseira de alta carga", "rarity": 3, "roulette": "inferno", "slot": "rear_wing", "variant": "highdf"},
@@ -192,7 +223,13 @@ const ITEMS := {
 	"trail_embers": {"type": "trail", "name": "Brasas", "rarity": 3, "roulette": "inferno", "effect": "embers"},
 	"trail_coins": {"type": "trail", "name": "Chuva de moedas", "rarity": 2, "roulette": "inferno", "effect": "coins"},
 	"trail_smoke": {"type": "trail", "name": "Fumaça colorida", "rarity": 1, "roulette": "inferno", "effect": "smoke"},
-	"trail_sparks": {"type": "trail", "name": "Faíscas de titânio", "rarity": 0, "roulette": "inferno", "effect": "sparks"},
+	# --- Exclusivos (fora da loja) ------------------------------------------------
+	"signal_police": {"type": "signal", "name": "Sirene", "rarity": 4, "roulette": "exclusive", "signal": "police"},
+	"part_rear_wing_royal": {"type": "part", "name": "Asa traseira Coroa Real", "rarity": 4, "roulette": "exclusive", "slot": "rear_wing", "variant": "royal"},
+	"part_nose_lance": {"type": "part", "name": "Bico Lança", "rarity": 4, "roulette": "exclusive", "slot": "nose", "variant": "lance"},
+	"title_storm": {"type": "title", "name": "Título: Tempestade", "rarity": 4, "roulette": "exclusive", "title": "Tempestade"},
+	"title_phantom": {"type": "title", "name": "Título: Fantasma", "rarity": 4, "roulette": "exclusive", "title": "Fantasma"},
+	"title_sovereign": {"type": "title", "name": "Título: Soberano do Céu", "rarity": 4, "roulette": "exclusive", "title": "Soberano do Céu"},
 }
 
 
@@ -205,6 +242,35 @@ static func item(id: String) -> Dictionary:
 
 static func is_free(id: String) -> bool:
 	return FREE.has(id)
+
+
+## Roleta que não é vendida (prêmios exclusivos).
+static func is_hidden(roulette: String) -> bool:
+	return bool(ROULETTES.get(roulette, {}).get("hidden", false))
+
+
+## Roletas da loja (as que se pode girar com ticket).
+static func shop_roulettes() -> Array[String]:
+	var out: Array[String] = []
+	for rid in ROULETTES:
+		if not is_hidden(rid):
+			out.append(rid)
+	return out
+
+
+## Item exclusivo (só sai como prêmio).
+static func is_exclusive(id: String) -> bool:
+	return is_hidden(str(item(id).get("roulette", "")))
+
+
+## Título de um item do tipo "title" ("" se não é).
+static func title_of(id: String) -> String:
+	return str(item(id).get("title", ""))
+
+
+## Estilo de luz de ultrapassagem de um item do tipo "signal" ("" = âmbar padrão).
+static func signal_of(id: String) -> String:
+	return str(item(id).get("signal", ""))
 
 
 static func type_info(type: String) -> Array:

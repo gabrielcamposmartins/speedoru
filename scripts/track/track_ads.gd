@@ -52,6 +52,62 @@ static func sign_uv(i: int) -> Rect2:
 	return Rect2(px / Vector2(ATLAS_SIZE), Vector2(SQUARE, SQUARE) / Vector2(ATLAS_SIZE))
 
 
+static var _holo := {}
+
+
+## Material dos anúncios em holograma da pista no céu (holo_ads.gdshader): fundo transparente,
+## letras flutuando e faixas em cima e embaixo na cor da marca. scrolling = faixa correndo nas
+## barreiras (UV.x em metros); false = quadros com a UV do atlas (pórticos, boxes, arquibancadas).
+static func holo_material(scrolling: bool) -> ShaderMaterial:
+	if _holo.has(scrolling):
+		return _holo[scrolling]
+	var mat := ShaderMaterial.new()
+	mat.shader = load("res://shaders/track/holo_ads.gdshader")
+	mat.set_shader_parameter("atlas", load_atlas())
+	mat.set_shader_parameter("scrolling", scrolling)
+	var count := mini(ad_count(), 16)
+	var rects := PackedVector4Array()
+	var bgs := PackedVector3Array()
+	var texts := PackedVector3Array()
+	var bands := PackedVector3Array()
+	for k in count:
+		var r := ad_uv(k)
+		rects.append(Vector4(r.position.x, r.position.y, r.size.x, r.size.y))
+		var b: Array = BRANDS[k]
+		var vivid := _vivid([b[3], b[1], b[2]])
+		bgs.append(_v3(b[1]))
+		var t: Color = b[2]
+		var plain := t.s < 0.25 and (t.v > 0.85 or t.v < 0.2)
+		texts.append(_v3(vivid.lightened(0.15) if plain else t))
+		bands.append(_v3(vivid))
+	mat.set_shader_parameter("rects", rects)
+	mat.set_shader_parameter("bg", bgs)
+	mat.set_shader_parameter("text", texts)
+	mat.set_shader_parameter("band", bands)
+	mat.set_shader_parameter("count", count)
+	mat.set_shader_parameter("grid", Vector2(ATLAS_SIZE) / Vector2(AD_SIZE))
+	_holo[scrolling] = mat
+	return mat
+
+
+## A cor mais viva (saturada e não escura) da lista; sem nenhuma viva, um azul de holograma.
+static func _vivid(colors: Array) -> Color:
+	var best := Color(0.35, 0.8, 1.0)
+	var score := 0.25
+	for c: Color in colors:
+		var sc := c.s * minf(c.v * 1.5, 1.0)
+		if sc > score:
+			score = sc
+			best = c
+	return best
+
+
+## Cor sRGB → linear (o shader lê o atlas como source_color, em linear) como Vector3.
+static func _v3(c: Color) -> Vector3:
+	var l := c.srgb_to_linear()
+	return Vector3(l.r, l.g, l.b)
+
+
 static func load_atlas() -> Texture2D:
 	if ResourceLoader.exists(ATLAS_PATH):
 		return load(ATLAS_PATH) as Texture2D

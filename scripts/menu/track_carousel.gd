@@ -6,6 +6,8 @@ extends Control
 ##
 ## Setas ‹ › nas laterais, clique nas pistas de trás, ←/→ (teclado e controle) com o foco. Só
 ## leitura (`editable = false`): mostra a pista escolhida, sem setas nem foco.
+## Com `category` (RaceSettings.CATEGORIES) o anel só tem as pistas daquela categoria; as abas
+## de category_tabs() trocam a categoria.
 
 signal track_changed(index: int)
 
@@ -13,8 +15,11 @@ const SPIN_TIME := 0.5
 ## Fração da volta por segundo do ponto de luz na pista da frente.
 const RUNNER_SPEED := 0.09
 
+## Índice (em RaceSettings.TRACKS) da pista escolhida.
 var selected := 0
 var editable := true
+## Categoria mostrada no anel; vazio = todas as pistas.
+var category := ""
 ## Posição inicial do anel (a do carrossel anterior, quando a tela se refaz): gira dela até a
 ## escolhida. < 0 = começa parado na escolhida.
 var start_pos := -1.0
@@ -22,6 +27,8 @@ var start_pos := -1.0
 var pos := 0.0
 
 static var _outlines := {}
+## Última pista escolhida em cada categoria (volta nela ao trocar de aba).
+static var _last_in := {}
 
 var _tween: Tween
 var _runner := 0.0
@@ -32,10 +39,12 @@ func _ready() -> void:
 	focus_mode = Control.FOCUS_ALL if editable else Control.FOCUS_NONE
 	mouse_filter = Control.MOUSE_FILTER_STOP if editable else Control.MOUSE_FILTER_PASS
 	tooltip_text = "Pista: ← → ou clique nas setas" if editable else ""
-	pos = float(selected)
-	if start_pos >= 0.0 and not is_equal_approx(start_pos, selected):
+	if category != "" and not members().has(selected):
+		category = RaceSettings.category_of(RaceSettings.TRACKS[selected]["id"])
+	pos = float(_slot(selected))
+	if start_pos >= 0.0 and start_pos < count() and not is_equal_approx(start_pos, pos):
 		pos = start_pos
-		_spin_to(selected)
+		_spin_to(_slot(selected))
 	focus_entered.connect(queue_redraw)
 	focus_exited.connect(queue_redraw)
 	mouse_exited.connect(queue_redraw)
@@ -48,18 +57,97 @@ func _process(delta: float) -> void:
 		queue_redraw()
 
 
+## Pistas no anel (índices em RaceSettings.TRACKS).
+func members() -> Array[int]:
+	if category != "":
+		return RaceSettings.tracks_in(category)
+	var all: Array[int] = []
+	for i in RaceSettings.TRACKS.size():
+		all.append(i)
+	return all
+
+
 func count() -> int:
-	return RaceSettings.TRACKS.size()
+	return members().size()
 
 
-## Escolhe a pista `index` (gira o anel pelo caminho mais curto) e avisa.
+## Posição da pista `index` no anel.
+func _slot(index: int) -> int:
+	return maxi(members().find(index), 0)
+
+
+## Escolhe a pista `index` (de RaceSettings.TRACKS; gira o anel pelo caminho mais curto) e avisa.
 func select(index: int) -> void:
-	index = posmod(index, count())
+	var m := members()
+	if m.is_empty():
+		return
+	if not m.has(index):
+		index = m[posmod(index, m.size())]
 	if index == selected:
 		return
 	selected = index
-	_spin_to(index)
+	if category != "":
+		_last_in[category] = index
+	_spin_to(_slot(index))
 	track_changed.emit(index)
+
+
+## Pista seguinte (+1) ou anterior (-1) no anel.
+func step(dir: int) -> void:
+	var m := members()
+	if not m.is_empty():
+		select(m[posmod(_slot(selected) + dir, m.size())])
+
+
+## Mostra outra categoria: volta na última pista escolhida nela (ou na primeira) e avisa.
+func show_category(cat: String) -> void:
+	if cat == category:
+		return
+	category = cat
+	var m := members()
+	if m.is_empty():
+		return
+	var index: int = _last_in.get(cat, m[0])
+	if not m.has(index):
+		index = m[0]
+	if _tween:
+		_tween.kill()
+	pos = float(_slot(index))
+	var changed := index != selected
+	selected = index
+	_last_in[cat] = index
+	queue_redraw()
+	if changed:
+		track_changed.emit(index)
+
+
+## Abas das categorias (RaceSettings.CATEGORIES) que trocam a categoria do carrossel; a ativa fica
+## em destaque. Só para carrossel editável.
+static func category_tabs(carousel: TrackCarousel) -> HBoxContainer:
+	var row := HBoxContainer.new()
+	row.name = "TrackTabs"
+	row.alignment = BoxContainer.ALIGNMENT_CENTER
+	row.add_theme_constant_override("separation", 6)
+	var buttons: Array[Button] = []
+	for cat: Array in RaceSettings.CATEGORIES:
+		var b := Button.new()
+		b.name = "Tab_%s" % cat[0]
+		b.text = str(cat[1]).to_upper()
+		b.custom_minimum_size = Vector2(150, 34)
+		b.add_theme_font_override("font", Retro.display(700))
+		b.add_theme_font_size_override("font_size", 12)
+		b.set_meta("category", cat[0])
+		row.add_child(b)
+		buttons.append(b)
+	var restyle := func() -> void:
+		for b in buttons:
+			b.theme_type_variation = "PrimaryButton" if b.get_meta("category") == carousel.category else ""
+	for b in buttons:
+		b.pressed.connect(func() -> void:
+			carousel.show_category(b.get_meta("category"))
+			restyle.call())
+	restyle.call()
+	return row
 
 
 func _spin_to(index: int) -> void:
@@ -78,23 +166,26 @@ func _gui_input(event: InputEvent) -> void:
 	if not editable:
 		return
 	if event.is_action_pressed("ui_left", true):
-		select(selected - 1)
+		step(-1)
 		accept_event()
 	elif event.is_action_pressed("ui_right", true):
-		select(selected + 1)
+		step(1)
 		accept_event()
 	elif event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
 		var x: float = (event as InputEventMouseButton).position.x
 		if x < size.x * 0.3:
-			select(selected - 1)
+			step(-1)
 		elif x > size.x * 0.7:
-			select(selected + 1)
+			step(1)
 		grab_focus()
 		accept_event()
 
 
 func _draw() -> void:
-	var n := count()
+	var m := members()
+	var n := m.size()
+	if n == 0:
+		return
 	var c := Vector2(size.x * 0.5, size.y * 0.4)
 	var radius_x := minf(size.x * 0.34, 330.0)
 	var front := minf(size.y * 0.56, size.x * 0.32)
@@ -105,7 +196,7 @@ func _draw() -> void:
 	for i in n:
 		var d := fposmod(i - pos + n * 0.5, float(n)) - n * 0.5
 		var ang := d * TAU / n
-		items.append([cos(ang), i, sin(ang)])
+		items.append([cos(ang), m[i], sin(ang)])
 	items.sort_custom(func(a: Array, b: Array) -> bool: return a[0] < b[0])
 	for it in items:
 		var depth: float = (it[0] + 1.0) * 0.5
@@ -116,7 +207,7 @@ func _draw() -> void:
 		var col := Color(Retro.c("text"), lerpf(0.18, 1.0, depth * depth))
 		_draw_track(RaceSettings.TRACKS[i]["id"], p, front * k, col, lerpf(1.2, 2.6, depth), front_most)
 	# Nome e extensão da pista da frente
-	var cur: Dictionary = RaceSettings.TRACKS[posmod(roundi(pos), n)]
+	var cur: Dictionary = RaceSettings.TRACKS[m[posmod(roundi(pos), n)]]
 	var font := Retro.display(900)
 	var y := size.y - 34.0
 	draw_string(font, Vector2(0, y), str(cur["name"]).to_upper(), HORIZONTAL_ALIGNMENT_CENTER, size.x, 20, Retro.c("text"))
@@ -128,8 +219,8 @@ func _draw() -> void:
 	var dot_y := size.y - 6.0
 	for i in n:
 		var dx := (i - (n - 1) * 0.5) * 12.0
-		draw_circle(Vector2(size.x * 0.5 + dx, dot_y), 3.0 if i == selected else 2.0,
-			Retro.c("accent") if i == selected else Color(Retro.c("muted"), 0.6))
+		draw_circle(Vector2(size.x * 0.5 + dx, dot_y), 3.0 if m[i] == selected else 2.0,
+			Retro.c("accent") if m[i] == selected else Color(Retro.c("muted"), 0.6))
 	if editable:
 		var hover := get_local_mouse_position()
 		for side in [-1, 1]:

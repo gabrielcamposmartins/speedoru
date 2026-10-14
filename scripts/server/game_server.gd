@@ -348,6 +348,10 @@ func on_message(peer: int, type: String, data: Dictionary) -> void:
 			await _set_title(peer, data)
 		"spin":
 			await _spin(peer, data)
+		"race_spin":
+			await _race_spin(peer, data)
+		"missions":
+			_reply(peer, data, "missions", Missions.payload(_session(peer)["account"]["counters"]))
 		"equip":
 			await _equip(peer, data)
 		"solo_result":
@@ -457,11 +461,18 @@ func _hello(peer: int, data: Dictionary) -> void:
 		acc["profile"] = profile.to_dict()
 		await store.save_account(acc)
 	sessions[peer] = {"account": acc, "profile": profile, "room": "", "party": ""}
+	# Conquistas feitas antes de pagarem (contas antigas) ou de outra aba: paga agora, uma vez
+	var paid := _pay_achievements(sessions[peer])
+	if not paid.is_empty():
+		acc["profile"] = profile.to_dict()
+		await store.save_account(acc)
 	var was_online := online.has(acc["id"])
 	if not was_online:
 		online[acc["id"]] = []
 	online[acc["id"]].append(peer)
 	_send(peer, "welcome", {"account": _account_payload(sessions[peer])})
+	if not paid.is_empty():
+		_send(peer, "rewards", {"achievements": paid})
 	_ask_skin(peer)
 	if not was_online:
 		await _broadcast_presence(acc["id"], true)
@@ -475,7 +486,8 @@ func _account_payload(s: Dictionary) -> Dictionary:
 	var prog := Progression.level_progress(counters)
 	return {
 		"id": acc["id"], "name": acc["name"], "code": NetProtocol.format_code(acc["friend_code"]),
-		"title": acc["title"], "titles": Progression.unlocked_titles(counters),
+		"title": acc["title"], "titles": Progression.unlocked_titles(counters, s["profile"].owned_titles()),
+		"missions": Missions.payload(acc["counters"]), "race_spins": int(acc["counters"].get("race_spins", 0)),
 		"level": Progression.level_of(counters), "xp": prog.x, "xp_next": prog.y,
 		"counters": counters, "best_lap": acc["best_lap"], "profile": s["profile"].to_dict(),
 		"trust_car": NetProtocol.TRUST_CLIENT_CAR,
@@ -509,23 +521,94 @@ func _set_title(peer: int, data: Dictionary) -> void:
 	var counters: Dictionary = s["account"]["counters"].duplicate()
 	counters["items"] = ShopCatalog.count_collectible(s["profile"].owned.keys())
 	# O servidor recusa um título que as conquistas da conta não sustentam
-	if title != "" and not title in Progression.unlocked_titles(counters):
+	if title != "" and not title in Progression.unlocked_titles(counters, s["profile"].owned_titles()):
 		_error(peer, data, "Você ainda não conquistou esse título.")
 		return
 	s["account"]["title"] = title
 	await _commit_account(peer)
 	_ok(peer, data)
+	# Quem está na sala vê o título novo na hora
+	if s["room"] != "" and rooms.has(s["room"]):
+		_push_room(s["room"])
 
 
 func _spin(peer: int, data: Dictionary) -> void:
 	var s := _session(peer)
-	var res: Dictionary = s["profile"].spin(str(data.get("roulette", "")))
+	var res: Dictionary = s["profile"].spin(str(data.get("roulette", "")), bool(data.get("ticket", false)))
 	if res["ok"]:
 		s["account"]["counters"]["spins"] = int(s["account"]["counters"].get("spins", 0)) + 1
 		if res["refund"] > 0:
 			s["account"]["counters"]["earned"] = int(s["account"]["counters"].get("earned", 0)) + int(res["refund"])
+		res["achievements"] = _pay_achievements(s)
 		await _commit_account(peer)
 	_reply(peer, data, "spun", res)
+
+
+## Roleta do vencedor: gasta um giro ganho vencendo uma corrida online e sorteia o prêmio
+## (ShopCatalog.WINNER_WHEEL). Devolve {ok, slice, kind, credits, item, dup, refund}.
+func _race_spin(peer: int, data: Dictionary) -> void:
+	var s := _session(peer)
+	var c: Dictionary = s["account"]["counters"]
+	if int(c.get("race_spins", 0)) <= 0:
+		_error(peer, data, "Nenhuma roleta do vencedor disponível.")
+		return
+	c["race_spins"] = int(c["race_spins"]) - 1
+	var profile: PlayerProfile = s["profile"]
+	var res := resolve_race_spin(profile, profile._secure_roll(), profile._secure_roll())
+	c["earned"] = int(c.get("earned", 0)) + int(res["credits"])
+	res["achievements"] = _pay_achievements(s)
+	await _commit_account(peer)
+	_ok(peer, data, res)
+
+
+## Sorteio da roleta do vencedor com dois números uniformes (fatia e qual exclusivo) e entrega o
+## prêmio no perfil. Devolve {ok, slice, kind, credits, item, dup, refund}.
+static func resolve_race_spin(profile: PlayerProfile, roll: float, pick: float) -> Dictionary:
+	var k := ShopCatalog.winner_slice(roll)
+	var slot: Array = ShopCatalog.WINNER_WHEEL[k]
+	var res := {"ok": true, "slice": k, "kind": slot[0], "credits": 0, "item": "", "dup": false, "refund": 0}
+	match str(slot[0]):
+		"exclusive":
+			var item := profile.pick_exclusive(pick)
+			if item == "":
+				res["credits"] = ShopCatalog.WINNER_ALL_OWNED
+			else:
+				var g := profile.grant_item(item)
+				res["item"] = item
+				res["dup"] = g["dup"]
+				res["refund"] = g["refund"]
+		"credits":
+			res["credits"] = int(slot[2])
+		"ticket":
+			profile.tickets += 1
+			profile.save_profile()
+	if int(res["credits"]) > 0:
+		profile.add_credits(int(res["credits"]))
+	return res
+
+
+## Paga (uma vez) as conquistas feitas: créditos pelo grau e, em algumas, um item. Devolve
+## [{name, title, credits, item}] das pagas agora (counters["ach_paid"] guarda os ids).
+func _pay_achievements(s: Dictionary) -> Array:
+	var c: Dictionary = s["account"]["counters"]
+	var profile: PlayerProfile = s["profile"]
+	var cc := c.duplicate()
+	cc["items"] = ShopCatalog.count_collectible(profile.owned.keys())
+	var paid: Array = c.get("ach_paid", []) if c.get("ach_paid") is Array else []
+	var out := []
+	for a: Dictionary in Progression.achievements(cc):
+		if not a["done"] or a["id"] in paid:
+			continue
+		paid.append(a["id"])
+		profile.add_credits(int(a["credits"]))
+		c["earned"] = int(c.get("earned", 0)) + int(a["credits"])
+		var entry := {"name": a["name"], "title": a["title"], "credits": a["credits"], "item": ""}
+		if str(a["item"]) != "":
+			profile.grant_item(str(a["item"]))
+			entry["item"] = a["item"]
+		out.append(entry)
+	c["ach_paid"] = paid
+	return out
 
 
 func _equip(peer: int, data: Dictionary) -> void:
@@ -574,13 +657,16 @@ func _solo_result(peer: int, data: Dictionary) -> void:
 		"pos": int(data.get("pos", 0)), "total": int(data.get("total", 1)), "grid": int(data.get("grid", 0)),
 		"finished": finished, "penalty": float(data.get("penalty", 0.0)), "best_lap": best,
 		"consistency": Progression.consistency_of(data.get("lap_times", [])), "laps": laps, "track": track,
+		"time_of_day": clampi(int(data.get("time_of_day", 0)), 0, 2),
 	}
-	var reward := await _apply_result(peer, record, difficulty, bool(data.get("dsq", false)), bool(data.get("fastest", false)), "solo")
-	_ok(peer, data, {"reward": reward})
+	var res := await _apply_result(peer, record, difficulty, bool(data.get("dsq", false)), bool(data.get("fastest", false)), "solo")
+	_ok(peer, data, {"reward": res["credits"], "extras": res})
 
 
-## Contadores, créditos, histórico e recorde de uma corrida terminada (solo ou online).
-func _apply_result(peer: int, record: Dictionary, difficulty: int, dsq: bool, fastest: bool, kind: String) -> int:
+## Contadores, créditos, histórico e recorde de uma corrida terminada (solo ou online), mais
+## missões, conquistas e a roleta do vencedor (online, 1º lugar). Devolve {credits, missions, week,
+## achievements, spin}.
+func _apply_result(peer: int, record: Dictionary, difficulty: int, dsq: bool, fastest: bool, kind: String) -> Dictionary:
 	var s := _session(peer)
 	var acc: Dictionary = s["account"]
 	var c: Dictionary = acc["counters"]
@@ -599,8 +685,42 @@ func _apply_result(peer: int, record: Dictionary, difficulty: int, dsq: bool, fa
 			c["clean_races"] = int(c.get("clean_races", 0)) + 1
 	if fastest:
 		c["fastest_laps"] = int(c.get("fastest_laps", 0)) + 1
+	var finished_ok: bool = record["finished"] and not dsq
 	if kind == "online":
 		c["online_races"] = int(c.get("online_races", 0)) + 1
+		if finished_ok and int(record["pos"]) == 1 and int(record.get("time_of_day", 0)) == DaylightPresets.TimeOfDay.NIGHT:
+			c["night_wins"] = int(c.get("night_wins", 0)) + 1
+		if finished_ok:
+			c["positions_gained"] = int(c.get("positions_gained", 0)) + maxi(int(record.get("grid", 0)) - int(record["pos"]), 0)
+		c["crashes_caused"] = int(c.get("crashes_caused", 0)) + int(record.get("crashes_caused", 0))
+		c["nightmares"] = int(c.get("nightmares", 0)) + int(record.get("nightmare", 0))
+	# Missões do dia (e o prêmio da semana)
+	var mrec := record.duplicate()
+	mrec["dsq"] = dsq
+	mrec["fastest"] = fastest
+	var mres := Missions.on_result(c, mrec, kind)
+	var bonus := 0
+	for m: Dictionary in mres["completed"]:
+		bonus += int(m["credits"])
+	var week := {}
+	if mres["week"]:
+		bonus += Missions.WEEK_CREDITS
+		week = {"credits": Missions.WEEK_CREDITS, "item": ""}
+		var prize: String = s["profile"].pick_exclusive(s["profile"]._secure_roll())
+		if prize != "":
+			s["profile"].grant_item(prize)
+			week["item"] = prize
+		else:
+			bonus += ShopCatalog.WINNER_ALL_OWNED
+			week["credits"] = Missions.WEEK_CREDITS + ShopCatalog.WINNER_ALL_OWNED
+	if bonus > 0:
+		s["profile"].add_credits(bonus)
+		c["earned"] = int(c.get("earned", 0)) + bonus
+	# Roleta do vencedor: só online, em 1º e sem desclassificação
+	var spin := kind == "online" and finished_ok and int(record["pos"]) == 1
+	if spin:
+		c["race_spins"] = int(c.get("race_spins", 0)) + 1
+	var achievements := _pay_achievements(s)
 	var best := float(record.get("best_lap", 0.0))
 	var track := RaceSettings.valid_track(str(record.get("track", "monza")))
 	if track == "monza":
@@ -622,7 +742,7 @@ func _apply_result(peer: int, record: Dictionary, difficulty: int, dsq: bool, fa
 			if not Progression.tier_unlocked(d, level_before) and Progression.tier_unlocked(d, level_after):
 				unlocked.append(["Fácil", "Médio", "Difícil", "Mista"][d])
 		_send(peer, "level_up", {"level": level_after, "unlocked": unlocked})
-	return reward
+	return {"credits": reward, "missions": mres["completed"], "week": week, "achievements": achievements, "spin": spin}
 
 
 # ---------------------------------------------------------------------------
@@ -1199,7 +1319,8 @@ func _start_race(room_id: String) -> void:
 			# Carro aceito do aparelho: na pista todos os itens valem (senão o perfil os trocaria
 			# pelos gratuitos ao montar o carro). PENDENTE (produção): validar a posse.
 			pd["owned"] = ShopCatalog.ITEMS.keys()
-		players.append({"id": m, "name": s["account"]["name"], "peers": online[m].duplicate(), "profile": pd})
+		players.append({"id": m, "name": s["account"]["name"], "title": str(s["account"].get("title", "")),
+			"peers": online[m].duplicate(), "profile": pd})
 	var session := RaceSession.new()
 	session.name = "Race_" + room_id
 	races.add_child(session)
@@ -1232,9 +1353,9 @@ func _on_race_finished(results: Array, room_id: String) -> void:
 		if not online.has(acc_id):
 			continue
 		var peer: int = online[acc_id][0]
-		var reward := await _apply_result(peer, r["record"], int(r["difficulty"]), bool(r["dsq"]), bool(r["fastest"]), "online")
+		var res := await _apply_result(peer, r["record"], int(r["difficulty"]), bool(r["dsq"]), bool(r["fastest"]), "online")
 		for p in online.get(acc_id, []):
-			get_node("/root/Net").race.rpc_id(p, {"event": "reward", "reward": reward})
+			get_node("/root/Net").race.rpc_id(p, {"event": "reward", "reward": res["credits"], "extras": res})
 	if rooms.has(room_id):
 		var room: Dictionary = rooms[room_id]
 		room["state"] = "lobby"

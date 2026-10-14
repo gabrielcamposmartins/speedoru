@@ -112,7 +112,8 @@ static func build(track: RaceTrack, parent: Node3D) -> void:
 	parent.add_child(node)
 	var runs := straights(track)
 	node._character_balloons(track, runs)
-	if image_count() == 0:
+	# No céu não há chão para os outdoors nem casas para os murais (os telões são da SkyBase)
+	if image_count() == 0 or track.layout.sky:
 		return
 	node._billboards(track, runs)
 	if track.city:

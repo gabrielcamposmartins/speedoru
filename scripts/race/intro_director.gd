@@ -2,7 +2,7 @@ class_name IntroDirector
 extends CanvasLayer
 ## Apresentação antes da largada (filho do RaceManager): com os carros no grid, a câmera passa por
 ## cada um, do pole para trás (SHOT s cada, aproximando devagar pela frente, alternando o lado),
-## com uma legenda "P3 · nome"; termina com uma órbita no carro do jogador (ORBIT s) que entrega
+## com uma legenda "P3 · nome" (e o título equipado dos jogadores, com o estilo dele); termina com uma órbita no carro do jogador (ORBIT s) que entrega
 ## para a câmera de perseguição. O HUD some durante a apresentação. Enter / A pula (só a câmera:
 ## no online o servidor espera a duração de length() antes do semáforo, para todos juntos).
 ## Desliga em Configurações → Jogo.
@@ -16,6 +16,7 @@ var manager: RaceManager
 var camera: RaceCamera
 var _caption: Label
 var _sub: Label
+var _title: TitleLabel
 var _hidden: Array[CanvasLayer] = []
 var _skip := false
 
@@ -77,6 +78,9 @@ func _caption_for(e: RaceEntry) -> void:
 	_caption.text = "P%d  ·  %s" % [e.grid_slot + 1, e.name.to_upper()]
 	_caption.add_theme_color_override("font_color", e.color.lightened(0.25))
 	_sub.text = e.code + ("  ·  " + ["FÁCIL", "MÉDIO", "DIFÍCIL"][e.difficulty] if e.difficulty >= 0 and e.difficulty < 3 else "")
+	_title.text = e.title
+	_title.grade = maxi(Progression.title_grade(e.title), 1)
+	_title.visible = e.title != ""
 
 
 ## Close de um carro: pela frente, de um lado, aproximando devagar.
@@ -164,6 +168,10 @@ func _build_ui() -> void:
 	_sub.add_theme_constant_override("outline_size", 6)
 	_sub.add_theme_color_override("font_outline_color", Color(Retro.c("bg"), 0.85))
 	box.add_child(_sub)
+	_title = TitleLabel.new()
+	_title.font_size = 24
+	_title.visible = false
+	box.add_child(_title)
 	var hint := Label.new()
 	hint.text = "Enter / A: pular"
 	hint.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)

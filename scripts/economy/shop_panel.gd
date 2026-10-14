@@ -49,7 +49,7 @@ func _build_tickets() -> void:
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 16)
 	_content.add_child(row)
-	for rid in ShopCatalog.ROULETTES:
+	for rid in ShopCatalog.shop_roulettes():
 		row.add_child(_roulette_card(rid))
 
 
@@ -114,6 +114,14 @@ func _roulette_card(rid: String) -> Control:
 		b.tooltip_text = "Créditos insuficientes"
 	b.pressed.connect(_spin.bind(rid))
 	box.add_child(b)
+	# Tickets ganhos (roleta do vencedor): um giro sem gastar créditos
+	if _profile.tickets > 0:
+		var tb := Button.new()
+		tb.text = "USAR TICKET · %d" % _profile.tickets
+		tb.custom_minimum_size = Vector2(0, 40)
+		tb.tooltip_text = "Tickets ganhos na roleta do vencedor: cada um é um giro grátis."
+		tb.pressed.connect(_spin.bind(rid, true))
+		box.add_child(tb)
 	return panel
 
 
@@ -125,7 +133,7 @@ static func _pct(p: float) -> String:
 # ---------------------------------------------------------------------------
 # Giro
 # ---------------------------------------------------------------------------
-func _spin(rid: String) -> void:
+func _spin(rid: String, ticket := false) -> void:
 	if _overlay or _waiting:
 		return
 	var res: Dictionary
@@ -133,12 +141,12 @@ func _spin(rid: String) -> void:
 		# Conectado: o giro é do servidor (créditos, sorteio e coleção ficam lá)
 		_waiting = true
 		_set_message("Girando…")
-		res = await get_node("/root/Net").request("spin", {"roulette": rid})
+		res = await get_node("/root/Net").request("spin", {"roulette": rid, "ticket": ticket})
 		_waiting = false
 		if not is_inside_tree():
 			return
 	else:
-		res = _profile.spin(rid)
+		res = _profile.spin(rid, ticket)
 	if not res["ok"]:
 		_set_message(res["error"])
 		return

@@ -17,6 +17,18 @@ const KERB_WHITE := Color(0.97, 0.97, 0.98)
 const GRAVEL := Color(0.52, 0.45, 0.36)
 ## Circuito de rua: faixa de asfalto mais clara entre a borda e a barreira (a calçada da cidade).
 const VERGE := Color(0.3, 0.3, 0.33)
+## Pista no céu: placas metálicas da plataforma entre a borda e a barreira (ou a borda aberta) e a
+## faixa de aviso amarela e preta antes do vazio.
+const DECK_PLATE := Color(0.2, 0.21, 0.24)
+## Pista no céu: asfalto bem mais escuro (contraste com as faixas, as zebras e o céu claro).
+const SKY_ASPHALT := Color(0.085, 0.088, 0.1)
+const SKY_PIT_ASPHALT := Color(0.13, 0.135, 0.15)
+const HAZARD_YELLOW := Color(0.95, 0.72, 0.08)
+const HAZARD_DARK := Color(0.1, 0.1, 0.12)
+const HAZARD_WIDTH := 0.9
+## Laje de colisão sob a pista no céu: topo abaixo do asfalto e espessura (m).
+const DECK_FLOOR_TOP := 0.08
+const DECK_FLOOR_THICK := 1.0
 const LINE_WIDTH := 0.25
 
 
@@ -28,6 +40,8 @@ static func build(track: RaceTrack, parent: Node3D) -> void:
 	var gravel := MeshBuilder.new()
 	var runoff := MeshBuilder.new()
 	var paint := MeshBuilder.new()
+	var asphalt := SKY_ASPHALT if track.layout.sky else ASPHALT
+	var pit_asphalt := SKY_PIT_ASPHALT if track.layout.sky else PIT_ASPHALT
 	for i in n:
 		var j := (i + 1) % n
 		var hl_i := p.width_left[i]
@@ -36,7 +50,7 @@ static func build(track: RaceTrack, parent: Node3D) -> void:
 		var hr_j := p.width_right[j]
 		# Asfalto + faixas de borda
 		_strip(road, p, i, j, -hr_i, -hr_j, -hr_i + LINE_WIDTH, -hr_j + LINE_WIDTH, ROAD_Y, LINE)
-		_strip(road, p, i, j, -hr_i + LINE_WIDTH, -hr_j + LINE_WIDTH, hl_i - LINE_WIDTH, hl_j - LINE_WIDTH, ROAD_Y, ASPHALT)
+		_strip(road, p, i, j, -hr_i + LINE_WIDTH, -hr_j + LINE_WIDTH, hl_i - LINE_WIDTH, hl_j - LINE_WIDTH, ROAD_Y, asphalt)
 		_strip(road, p, i, j, hl_i - LINE_WIDTH, hl_j - LINE_WIDTH, hl_i, hl_j, ROAD_Y, LINE)
 		for side in [1, -1]:
 			var k := RaceTrack._si(side)
@@ -46,16 +60,25 @@ static func build(track: RaceTrack, parent: Node3D) -> void:
 			var kw_j := track.layout.kerb_width * smoothstep(0.0, 1.0, track.kerb[k][j])
 			if kw_i > 0.05 or kw_j > 0.05:
 				_kerb(kerbs, p, i, j, side, e_i, e_j, kw_i, kw_j)
-			if track.city:
+			if track.city or track.layout.sky:
 				# Do fim da zebra (ou da faixa dos boxes, onde ela afunila) até a barreira
 				var pit_side: bool = side == track.layout.pit_side
 				var in_i := maxf(kw_i, track.pit_width[i] if pit_side else 0.0)
 				var in_j := maxf(kw_j, track.pit_width[j] if pit_side else 0.0)
 				var b_i := track.barrier[k][i]
 				var b_j := track.barrier[k][j]
-				if b_i > in_i + 0.05 or b_j > in_j + 0.05:
+				var verge := DECK_PLATE if track.layout.sky else VERGE
+				if track.layout.sky and track.open_edge(i, side) and track.open_edge(j, side):
+					# Borda aberta: área de escape até a faixa de aviso, e depois dela o vazio
+					var h_i := maxf(b_i - HAZARD_WIDTH, in_i)
+					var h_j := maxf(b_j - HAZARD_WIDTH, in_j)
+					_strip(runoff, p, i, j, side * (e_i + in_i), side * (e_j + in_j), side * (e_i + h_i), side * (e_j + h_j),
+						ROAD_Y - 0.004, verge)
+					_strip(runoff, p, i, j, side * (e_i + h_i), side * (e_j + h_j), side * (e_i + b_i), side * (e_j + b_j),
+						ROAD_Y - 0.002, HAZARD_YELLOW if i % 2 == 0 else HAZARD_DARK)
+				elif b_i > in_i + 0.05 or b_j > in_j + 0.05:
 					_strip(runoff, p, i, j, side * (e_i + in_i), side * (e_j + in_j), side * (e_i + maxf(b_i, in_i) + 0.2),
-						side * (e_j + maxf(b_j, in_j) + 0.2), ROAD_Y - 0.004, VERGE)
+						side * (e_j + maxf(b_j, in_j) + 0.2), ROAD_Y - 0.004, verge)
 			var g_i := track.gravel[k][i]
 			var g_j := track.gravel[k][j]
 			if g_i > 0.3 or g_j > 0.3:
@@ -68,7 +91,7 @@ static func build(track: RaceTrack, parent: Node3D) -> void:
 			var e_i := p.half_width(i, side)
 			var e_j := p.half_width(j, side)
 			_strip(road, p, i, j, side * e_i, side * e_j, side * (e_i + track.pit_width[i]), side * (e_j + track.pit_width[j]),
-				ROAD_Y, PIT_ASPHALT)
+				ROAD_Y, pit_asphalt)
 
 	_paint_start(track, paint)
 	_paint_pit(track, paint)
@@ -76,12 +99,45 @@ static func build(track: RaceTrack, parent: Node3D) -> void:
 	_add_surface(parent, "Road", road, TrackMaterials.surface("asphalt"), TrackSurface.Type.ASPHALT)
 	_add_surface(parent, "Kerbs", kerbs, TrackMaterials.surface("kerb"), TrackSurface.Type.KERB)
 	_add_surface(parent, "Gravel", gravel, TrackMaterials.surface("gravel"), TrackSurface.Type.GRAVEL)
-	_add_surface(parent, "Runoff", runoff, TrackMaterials.surface("asphalt"), TrackSurface.Type.RUNOFF)
+	# Pista no céu: a faixa entre a pista e a barreira (e a área de escape) é chão de placas de metal
+	var runoff_mat := TrackMaterials.metal_plate("runoff", false, true) if track.layout.sky else TrackMaterials.surface("asphalt")
+	_add_surface(parent, "Runoff", runoff, runoff_mat, TrackSurface.Type.RUNOFF)
+	if track.layout.sky:
+		_deck_floor(track, parent)
 	var mi := MeshInstance3D.new()
 	mi.name = "Paint"
 	mi.mesh = paint.commit(null, TrackMaterials.surface("paint"))
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	parent.add_child(mi)
+
+
+## Pista no céu: laje de colisão de 1 m logo abaixo dos pisos, de uma borda da plataforma à outra.
+## Os pisos são superfícies sem espessura e embaixo não há chão: sem ela, um carro empurrado por
+## outro (no box, numa batida) atravessaria o asfalto e cairia. Nas bordas abertas acaba junto com
+## a área de escape (dali para fora é o vazio).
+static func _deck_floor(track: RaceTrack, parent: Node3D) -> void:
+	var p := track.path
+	var n := p.size()
+	var left := SkyDeck.edges(track, 1)
+	var right := SkyDeck.edges(track, -1)
+	var body := TrackSurface.make_body("DeckFloor", TrackSurface.Type.RUNOFF)
+	for i in n:
+		var j := (i + 1) % n
+		var fwd := p.points[j] - p.points[i]
+		var length := fwd.length()
+		if length < 0.01:
+			continue
+		var z := fwd / length
+		var x := p.lefts[i]
+		var y := z.cross(x).normalized()
+		var lat := (left[i] - right[i]) * 0.5
+		var center := (p.points[i] + p.points[j]) * 0.5 + x * lat - y * (DECK_FLOOR_TOP + DECK_FLOOR_THICK * 0.5)
+		var shape := BoxShape3D.new()
+		shape.size = Vector3(left[i] + right[i], DECK_FLOOR_THICK, length + 0.3)
+		var owner_id := body.create_shape_owner(body)
+		body.shape_owner_add_shape(owner_id, shape)
+		body.shape_owner_set_transform(owner_id, Transform3D(Basis(x, y, z).orthonormalized(), center))
+	parent.add_child(body)
 
 
 static func _add_surface(parent: Node3D, node_name: String, mb: MeshBuilder, mat: Material, type: int) -> void:

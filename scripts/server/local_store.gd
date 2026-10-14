@@ -5,7 +5,9 @@ extends AccountStore
 ## para os amigos não precisa de banco nenhum.
 ##
 ## Tudo fica na memória. Grava no máximo uma vez por segundo e ao fechar (flush), num arquivo
-## temporário que substitui o anterior de uma vez (não corrompe se o processo morrer no meio).
+## temporário que substitui o anterior de uma vez (não corrompe se o processo morrer no meio). A
+## gravação de cada segundo roda numa tarefa em segundo plano (o texto é montado aqui): no Windows
+## o disco às vezes demora centenas de ms, e o servidor não pode parar esperando.
 
 const FILE := "server_db.json"
 const SAVE_DELAY := 1.0
@@ -24,6 +26,9 @@ var _matches := []
 var _next_match := 1
 var _dirty := false
 var _save_timer := 0.0
+## Gravação em segundo plano em andamento (-1 = nenhuma) e o erro dela ("" = deu certo).
+var _task := -1
+var _task_error := ""
 
 
 func setup_local(dir: String) -> void:
@@ -59,10 +64,20 @@ func migrate() -> bool:
 	return true
 
 
-## Grava agora (se mudou algo). Devolve se deu certo.
+## Grava agora (se mudou algo), esperando o disco. Devolve se deu certo.
 func flush() -> bool:
+	_finish_task()
 	if not _dirty:
 		return true
+	last_error = _write(_serialize())
+	if last_error != "":
+		push_warning("LocalStore: " + last_error)
+		return false
+	_dirty = false
+	return true
+
+
+func _serialize() -> String:
 	var friends := []
 	for a: String in _friends:
 		for b: String in _friends[a]:
@@ -72,19 +87,36 @@ func flush() -> bool:
 		requests.append([r["from"], r["to"], r["t"]])
 	var data := {"version": SCHEMA_VERSION, "accounts": _accounts.values(), "friends": friends, "requests": requests,
 		"matches": _matches}
+	return JSON.stringify(data)
+
+
+## Arquivo temporário + troca (roda também fora do fio principal). Devolve o erro ("" = gravou).
+func _write(text: String) -> String:
 	var tmp := path + ".tmp"
 	var f := FileAccess.open(tmp, FileAccess.WRITE)
 	if f == null:
-		last_error = "não deu para gravar %s (%d)" % [tmp, FileAccess.get_open_error()]
-		push_warning("LocalStore: " + last_error)
-		return false
-	f.store_string(JSON.stringify(data))
+		return "não deu para gravar %s (%d)" % [tmp, FileAccess.get_open_error()]
+	f.store_string(text)
 	f.close()
 	if DirAccess.rename_absolute(tmp, path) != OK:
-		last_error = "não deu para trocar %s" % path
-		return false
-	_dirty = false
-	return true
+		return "não deu para trocar %s" % path
+	return ""
+
+
+func _write_task(text: String) -> void:
+	_task_error = _write(text)
+
+
+## Espera a gravação em segundo plano (se houver) e trata o resultado (com erro, grava de novo).
+func _finish_task() -> void:
+	if _task < 0:
+		return
+	WorkerThreadPool.wait_for_task_completion(_task)
+	_task = -1
+	if _task_error != "":
+		last_error = _task_error
+		push_warning("LocalStore: " + last_error)
+		_touch()
 
 
 func _touch() -> void:
@@ -94,10 +126,15 @@ func _touch() -> void:
 
 
 func _process(delta: float) -> void:
+	if _task >= 0:
+		if not WorkerThreadPool.is_task_completed(_task):
+			return
+		_finish_task()
 	if _dirty:
 		_save_timer -= delta
 		if _save_timer <= 0.0:
-			flush()
+			_dirty = false
+			_task = WorkerThreadPool.add_task(_write_task.bind(_serialize()))
 
 
 func _exit_tree() -> void:

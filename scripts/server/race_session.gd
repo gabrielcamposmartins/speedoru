@@ -9,12 +9,15 @@ extends Node
 ## voltam ao GameServer, que paga e registra.
 ##
 ## Comandos dos jogadores (predição no cliente, NetRaceClient): cada comando tem um número de
-## sequência e entra numa fila; o servidor aplica UM por passo de física, em ordem (o cliente prevê
-## exatamente isso). Se a fila esvazia (o jogo engasgou), o último comando é repetido; se ela
-## cresce (rajada depois de um atraso), os mais velhos são descartados para não acumular atraso.
-## Cada instantâneo leva, só para o jogador, o "ack" = último comando aplicado + quantas vezes ele
-## foi repetido desde então (zera a cada comando novo): o passo do cliente que corresponde ao estado
-## do carro no servidor — o cliente compara com o que previu para aquele passo e corrige o carro.
+## sequência, um por passo de física do cliente, e entra numa fila. Cada passo do servidor
+## corresponde a UM número (_step_seq, sempre +1 por passo): o servidor aplica o comando com esse
+## número. Se ele ainda não chegou (o jogo ou a rede engasgou), repete o último e o número passa
+## assim mesmo; quando o atrasado chega, já ficou para trás (só as ações de toque e os pedais mais
+## novos valem). Assim o número do passo nunca se desencontra dos passos que o carro andou. Se a
+## fila acumula comandos à frente demais (o servidor ficou para trás), o número pula para perto do
+## mais novo. Cada instantâneo leva, só para o jogador, o "ack" = número do passo: o passo do
+## cliente que corresponde ao estado do carro no servidor — o cliente compara com o que previu para
+## aquele passo e corrige o carro.
 ##
 ## Votações (comando "vote" {kind, yes}; uma de cada vez; aprovam com a maioria dos humanos ainda
 ## na corrida em até VOTE_TIME s):
@@ -48,15 +51,19 @@ var spectators: Array = []
 var manager: RaceManager
 var viewport: SubViewport
 
-## Fila de comandos por conta (os mais novos no fim), o último aplicado, a sequência dele e quantas
-## vezes ele foi repetido desde que chegou.
+## Fila de comandos por conta (os mais novos no fim), o último aplicado, a sequência dele e o
+## número do passo atual (ver acima).
 var _inputs := {}
 var _queues := {}
 var _applied_seq := {}
-var _repeats := {}
+var _step_seq := {}
 var _last_counts := {}
-## Comandos guardados na fila no máximo (≈ 25 ms a 120 Hz) antes de descartar os mais velhos.
-const INPUT_QUEUE_MAX := 3
+## Comandos à frente do passo atual no máximo (≈ 33 ms a 120 Hz) antes de o passo pular adiante.
+const INPUT_AHEAD_MAX := 4
+## Medidas para o log do servidor (ServerStats, por minuto): passos sem o comando do número (repetiu
+## o último) e passos pulados (servidor atrás do jogador).
+static var input_repeats := 0
+static var input_skipped := 0
 var _loaded := {}
 var _left := {}
 var _phase := "loading"
@@ -101,7 +108,7 @@ func start(p_server: GameServer, p_room: String, p_settings: Dictionary, p_playe
 	manager = scene.get_node("RaceManager") as RaceManager
 	var list := []
 	for p in players:
-		list.append({"id": p["id"], "name": p["name"], "profile": p["profile"]})
+		list.append({"id": p["id"], "name": p["name"], "title": p.get("title", ""), "profile": p["profile"]})
 	manager.net_setup = {"laps": settings.get("laps", 5), "difficulty": settings.get("difficulty", 1), "drs": settings.get("drs", 0),
 		"bots": settings.get("bots", true), "cars": settings.get("cars", NetProtocol.MAX_ROOM_PLAYERS),
 		"quali_laps": settings.get("quali_laps", 0), "quali_collisions": settings.get("quali_collisions", true),
@@ -182,6 +189,7 @@ func set_input(acc_id: String, data: PackedFloat32Array) -> void:
 			if last_seq - int(data[0]) > 240:
 				q.clear()
 				_applied_seq.erase(acc_id)
+				_step_seq.erase(acc_id)
 				_last_counts.erase(acc_id)
 			else:
 				return
@@ -344,7 +352,7 @@ func _physics_process(delta: float) -> void:
 		for pl in players:
 			if _left.has(pl["id"]):
 				continue
-			var ack := int(_applied_seq.get(pl["id"], 0)) + int(_repeats.get(pl["id"], 0))
+			var ack := int(_step_seq.get(pl["id"], 0))
 			var tail := PackedByteArray()
 			tail.resize(4)
 			tail.encode_u32(0, clampi(ack, 0, 0xFFFFFFFF))
@@ -382,18 +390,30 @@ func _apply_inputs() -> void:
 			car.brake_input = 1.0
 			car.steer_input = 0.0
 			continue
-		# Um comando por passo, em ordem; sem comando novo, repete o último
+		# Um número por passo; aplica o comando dele (ou o mais novo que já ficou para trás)
 		var q: Array = _queues.get(acc_id, [])
-		while q.size() > INPUT_QUEUE_MAX:
-			q.pop_front()
+		if not _step_seq.has(acc_id):
+			if q.is_empty():
+				continue
+			_step_seq[acc_id] = int((q[0] as PackedFloat32Array)[0]) - 1
+		var cur: int = _step_seq[acc_id] + 1
+		if not q.is_empty() and int((q[-1] as PackedFloat32Array)[0]) - cur > INPUT_AHEAD_MAX:
+			var to := int((q[-1] as PackedFloat32Array)[0]) - INPUT_AHEAD_MAX
+			input_skipped += to - cur
+			cur = to
+		_step_seq[acc_id] = cur
+		var got: Variant = null
+		while not q.is_empty() and int((q[0] as PackedFloat32Array)[0]) <= cur:
+			got = q.pop_front()
 		var repeat := false
-		if not q.is_empty():
-			_inputs[acc_id] = q.pop_front()
-			_applied_seq[acc_id] = int((_inputs[acc_id] as PackedFloat32Array)[0])
-			_repeats[acc_id] = 0
+		if got != null:
+			_inputs[acc_id] = got
+			_applied_seq[acc_id] = int((got as PackedFloat32Array)[0])
+			if _applied_seq[acc_id] < cur:
+				input_repeats += 1
 		elif _inputs.has(acc_id):
 			repeat = true
-			_repeats[acc_id] = int(_repeats.get(acc_id, 0)) + 1
+			input_repeats += 1
 		var d: Variant = _inputs.get(acc_id)
 		if d == null:
 			continue
@@ -503,7 +523,9 @@ func _finish() -> void:
 			"record": {"pos": pos, "total": classification.size(), "grid": e.grid_slot + 1, "finished": e.finished and not e.retired,
 				"penalty": e.penalty_seconds, "best_lap": e.best_lap, "laps": e.laps_completed(),
 				"consistency": Progression.consistency_of(Array(e.lap_times)), "online": true,
-				"track": RaceSettings.valid_track(str(settings.get("track", "monza")))},
+				"track": RaceSettings.valid_track(str(settings.get("track", "monza"))),
+				"time_of_day": int(settings.get("time_of_day", 0)), "crashes_caused": e.crashes_caused,
+				"nightmare": 1 if e.nightmare else 0},
 		})
 	for peer in _peers():
 		_net.race.rpc_id(peer, st)

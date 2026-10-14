@@ -9,6 +9,10 @@ const ROW_RISE := 0.45
 const FRONT_HEIGHT := 2.4
 const SEAT_SPACING := 0.48
 const AISLE_EVERY := 11  # amostras (~22 m)
+## Noite: um refletor a cada STAND_LIGHT_EVERY amostras (~28 m), na frente e acima, mirando nas
+## fileiras (grupo "night_lights": apagado de dia), com esta força.
+const STAND_LIGHT_EVERY := 14
+const STAND_LIGHT_ENERGY := 3.0
 const CONCRETE := Color(0.66, 0.67, 0.71)
 const GREY := Color(0.44, 0.46, 0.52)
 const ROOF := Color(0.84, 0.85, 0.88)
@@ -212,6 +216,12 @@ static func _build_one(track: RaceTrack, f: TrackFeature, side: int, rng: Random
 		if sound.points.is_empty():
 			sound.points.append(track.edge_point(idxs[idxs.size() / 2], side, dist[idxs.size() / 2] + back * 0.5, top * 0.5))
 		node.add_child(sound)
+	# Noite: refletores iluminando a arquibancada (do lado da pista, mais alto que o topo)
+	if not RaceTrack.server_mode:
+		for k in range(mini(STAND_LIGHT_EVERY / 2, idxs.size() - 1), idxs.size(), STAND_LIGHT_EVERY):
+			var lamp_at := track.edge_point(idxs[k], side, dist[k] - 0.5, top + (3.6 if f.roof else 5.0))
+			var aim := track.edge_point(idxs[k], side, dist[k] + back * 0.7, base_h + rows * rise * 0.5)
+			TrackProps.night_light(node, lamp_at, aim, STAND_LIGHT_ENERGY, 50.0)
 	back_poly.reverse()
 	front_poly.append_array(back_poly)
 	track.footprints.append(front_poly)

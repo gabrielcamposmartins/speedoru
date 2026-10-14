@@ -752,6 +752,28 @@ def build_nose(col, variant):
         b.add(tube([(0.14, 2.05, 0.32), (0.22, 2.40, 0.25), (0.27, 2.75, 0.27), (0.24, 2.98, 0.35)], 0.024,
                    sides=10, sub=5), "Livery_Secondary", mirror=True)
         b.add(cone((0.24, 2.98, 0.35), (0.19, 3.08, 0.45), 0.024), "Livery_Secondary", mirror=True)
+    elif variant == "lance":
+        # Lança (exclusivo): agulha muito longa e fina, com a guarda em funil das lanças de justa e
+        # um filete em espiral até a ponta
+        secs = [S(3.22, 0.008, 0.175, 0.19, nt=2.0, nb=2.0),
+                S(3.00, 0.028, 0.16, 0.21, nt=2.0, nb=2.0),
+                S(2.70, 0.065, 0.135, 0.27, nt=2.2, nb=2.4),
+                S(2.40, 0.11, 0.13, 0.35, nt=2.4, nb=2.8),
+                S(2.15, 0.15, 0.15, 0.43, nt=2.5, nb=3.0),
+                S(1.90, 0.18, 0.19, 0.50, nt=2.6, nb=3.0),
+                S(1.58, 0.205, 0.23, 0.565, nt=2.6, nb=3.0)]
+        b.add(cone((0.0, 2.50, 0.235), (0.0, 2.86, 0.215), 0.19, 0.03, sides=20), "Livery_Accent")
+        b.add(lathe([(0.0, 0.17), (0.03, 0.17), (0.03, 0.20), (0.0, 0.20)], segments=24), "Metal",
+              transform=Matrix.Translation(P(0.0, 2.50, 0.235)) @ Euler((0, 0, math.radians(-90))).to_matrix().to_4x4())
+        helix = []
+        for i in range(61):
+            t = i / 60
+            s0 = 2.88 + 0.30 * t
+            d = sec_at(secs, s0)
+            zm = (d["zb"] + d["zt"]) * 0.5
+            th = t * 2 * math.pi * 3
+            helix.append((d["hw"] * math.cos(th) * 1.05, s0, zm + (d["zt"] - zm) * math.sin(th) * 1.05))
+        b.add(tube(helix, 0.006, sides=6, sub=1), "Livery_Secondary")
     elif variant == "pointed":
         secs = [S(2.92, 0.025, 0.125, 0.17, nt=2.0, nb=2.0),
                 S(2.80, 0.065, 0.115, 0.23, nt=2.2, nb=2.5),
@@ -1258,7 +1280,7 @@ def build_rear_wing(col, variant):
 # --- Asas traseiras de formato livre -------------------------------------------
 # Largas até a largura da asa dianteira (±0,98 m), sem placas laterais; cada uma ainda tem um flap
 # de DRS (objeto DRSFlap_<variante>, pivô no bordo de fuga) para o Godot animar.
-CREATIVE_REAR = ("dragon", "butterfly", "phoenix", "omega", "blade")
+CREATIVE_REAR = ("dragon", "butterfly", "phoenix", "omega", "blade", "royal")
 
 
 def rear_support(b, top_z):
@@ -1423,6 +1445,28 @@ def build_rear_wing_creative(col, variant):
         fs = -2.36 - 0.30 * math.cos(math.radians(10)) + 0.07
         fz = 1.00 + 0.30 * math.sin(math.radians(10)) + 0.035
         flap = [W(x, fs, fz - 0.03 * (x / 0.5) ** 2, 0.20, 30, t=0.11, m=0.06) for x in (0.0, 0.3, 0.5)]
+    elif variant == "royal":
+        # Coroa real (exclusivo): plano principal arqueado e, por cima, o aro de uma coroa com cinco
+        # pontas e uma joia em cada; placas laterais em forma de escudo
+        main = [W(x, -2.36, 0.80 + 0.05 * (1 - (x / 0.56) ** 2), 0.30, 10, t=0.12, m=0.06) for x in (0.0, 0.2, 0.4, 0.56)]
+        b.add(wing(main, n=12, sub=3, symmetric=True), paint_wing("Livery_Primary", "Livery_Secondary"))
+        def crown_z(x):
+            return 0.95 + 0.04 * (1 - (x / 0.5) ** 2)
+        band = [(x, -2.47, crown_z(x)) for x in (-0.5, -0.25, 0.0, 0.25, 0.5)]
+        b.add(tube(band, 0.026, sides=8, sub=3), "Livery_Accent")
+        for k, x in enumerate((-0.46, -0.23, 0.0, 0.23, 0.46)):
+            h = (0.10, 0.15, 0.22, 0.15, 0.10)[k]
+            z0 = crown_z(x)
+            b.add(cone((x, -2.47, z0), (x, -2.47, z0 + h), 0.055, 0.008, sides=8), "Livery_Accent")
+            b.add(ellipsoid(x, -2.47, z0 + h + 0.03, 0.032, 0.032, 0.032, n=12, rows=6), "Livery_Secondary")
+        for x in (-0.36, 0.0, 0.36):
+            b.add(rod((x, -2.47, 0.84 + 0.05 * (1 - (x / 0.56) ** 2)), (x, -2.47, crown_z(x)), 0.012), "Carbon")
+        b.add(plate([(-2.24, 0.60), (-2.24, 0.98), (-2.38, 1.05), (-2.66, 1.02), (-2.78, 0.84), (-2.60, 0.60)], 0.57, 0.012),
+              "Livery_Accent", mirror=True)
+        rear_support(b, 0.82)
+        fs = -2.36 - 0.30 * math.cos(math.radians(10)) + 0.07
+        fz = 0.84 + 0.30 * math.sin(math.radians(10)) + 0.035
+        flap = [W(x, fs, fz - 0.03 * (x / 0.55) ** 2, 0.18, 28, t=0.11, m=0.06) for x in (0.0, 0.3, 0.55)]
     else:  # blade
         # Lâmina: um só plano em delta, muito varrido, pontas finas com aletinhas e uma quilha central
         main = [W(0.0, -2.18, 0.86, 0.75, 7, t=0.06, m=0.04), W(0.5, -2.40, 0.89, 0.45, 7, t=0.06, m=0.04),
@@ -2021,11 +2065,11 @@ PART_BUILDERS = {
     # slot: {variante: função}
     "chassis": {"standard": build_chassis},
     "nose": {v: (lambda c, v=v: build_nose(c, v)) for v in (
-        "standard", "pointed", "duckbill", "shark", "hammer", "dragon_snout", "drill", "tusks")},
+        "standard", "pointed", "duckbill", "shark", "hammer", "dragon_snout", "drill", "tusks", "lance")},
     "front_wing": {v: (lambda c, v=v: build_front_wing(c, v)) for v in (
         "standard", "lowdf", "gull", "biplane", "bat", "ring", "delta", "scales")},
     "rear_wing": {v: (lambda c, v=v: build_rear_wing(c, v)) for v in (
-        "standard", "lowdf", "highdf", "dragon", "twin", "butterfly", "phoenix", "omega", "blade")},
+        "standard", "lowdf", "highdf", "dragon", "twin", "butterfly", "phoenix", "omega", "blade", "royal")},
     "sidepods": {v: (lambda c, v=v: build_sidepods(c, v)) for v in (
         "downwash", "slim", "gills", "jet", "scales", "vents", "bulge", "periscope")},
     "engine_cover": {v: (lambda c, v=v: build_engine_cover(c, v)) for v in (

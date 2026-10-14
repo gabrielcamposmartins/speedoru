@@ -29,6 +29,16 @@ extends Resource
 ## campo (terreno com montanhas, árvores, folhagem, pinheiros, cenário e grama).
 @export_file("*.json") var city := ""
 
+@export_group("Céu")
+## Pista no céu (Sky Aerobase): sem chão nem cidade. A pista corre sobre uma plataforma presa por
+## motores a jato (SkyDeck), com o mar lá embaixo, nuvens e a base aérea em volta. Quem passa da
+## borda onde não há barreira (TrackFeature BARRIER variant 2) cai e volta pelos boxes (FallWatch).
+@export var sky := false
+## Altura do mar (m).
+@export var sea_level := -1400.0
+## Trecho (s inicial, s final) do túnel quando não há cidade; (0, 0) = sem túnel.
+@export var tunnel := Vector2.ZERO
+
 @export_group("Relevo")
 ## Relevo de base do terreno dos circuitos de campo com subidas (gerado por tools/build_suzuka.py):
 ## grade de alturas suave presa à altura da pista; os morros somam por cima. Vazio = plano.

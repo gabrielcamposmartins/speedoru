@@ -4,7 +4,10 @@ extends RefCounted
 ## corridas). Tudo é calculado dos contadores da conta, que só o servidor escreve.
 ##
 ## Contadores (account.counters): laps, races, wins, podiums, fastest_laps, clean_races,
-## online_races, spins, earned. A coleção (items) vem do perfil.
+## online_races, spins, earned; das corridas online, night_wins (vitórias à noite), crashes_caused
+## (batidas fortes causadas em outros jogadores), nightmares (vitórias ultrapassando o líder humano na
+## reta final) e positions_gained. A coleção (items) vem do perfil. Conquistas pagam créditos (e às
+## vezes um item) uma vez só: os ids pagos ficam em counters["ach_paid"] (GameServer).
 
 ## xp por ação. O nível não fica guardado: sai do xp, que sai dos contadores.
 const XP := {"laps": 3, "races": 10, "podiums": 15, "wins": 25}
@@ -35,7 +38,15 @@ const ACHIEVEMENTS := [
 	["items_10", "Colecionador", "items", 8, "Colecionador", 2],
 	["items_50", "Garagem cheia", "items", 20, "Curador", 4],
 	["earned_100k", "Magnata", "earned", 100000, "Magnata", 4],
+	["positions_300", "Interceptor", "positions_gained", 300, "Interceptor", 4],
+	["night_wins_100", "Midnight", "night_wins", 100, "Midnight", 5],
+	["crashes_1000", "Winged Death", "crashes_caused", 1000, "Winged Death", 5],
+	["nightmare_1", "Nightmare", "nightmares", 1, "Nightmare", 5],
 ]
+## Créditos de cada conquista pelo grau (1–5), pagos uma vez.
+const ACHIEVEMENT_CREDITS := [300, 800, 2000, 5000, 12000]
+## Itens que algumas conquistas dão além dos créditos.
+const ACHIEVEMENT_ITEMS := {"positions_300": "signal_police"}
 const GRADE_COLORS := [Color("9aa4b2"), Color("3dfc9a"), Color("2f9bff"), Color("b14dff"), Color("ffb000")]
 ## Cor do nível por dezena.
 const LEVEL_COLORS := [Color("9aa4b2"), Color("3dfc9a"), Color("2f9bff"), Color("b14dff"), Color("ffb000"), Color("ff3b5c")]
@@ -85,22 +96,31 @@ static func achievements(counters: Dictionary) -> Array:
 	var out := []
 	for a in ACHIEVEMENTS:
 		var v := int(counters.get(a[2], 0))
-		out.append({"id": a[0], "name": a[1], "value": v, "goal": a[3], "done": v >= int(a[3]), "title": a[4], "grade": a[5]})
+		out.append({"id": a[0], "name": a[1], "value": v, "goal": a[3], "done": v >= int(a[3]), "title": a[4], "grade": a[5],
+			"credits": ACHIEVEMENT_CREDITS[int(a[5]) - 1], "item": ACHIEVEMENT_ITEMS.get(a[0], "")})
 	return out
 
 
-static func unlocked_titles(counters: Dictionary) -> PackedStringArray:
+## Títulos das conquistas feitas, mais [param extra] (títulos-item da coleção).
+static func unlocked_titles(counters: Dictionary, extra: Array = []) -> PackedStringArray:
 	var out := PackedStringArray()
 	for a in ACHIEVEMENTS:
 		if int(counters.get(a[2], 0)) >= int(a[3]):
 			out.append(a[4])
+	for t in extra:
+		if not str(t) in out:
+			out.append(str(t))
 	return out
 
 
+## Grau de um título (cor); os títulos-item exclusivos valem 5.
 static func title_grade(title: String) -> int:
 	for a in ACHIEVEMENTS:
 		if a[4] == title:
 			return a[5]
+	for id in ShopCatalog.ITEMS:
+		if ShopCatalog.title_of(id) == title:
+			return 5
 	return 0
 
 

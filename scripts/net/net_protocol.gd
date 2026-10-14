@@ -12,7 +12,7 @@ extends RefCounted
 
 ## 6: pista de Las Vegas, observadores na sala e voltas da bandeirada no estado da prova (um cliente
 ## antigo não conhece a pista nova e correria em outra).
-const VERSION := 6
+const VERSION := 7
 ## O servidor aceita o carro (skins, peças e engenharia) que o jogador traz do aparelho, sem
 ## conferir se a conta tem os itens.
 ## PENDENTE (produção): desligar e validar no servidor que a conta tem as skins e peças.
@@ -72,8 +72,9 @@ const BTN_REVERSE := 4
 ## Volta mais rápida plausível em Monza (s): resultados de corrida solo abaixo disso são recusados.
 const MIN_PLAUSIBLE_LAP := 78.0
 ## O mesmo por pista (Mônaco é bem mais curta; Suzuka tem o comprimento de Monza, mas bem mais curvas;
-## Las Vegas é um pouco mais longa que Monza, com retas enormes).
-const MIN_LAP_BY_TRACK := {"monza": MIN_PLAUSIBLE_LAP, "monaco": 55.0, "suzuka": 85.0, "las_vegas": 80.0}
+## Las Vegas é um pouco mais longa que Monza, com retas enormes; a Sky Aerobase é curta e travada,
+## com grampo e chicane: os bots mais rápidos fazem ~64 s).
+const MIN_LAP_BY_TRACK := {"monza": MIN_PLAUSIBLE_LAP, "monaco": 55.0, "suzuka": 85.0, "las_vegas": 80.0, "sky_aerobase": 50.0}
 
 
 ## Lê o endereço que o jogador digitou: "host", "host:porta", IPv6 puro ("2001:db8::1") ou IPv6

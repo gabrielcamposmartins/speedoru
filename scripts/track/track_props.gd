@@ -6,7 +6,17 @@ extends RefCounted
 
 const STEEL := Color(0.62, 0.65, 0.72)
 const STEEL_DARK := Color(0.32, 0.34, 0.4)
-const LAMP := Color(1.0, 0.97, 0.85)
+const LAMP := Color(0.97, 0.98, 1.0)
+## Postes mais juntos que o intervalo do layout (fração do `spacing` dos LIGHTS).
+const LIGHT_DENSITY := 0.6
+## Luz dos postes e refletores à noite: branca.
+const LIGHT_COLOR := Color(0.96, 0.97, 1.0)
+## Quanto a área iluminada por cada poste cresce (alcance e raio do cone).
+const LIGHT_REACH := 1.3
+## Mastros de refletores extras na linha de chegada: posições (s, m), altura e força da luz.
+const FINISH_LIGHTS := [-70.0, -25.0, 20.0]
+const FINISH_MAST := 20.0
+const FINISH_ENERGY := 4.0
 ## Curvas com raio menor que isso recebem setas (chevrons) do lado de fora.
 const CHEVRON_MAX_RADIUS := 45.0
 
@@ -38,6 +48,7 @@ static func build(track: RaceTrack, parent: Node3D) -> void:
 						_sign(track, f.s_start - dist, side, 2.2, sign_id, structure, ads)
 	_chevrons(track, structure, ads)
 	_pit_signs(track, structure, ads)
+	_finish_lights(track, structure, lamps, parent)
 
 	var mi := MeshInstance3D.new()
 	mi.name = "Props"
@@ -49,6 +60,36 @@ static func build(track: RaceTrack, parent: Node3D) -> void:
 	parent.add_child(mi)
 
 
+## Linha de chegada: mastros de refletores extras dos dois lados (FINISH_LIGHTS, em s), atrás das
+## arquibancadas e, do lado dos boxes, atrás do prédio; à noite iluminam bem o grid e a largada. Na
+## pista no céu ficam na beira da plataforma (não há chão além dela).
+static func _finish_lights(track: RaceTrack, mb: MeshBuilder, lamps: MeshBuilder, parent: Node3D) -> void:
+	var p := track.path
+	for side: int in [1, -1]:
+		for s: float in FINISH_LIGHTS:
+			var i := p.index_at(s)
+			var d := track.outer_distance(i, side) + 2.0 + _stand_clearance(track, s, side)
+			var height := FINISH_MAST
+			if track.layout.has_pit and side == track.layout.pit_side and track.pit_width[i] > 0.5:
+				d += PitComplex.DEPTH + 3.0
+				height += 6.0
+			if track.layout.sky:
+				d = minf(d, track.deck_edge(i, side) - p.half_width(i, side) - 1.0)
+			var base := track.edge_point(i, side, d)
+			var to_track := -p.lefts[i] * side
+			mb.posts().cylinder(Transform3D(Basis(), base), 0.4, 0.22, height, STEEL, 8)
+			mb.posts().box(Transform3D(Basis(), base + Vector3.UP * 0.4), Vector3(1.0, 0.8, 1.0), STEEL_DARK)
+			# Painel com 6 refletores voltado para a pista
+			var head := base + Vector3.UP * height + to_track * 0.6
+			var basis := Basis(p.tangents[i], Vector3.UP, to_track)
+			var tilt := basis * Basis(Vector3.RIGHT, deg_to_rad(30.0))
+			mb.box(Transform3D(tilt, head), Vector3(3.4, 2.2, 0.3), STEEL_DARK)
+			for k in 6:
+				var c := head + tilt.x * ((k % 3) - 1.0) * 1.05 + tilt.y * ((k / 3) - 0.5) * 0.95 + tilt.z * 0.17
+				lamps.box(Transform3D(tilt, c), Vector3(0.85, 0.7, 0.02), LAMP)
+			night_light(parent, head + to_track * 0.8, p.points[i] - p.lefts[i] * side * 1.5, FINISH_ENERGY, 48.0)
+
+
 ## Refletor (SpotLight3D) do grupo "night_lights", apontado de `pos` para `target`.
 static func night_light(parent: Node3D, pos: Vector3, target: Vector3, energy := 5.5, angle := 52.0) -> SpotLight3D:
 	var holder := parent.get_node_or_null("NightLights") as Node3D
@@ -57,11 +98,11 @@ static func night_light(parent: Node3D, pos: Vector3, target: Vector3, energy :=
 		holder.name = "NightLights"
 		parent.add_child(holder)
 	var light := SpotLight3D.new()
-	light.light_color = Color(1.0, 0.92, 0.78)
+	light.light_color = LIGHT_COLOR
 	light.light_energy = energy
 	light.set_meta("base_energy", energy)
-	light.spot_range = pos.distance_to(target) * 1.8 + 10.0
-	light.spot_angle = angle
+	light.spot_range = (pos.distance_to(target) * 1.8 + 10.0) * LIGHT_REACH
+	light.spot_angle = minf(rad_to_deg(atan(tan(deg_to_rad(angle)) * LIGHT_REACH)), 85.0)
 	light.spot_attenuation = 0.6
 	light.shadow_enabled = false
 	light.light_specular = 0.3
@@ -90,7 +131,7 @@ const BUNTING_MAX_SPAN := 75.0
 static func _lights(track: RaceTrack, f: TrackFeature, mb: MeshBuilder, lamps: MeshBuilder, cloth: MeshBuilder,
 		parent: Node3D) -> void:
 	var p := track.path
-	var step := maxi(int(f.spacing / p.spacing), 1)
+	var step := maxi(int(f.spacing * LIGHT_DENSITY / p.spacing), 1)
 	if f.variant == 1:
 		_street_lamps(track, f, mb, lamps, parent, step)
 		return
@@ -129,11 +170,15 @@ static func _street_lamps(track: RaceTrack, f: TrackFeature, mb: MeshBuilder, la
 	for i in track.span_indices(f.s_start, f.s_end, step):
 		var side: int = sides[n % sides.size()]
 		n += 1
-		if track.in_tunnel(i) or (track.layout.has_pit and side == track.layout.pit_side and track.pit_width[i] > 0.5):
+		if track.in_tunnel(i) or track.open_edge(i, side) \
+				or (track.layout.has_pit and side == track.layout.pit_side and track.pit_width[i] > 0.5):
 			continue
 		var k := RaceTrack._si(side)
 		var base := track.edge_point(i, side, track.barrier[k][i] + 0.75)
 		var to_track := -p.lefts[i] * side
+		if track.layout.sky:
+			_sky_lamp(track, i, base, to_track, mb, lamps, parent)
+			continue
 		var height := 9.0
 		var dark := Color(0.16, 0.17, 0.2)
 		mb.posts().cylinder(Transform3D(Basis(), base), 0.16, 0.1, height, dark, 7)
@@ -152,8 +197,37 @@ static func _street_lamps(track: RaceTrack, f: TrackFeature, mb: MeshBuilder, la
 		var lamp_basis := Basis(p.tangents[i].normalized(), Vector3.UP, to_track).orthonormalized()
 		mb.box(Transform3D(lamp_basis, tip + Vector3.DOWN * 0.12), Vector3(0.45, 0.22, 0.9), dark)
 		lamps.box(Transform3D(lamp_basis, tip + Vector3.DOWN * 0.25), Vector3(0.36, 0.04, 0.75), LAMP)
-		var light := night_light(parent, tip + Vector3.DOWN * 0.3, p.points[i] + to_track * 0.5 + Vector3.UP * 0.1, 7.0, 64.0)
-		light.light_color = Color(1.0, 0.82, 0.58)
+		night_light(parent, tip + Vector3.DOWN * 0.3, p.points[i] + to_track * 0.5 + Vector3.UP * 0.1, 7.0, 64.0)
+
+
+## Poste da pista no céu: coluna de metal afinando, anel de luz no meio, pescoço curvo (um quarto de
+## volta) que leva até uma barra de LED comprida sobre a pista, e a luz branca à noite.
+static func _sky_lamp(track: RaceTrack, i: int, base: Vector3, to_track: Vector3, mb: MeshBuilder, lamps: MeshBuilder,
+		parent: Node3D) -> void:
+	var p := track.path
+	var metal := Color(0.4, 0.42, 0.47)
+	var height := 8.0
+	var bend := 2.2
+	mb.posts().box(Transform3D(Basis(), base + Vector3.UP * 0.3), Vector3(0.7, 0.6, 0.7), metal * 0.8)
+	mb.posts().cylinder(Transform3D(Basis(), base), 0.24, 0.13, height, metal, 10)
+	lamps.cylinder(Transform3D(Basis(), base + Vector3.UP * height * 0.55), 0.2, 0.18, 0.18, LAMP, 10, false)
+	# Pescoço: quarto de círculo saindo da vertical para a horizontal, por cima da pista
+	var center := base + Vector3.UP * height + to_track * bend
+	var prev := base + Vector3.UP * height
+	var segs := 6
+	for k in range(1, segs + 1):
+		var a := PI * 0.5 * k / segs
+		var q := center - to_track * bend * cos(a) + Vector3.UP * bend * sin(a)
+		var dir := (q - prev).normalized()
+		var x := dir.cross(Vector3.UP).normalized() if absf(dir.y) < 0.99 else p.tangents[i]
+		mb.posts().cylinder(Transform3D(Basis(x, dir, x.cross(dir)).orthonormalized(), prev), 0.13, 0.11, prev.distance_to(q), metal, 8, false)
+		prev = q
+	# Barra de LED (comprida no sentido da pista), com a face de baixo acesa
+	var tip := prev + to_track * 0.9
+	var bar := Basis(p.tangents[i].normalized(), Vector3.UP, to_track).orthonormalized()
+	mb.box(Transform3D(bar, tip), Vector3(2.6, 0.22, 0.5), metal * 0.7)
+	lamps.box(Transform3D(bar, tip + Vector3.DOWN * 0.12), Vector3(2.4, 0.03, 0.36), LAMP)
+	night_light(parent, tip + Vector3.DOWN * 0.3, p.points[i] + to_track * 0.5 + Vector3.UP * 0.1, 7.5, 70.0)
 
 
 static func _billboards(track: RaceTrack, f: TrackFeature, mb: MeshBuilder, ads: MeshBuilder) -> void:
@@ -305,6 +379,9 @@ static func _chevrons(track: RaceTrack, mb: MeshBuilder, ads: MeshBuilder) -> vo
 		var sign_id := TrackAds.Sign.CHEVRON_LEFT if turn_left else TrackAds.Sign.CHEVRON_RIGHT
 		for k in 3:
 			var idx := p.wrap_index(best - 6 + k * 4)
+			# Borda aberta (pista no céu): nada de placa na faixa de aviso
+			if track.open_edge(idx, outside):
+				continue
 			var d := track.barrier[RaceTrack._si(outside)][idx] - 0.6
 			var base := track.edge_point(idx, outside, d)
 			var normal := (-p.tangents[idx] * 0.6 + p.lefts[idx] * -outside * 0.8).normalized()

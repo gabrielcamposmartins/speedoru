@@ -25,6 +25,8 @@ var _net: Node
 var _invites: VBoxContainer
 ## Sala em que o jogador está ("" = nenhuma): só entrar numa sala nova abre a tela dela.
 var _room_id := ""
+## Cartão das missões na tela inicial (só conectado ao servidor).
+var _missions_card: Control
 
 
 func _ready() -> void:
@@ -85,6 +87,10 @@ func _ready() -> void:
 		_net.connection_changed.connect(func(_o: bool) -> void:
 			if screen == "home":
 				show_screen("home"))
+		# A conta mudou (corrida terminada, missão completa, giro): atualiza o cartão das missões
+		_net.account_changed.connect(func() -> void:
+			if screen == "home" and is_instance_valid(_missions_card):
+				_build_missions_card())
 	var back_to := RaceSettings.return_to
 	RaceSettings.return_to = ""
 	show_screen("multiplayer" if back_to == "multiplayer" and _net and _net.online else "home")
@@ -231,7 +237,7 @@ func _build_home() -> void:
 	box.add_theme_constant_override("separation", 14)
 	_body.add_child(box)
 	var entries := [
-		["JOGAR SOLO", "Corrida contra bots em Monza, Mônaco, Suzuka ou Las Vegas · pit obrigatório", func() -> void: show_screen("solo"), false],
+		["JOGAR SOLO", "Corrida contra bots em pistas reais ou na Sky Aerobase, no céu · pit obrigatório", func() -> void: show_screen("solo"), false],
 		["MULTIPLAYER", _multiplayer_subtitle(), func() -> void: show_screen("multiplayer"), false],
 		["GARAGEM", "Estúdio, galeria e loja", func() -> void: show_screen("garage"), false],
 		["CONFIGURAÇÕES", "Controles, tela, gráficos, desempenho e áudio", func() -> void: menu.open_settings(), false],
@@ -251,6 +257,142 @@ func _build_home() -> void:
 		var tw := create_tween()
 		tw.tween_interval(0.05 * k)
 		tw.tween_property(b, "modulate:a", 1.0, 0.25)
+	if _net and _net.online:
+		_build_missions_card()
+		_refresh_missions()
+
+
+## Pede as missões de novo (o dia pode ter virado com o jogo aberto).
+func _refresh_missions() -> void:
+	var r: Dictionary = await _net.request("missions", {})
+	if r.has("missions") and _net.online:
+		_net.account["missions"] = r
+		if screen == "home" and is_instance_valid(_missions_card):
+			_build_missions_card()
+
+
+## Cartão à direita da tela inicial, logo abaixo dos créditos e da mesma largura (o carro continua
+## à vista): as três missões do dia com o progresso e o prêmio, a semana, a roleta do vencedor para
+## girar e os tickets. A aba MISSÕES do multiplayer tem os detalhes.
+func _build_missions_card() -> void:
+	if is_instance_valid(_missions_card):
+		_missions_card.queue_free()
+	var acc: Dictionary = _net.account
+	var ms: Dictionary = acc.get("missions", {})
+	var panel := PanelContainer.new()
+	panel.name = "MissionsCard"
+	panel.add_theme_stylebox_override("panel", Retro.panel_style(16.0, 0.88))
+	panel.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+	panel.custom_minimum_size = Vector2(_wallet_node.custom_minimum_size.x, 0)
+	panel.position = Vector2(_wallet_node.position.x, _wallet_node.position.y + 80)
+	Retro.add_corners(panel)
+	_body.add_child(panel)
+	_missions_card = panel
+	# Encosta embaixo dos créditos (a altura deles só se sabe depois do layout)
+	(func() -> void:
+		if is_instance_valid(panel) and is_instance_valid(_wallet_node):
+			panel.custom_minimum_size.x = _wallet_node.size.x
+			# Altura volta ao mínimo (os textos com quebra de linha medem errado no primeiro layout)
+			panel.size = Vector2(_wallet_node.size.x, 0)
+			panel.position = Vector2(_wallet_node.position.x, _wallet_node.position.y + _wallet_node.size.y + 10)).call_deferred()
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 8)
+	panel.add_child(box)
+	var head := HBoxContainer.new()
+	box.add_child(head)
+	var title := Label.new()
+	title.text = "MISSÕES DE HOJE"
+	title.theme_type_variation = "RetroKicker"
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	head.add_child(title)
+	var left := int(ms.get("reset_in", 0))
+	if left > 0:
+		var reset := Label.new()
+		reset.text = "renova em %dh%02d" % [left / 3600, (left % 3600) / 60]
+		reset.theme_type_variation = "RetroMuted"
+		reset.add_theme_font_size_override("font_size", 11)
+		head.add_child(reset)
+	var list: Array = ms.get("missions", [])
+	if list.is_empty():
+		var wait := Label.new()
+		wait.text = "Carregando missões…"
+		wait.theme_type_variation = "RetroMuted"
+		box.add_child(wait)
+	for m: Dictionary in list:
+		var done: bool = m.get("done", false)
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 8)
+		box.add_child(row)
+		var name_l := Label.new()
+		name_l.text = ("✓ " if done else "") + str(m.get("text", ""))
+		name_l.tooltip_text = str(m.get("text", ""))
+		name_l.mouse_filter = Control.MOUSE_FILTER_PASS
+		name_l.clip_text = true
+		name_l.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+		name_l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		name_l.add_theme_font_size_override("font_size", 14)
+		name_l.add_theme_color_override("font_color", Retro.c("good") if done else Retro.c("text"))
+		row.add_child(name_l)
+		var prize := Label.new()
+		prize.text = "+%s" % PlayerProfile.format_credits(int(m.get("credits", 0)))
+		prize.add_theme_font_override("font", Retro.display(800))
+		prize.add_theme_font_size_override("font_size", 13)
+		prize.add_theme_color_override("font_color", Retro.c("muted") if done else Retro.c("warn"))
+		row.add_child(prize)
+		if not done:
+			var bar_row := HBoxContainer.new()
+			bar_row.add_theme_constant_override("separation", 8)
+			box.add_child(bar_row)
+			var bar := ProgressBar.new()
+			bar.show_percentage = false
+			bar.custom_minimum_size = Vector2(0, 6)
+			bar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			bar.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+			bar.max_value = maxi(int(m.get("goal", 1)), 1)
+			bar.value = int(m.get("progress", 0))
+			bar_row.add_child(bar)
+			var count := Label.new()
+			count.text = "%d/%d" % [int(m.get("progress", 0)), int(m.get("goal", 1))]
+			count.theme_type_variation = "RetroMuted"
+			count.add_theme_font_size_override("font_size", 11)
+			bar_row.add_child(count)
+	box.add_child(HSeparator.new())
+	var week_done := int(ms.get("week_done", 0))
+	var week_goal := maxi(int(ms.get("week_goal", Missions.WEEK_GOAL)), 1)
+	var week := Label.new()
+	week.add_theme_font_size_override("font_size", 12)
+	if ms.get("week_paid", false):
+		week.text = "Semana completa: prêmio recebido ✓"
+		week.add_theme_color_override("font_color", Retro.c("good"))
+	else:
+		week.text = "SEMANA %d/%d" % [week_done, week_goal]
+		week.add_theme_color_override("font_color", Retro.c("text_2"))
+	box.add_child(week)
+	var wbar := ProgressBar.new()
+	wbar.show_percentage = false
+	wbar.custom_minimum_size = Vector2(0, 6)
+	wbar.max_value = week_goal
+	wbar.value = week_done
+	box.add_child(wbar)
+	var spins := int(acc.get("race_spins", 0))
+	if spins > 0:
+		var spin := Button.new()
+		spin.text = "ROLETA DO VENCEDOR (%d)" % spins
+		spin.theme_type_variation = "PrimaryButton"
+		spin.custom_minimum_size = Vector2(0, 36)
+		spin.add_theme_font_size_override("font_size", 13)
+		spin.clip_text = true
+		spin.pressed.connect(func() -> void:
+			var wheel := PrizeWheel.new()
+			get_tree().root.add_child(wheel))
+		box.add_child(spin)
+	var tickets := int((acc.get("profile", {}) as Dictionary).get("tickets", 0))
+	if tickets > 0:
+		var tk := Label.new()
+		tk.text = "Tickets da loja: %d" % tickets
+		tk.theme_type_variation = "RetroMuted"
+		tk.add_theme_font_size_override("font_size", 12)
+		box.add_child(tk)
 
 
 func _multiplayer_subtitle() -> String:
@@ -282,6 +424,14 @@ func _on_net_message(type: String, data: Dictionary) -> void:
 		"level_up":
 			var unlocked: Array = data.get("unlocked", [])
 			toast("Nível %d!%s" % [int(data.get("level", 1)), (" Bots liberados: " + ", ".join(unlocked)) if not unlocked.is_empty() else ""])
+		"rewards":
+			# Conquistas pagas ao entrar (feitas antes de as conquistas pagarem)
+			var total := 0
+			for a: Dictionary in data.get("achievements", []):
+				total += int(a.get("credits", 0))
+			var n := (data.get("achievements", []) as Array).size()
+			if n > 0:
+				toast("Recompensas de %d conquista%s: +%s %s" % [n, "s" if n > 1 else "", PlayerProfile.format_credits(total), ShopCatalog.CURRENCY])
 		"party_ask":
 			_invite("%s chamou você para o grupo" % data.get("name", ""),
 				func() -> void: _net.request("party_accept", {"party": data["party"]}),
@@ -396,11 +546,14 @@ func _build_solo() -> void:
 	inner.add_theme_constant_override("separation", 14)
 	inner.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	scroll.add_child(inner)
+	# Pista: abas Reais/Fantasia e o carrossel com as pistas da categoria
 	var carousel := TrackCarousel.new()
 	carousel.name = "TrackCarousel"
 	carousel.selected = RaceSettings.track_index(RaceSettings.track)
+	carousel.category = RaceSettings.category_of(RaceSettings.track)
 	carousel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	carousel.track_changed.connect(func(i: int) -> void: RaceSettings.track = RaceSettings.TRACKS[i]["id"])
+	inner.add_child(TrackCarousel.category_tabs(carousel))
 	inner.add_child(carousel)
 	var cols := HBoxContainer.new()
 	cols.add_theme_constant_override("separation", 28)
@@ -574,12 +727,17 @@ func _build_side_panel() -> void:
 		var studio := StudioPanel.new()
 		scroll.add_child(studio)
 		studio.setup(menu.car)
+		if studio.category in StudioPanel.LIGHT_PREVIEW:
+			menu.set_light_preview(studio.category)
+			menu.focus_on("mirrors" if studio.category == "signal" else studio.category)
 		# Decalques: a câmera vai até o lugar escolhido (e volta à órbita ao sair da aba)
 		studio.focus_request.connect(func(key: String) -> void:
+			# Boost e luz de ultrapassagem: além do foco, a luz acende no carro parado
+			menu.set_light_preview(key if key in StudioPanel.LIGHT_PREVIEW else "")
 			if key == "":
 				menu.clear_focus()
 			else:
-				menu.focus_on(key))
+				menu.focus_on("mirrors" if key == "signal" else key))
 	else:
 		var gallery := GalleryPanel.new()
 		gallery.on_go_shop = func(_roulette: String) -> void:

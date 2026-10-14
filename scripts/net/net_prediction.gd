@@ -40,6 +40,9 @@ var corrections := 0
 var snaps := 0
 var last_error := 0.0
 var max_error := 0.0
+## Correções que puxaram o carro para trás (> PULLBACK m contra o movimento): a "lombada invisível".
+var pullbacks := 0
+const PULLBACK := 0.3
 
 ## seq -> [posição, rotação, velocidade] previstos logo depois de aplicar o comando seq, e as
 ## sequências na ordem em que entraram (para descartar as mais velhas)
@@ -159,6 +162,8 @@ func reconcile(s: Dictionary, latest_seq: int) -> void:
 	if last_error < DEAD_POS and err_vel.length() < DEAD_VEL and err_rot.get_angle() < DEAD_ROT:
 		return
 	corrections += 1
+	if err_pos.dot((pred[2] as Vector3).normalized()) < -PULLBACK:
+		pullbacks += 1
 	_pending_pos += err_pos
 	_pending_rot = (err_rot * _pending_rot).normalized()
 	car.linear_velocity += err_vel

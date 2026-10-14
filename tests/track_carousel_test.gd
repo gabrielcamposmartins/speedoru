@@ -1,12 +1,14 @@
 extends SceneTree
 ## Carrossel de pistas, peças por categoria e Roleta Dragão (sem janela): traçado de cada pista
-## (pontos e extensão), ←/→ no carrossel do Jogar solo trocam a pista (dando a volta), o só leitura
+## (pontos e extensão), ←/→ no carrossel do Jogar solo trocam a pista (dando a volta dentro da
+## categoria), as abas Reais/Fantasia trocam as pistas do anel, o só leitura
 ## não muda nada, a Galeria separa as peças por lugar do carro, a silhueta sem placa de vídeo não
 ## trava, nome da roleta e sons gerados. Usa um perfil de teste.
 ##   godot --headless --path . -s res://tests/track_carousel_test.gd
 
 ## Extensão oficial (m): a linha central do CSV tem de ficar perto.
-const OFFICIAL := {"monza": 5793.0, "monaco": 3337.0, "suzuka": 5807.0, "las_vegas": 6201.0}
+## Sky Aerobase (fantasia): a do traçado gerado por tools/build_sky_aerobase.py.
+const OFFICIAL := {"monza": 5793.0, "monaco": 3337.0, "suzuka": 5807.0, "las_vegas": 6201.0, "sky_aerobase": 3810.0}
 
 var failures := 0
 
@@ -67,9 +69,25 @@ func _run() -> void:
 		_check(root.get_viewport().gui_get_focus_owner() == carousel, "o foco fica no carrossel")
 		await _key(KEY_LEFT)
 		await _key(KEY_LEFT)
-		_check(RaceSettings.track == RaceSettings.TRACKS[-1]["id"], "← antes da primeira dá a volta (%s)" % RaceSettings.track)
+		var reais := RaceSettings.tracks_in("real")
+		_check(RaceSettings.track == RaceSettings.TRACKS[reais[-1]]["id"], "← antes da primeira dá a volta nas reais (%s)" % RaceSettings.track)
 		await create_timer(TrackCarousel.SPIN_TIME + 0.2).timeout
-		_check(is_equal_approx(carousel.pos, float(carousel.selected)), "o anel para na pista escolhida")
+		_check(is_equal_approx(carousel.pos, float(carousel._slot(carousel.selected))), "o anel para na pista escolhida")
+		# Abas: Fantasia mostra só as pistas fantasia; voltar a Reais volta na última escolhida
+		var tabs := scene.find_child("TrackTabs", true, false) as HBoxContainer
+		_check(tabs != null and tabs.get_child_count() == RaceSettings.CATEGORIES.size(), "abas das categorias acima do carrossel")
+		if tabs:
+			var last_real := RaceSettings.track
+			(tabs.get_node("Tab_fantasy") as Button).pressed.emit()
+			await process_frame
+			_check(carousel.category == "fantasy" and RaceSettings.category_of(RaceSettings.track) == "fantasy"
+				and carousel.count() == RaceSettings.tracks_in("fantasy").size(), "aba Fantasia: %s (%d pista)" % [RaceSettings.track, carousel.count()])
+			_check((tabs.get_node("Tab_fantasy") as Button).theme_type_variation == "PrimaryButton", "aba ativa em destaque")
+			await _key(KEY_RIGHT)
+			_check(RaceSettings.category_of(RaceSettings.track) == "fantasy", "→ fica nas pistas fantasia")
+			(tabs.get_node("Tab_real") as Button).pressed.emit()
+			await process_frame
+			_check(carousel.category == "real" and RaceSettings.track == last_real, "aba Reais volta na última pista real (%s)" % RaceSettings.track)
 	# Só leitura (sala, quem não é o anfitrião)
 	var ro := TrackCarousel.new()
 	ro.editable = false

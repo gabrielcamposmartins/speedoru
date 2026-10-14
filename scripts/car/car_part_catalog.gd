@@ -25,6 +25,7 @@ const SLOTS := {
 		"dragon_snout": {"label": "Focinho de dragão", "stats": {"drag": 0.01}},
 		"drill": {"label": "Broca", "stats": {"drag": -0.02, "downforce": -0.03}},
 		"tusks": {"label": "Presas", "stats": {"drag": 0.015}},
+		"lance": {"label": "Lança", "stats": {"drag": -0.025, "downforce": -0.06, "balance": -0.01}},
 	}},
 	"front_wing": {"label": "Asa dianteira", "variants": {
 		"standard": {"label": "Alta carga (4 elementos)"},
@@ -46,6 +47,7 @@ const SLOTS := {
 		"phoenix": {"label": "Fênix", "stats": {"drag": 0.10, "downforce": 0.45, "balance": -0.03}},
 		"omega": {"label": "Ômega", "stats": {"drag": 0.06, "downforce": 0.30}},
 		"blade": {"label": "Lâmina", "stats": {"drag": -0.08, "downforce": -0.30, "balance": 0.02}},
+		"royal": {"label": "Coroa Real", "stats": {"drag": 0.09, "downforce": 0.40, "balance": -0.025}},
 	}},
 	"sidepods": {"label": "Sidepods", "variants": {
 		"downwash": {"label": "Downwash"},

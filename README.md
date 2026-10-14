@@ -31,12 +31,16 @@ com o mouse gira, a roda aproxima (só com o mouse fora dos painéis: sobre a in
 O carro fica à direita; à esquerda, os botões grandes
 (`scripts/menu/menu_ui.gd`):
 
-- **Jogar solo:** pista (Monza, Mônaco, Suzuka ou Las Vegas), modo, voltas, adversários, dificuldade, largada, horário
+- **Jogar solo:** pista (abas **Reais**: Monza, Mônaco, Suzuka ou Las Vegas; **Fantasia**: Sky
+  Aerobase), modo, voltas, adversários, dificuldade, largada, horário
   e ambiente → Correr. A pista se escolhe num **carrossel** (`scripts/menu/track_carousel.gd`, o
   mesmo dos ajustes da sala multiplayer): o traçado de cada pista (linha central do CSV, norte para
   cima) num anel que gira ao trocar; a da frente fica grande, com nome, extensão, largada (sentido da
   corrida) e um ponto de luz dando a volta. Setas, clique nas de trás ou ←/→ com o foco; na sala, só
-  o anfitrião gira (e o carrossel refeito a cada atualização continua o giro do anterior). Na corrida o horário/ambiente ficam como escolhidos (N/B só no treino livre) e
+  o anfitrião gira (e o carrossel refeito a cada atualização continua o giro do anterior). Acima
+  dele, abas das categorias (`RaceSettings.CATEGORIES`: Reais e Fantasia): o anel só tem as pistas
+  da aba e, ao voltar a uma aba, volta na última pista escolhida nela (na sala, só o anfitrião vê as
+  abas). Na corrida o horário/ambiente ficam como escolhidos (N/B só no treino livre) e
   o carro não muda: a garagem do Tab só existe no treino livre (e pausa o jogo enquanto aberta).
 - **Multiplayer:** salas, amigos, grupo, ranking, perfil e a aba **Servidor** (endereço IPv4/IPv6, servidores salvos com nome, últimas conexões e **hospedar** um servidor no próprio PC) (veja [Multiplayer](#multiplayer-servidor-dedicado--turso)); convites e avisos aparecem em qualquer tela do menu.
 - **Garagem:** Estúdio, Galeria e Loja, com o carro mudando na hora ao lado. No Estúdio e na
@@ -328,8 +332,13 @@ difícil ou mista) e posição de largada. Tudo em `scripts/race/`:
 
 - **`RaceManager`** (nó na cena de Monza): grid, luzes de largada, contagem de voltas pela linha de
   chegada, tempos de volta, volta mais rápida, intervalos (marcas de progresso a cada 25 m),
-  posições, pit stops e chegada; ao final mostra o resultado (tempo + penalidades) e permite
-  correr de novo.
+  posições, pit stops e chegada; quando o primeiro recebe a bandeirada, todos os outros veem o
+  aviso "BANDEIRADA! fulano venceu" (`leader_flag`; online pelo evento `leader_finished`). Ao final
+  vem a **tela de vitória** (`scripts/ui/podium_screen.gd`): os três primeiros carros, cópias com
+  as peças, cores e skin de cada um, estacionados num pódio num estúdio próprio (mundo 3D separado),
+  com a plaquinha 1º/2º/3º em ouro, prata e bronze e o nome em cima; depois o resultado (tempo +
+  penalidades), com os créditos ganhos (online chegam quando a sala fecha: "Calculando prêmio…"),
+  as missões e conquistas completas e, para quem venceu online, o botão da roleta do vencedor.
 - **Bots** (`BotDriver`, filho de cada carro): seguem a linha de corrida de curvatura mínima de Monza
   (`assets/track/monza/monza_raceline.csv`, TUMFTM) com um perfil de velocidade calculado pela
   aderência lateral/downforce, frenagem e potência (`RacingLine`), escalado pela dificuldade
@@ -423,11 +432,11 @@ e a meta de longo prazo). Catálogo e regras em `scripts/economy/shop_catalog.gd
   desconto. Duas roletas temáticas e sem sobreposição, com **peças, decalques, as cores de luz
   (brilho do boost e neon) e rastros de partículas**: **Neon** (asas leves, bico, sidepods; sakura,
   asas, cometa, coração, onda, listras, raio; boost Hiperluz, Gelo, Rosa choque, Violeta; neon
-  Aurora, Ciano, Sakura; partículas Raios, Pétalas de sakura, Estrelinhas, Bolhas de sabão e Flocos
-  de neve) e
+  Aurora, Ciano, Sakura; partículas Raios, Pétalas de sakura, Arco-íris, Estrelinhas, Bolhas de
+  sabão e Flocos de neve) e
   **Dragão** (id `inferno`, o nome antigo, que fica nos perfis e no servidor; asas traseiras, barbatana, rodas raiadas; chamas, garras, logo S, xadrez, shuriken,
   faixas duplas; boost Chama solar, Rubi, Ouro; neon Lava, Âmbar, Carmesim, Violeta; partículas
-  Fogo no chão, Brasas, Chuva de moedas, Fumaça colorida e Faíscas de titânio), 45 itens cada.
+  Fogo no chão, Brasas, Chuva de moedas e Fumaça colorida), 46 e 44 itens.
   Peças: a Neon tem as de luz, céu e máquina (asas traseiras Borboleta e Ômega, sidepods Turbina e
   Periscópio, asas dianteiras Gaivota, Anel e Delta, bicos de pato, Tubarão-martelo e Broca, rodas
   Turbina, Colmeia e Disco…); a Dragão, as de fogo e bicho (asas traseiras Fênix, Dragão, Dupla e
@@ -440,11 +449,24 @@ e a meta de longo prazo). Catálogo e regras em `scripts/economy/shop_catalog.gd
 | Raridade | Fatia | Itens (Neon / Dragão) | Chance de cada (Neon / Dragão) | Repetida devolve |
 |---|---|---|---|---|
 | Lendário | 2,5% | 6 / 6 | 0,42% | 3.600 a 4.680 |
-| Épico | 6% | 7 / 10 | 0,86% / 0,6% | 2.100 a 2.730 |
+| Épico | 6% | 8 / 10 | 0,75% / 0,6% | 2.100 a 2.730 |
 | Raro | 10% | 11 / 11 | 0,91% | 1.350 a 1.755 |
 | Incomum | 26% | 13 / 10 | 2% / 2,6% | 900 a 1.170 |
-| Comum | 55,5% | 8 / 8 | 6,94% | 600 a 780 |
+| Comum | 55,5% | 8 / 7 | 6,94% / 7,93% | 600 a 780 |
 
+- **Tickets ganhos:** a roleta do vencedor (online) pode dar um ticket; na loja aparece "USAR TICKET"
+  em cada roleta, um giro sem gastar créditos (`Profile.tickets`, `spin(roleta, true)`; online o
+  servidor confere e gasta).
+- **Exclusivos** (roleta `exclusive`, oculta: `ShopCatalog.is_hidden`, fora da loja e das chances):
+  só saem como prêmio — roleta do vencedor, prêmio da semana das missões e conquistas. São a
+  **asa traseira Coroa Real** e o **bico Lança** (peças novas do `build_f1_car.py`), os títulos
+  **Tempestade**, **Fantasma** e **Soberano do Céu** (`ShopCatalog.EXCLUSIVE_POOL`) e a luz de
+  ultrapassagem **Sirene** (só pela conquista Interceptor). `Profile.grant_item` entrega (repetido
+  vira créditos) e `pick_exclusive` sorteia um que a conta ainda não tem. A Galeria mostra as abas
+  "Luz de ultrapassagem" e "Títulos", com "prêmio exclusivo" no lugar da chance.
+- **Faíscas de titânio aposentadas** (`ShopCatalog.RETIRED`): viraram efeito de todo carro (abaixo);
+  quem tinha recebe 780 créditos uma vez (carregar o perfil não grava: a troca vai para o arquivo
+  na próxima gravação, e até lá cada carga devolve o mesmo valor).
 - **Som do giro** (`scripts/audio/ui_sounds.gd`, gerado por código): um "toc" macio de lingueta de plástico a cada
   cartão que passa pelo marcador (no máximo 20 por segundo no começo, mais grave ao desacelerar) e
   um arpejo de sino quando o prêmio aparece (uma nota a mais no raro e no lendário).
@@ -577,6 +599,14 @@ e a meta de longo prazo). Catálogo e regras em `scripts/economy/shop_catalog.gd
   equipar): a câmera orbita até a peça (ou até a lateral, onde o decalque aparece) e a centraliza,
   alternando o sentido a cada clique (horário, anti-horário). O cartão de detalhes traz raridade, roleta, chance exata, quanto devolve
   se sair repetida e o botão Equipar (se for sua) ou Girar na roleta (se faltar).
+- **Origem dos itens** (Estúdio e Galeria): a coleção da conta no servidor e a deste aparelho
+  podem ser diferentes; o selo diz de onde vem o que é de um lado só — **CONTA** (só no servidor),
+  **APARELHO** (só aqui), e apagados, sem dar para usar agora, **SÓ ONLINE** (offline, item só da
+  conta) e **SÓ OFFLINE** (servidor que não aceita os itens do aparelho). Nos dois lados: sem selo.
+  O Net guarda a coleção da conta a cada conexão no arquivo da conta (`[collection] by_server`,
+  por endereço: o servidor da internet e o hospedado são contas diferentes); sem nunca ter
+  conectado ao servidor atual, não aparece selo. `PlayerProfile.origin()`/`badge_of()`;
+  captura em `tests/capture_origin.gd`.
 - **Loja:** só tickets. Nenhum cosmético se compra direto; sem rotação nem ofertas. As paletas da
   interface vêm todas com o jogo (troca em Configurações → Tela).
 - Não há presentes/vínculo como no Pokeru (o jogo não tem personagens para presentear).
@@ -709,8 +739,8 @@ Garagem). O item focado ganha um contorno no acento secundário, e as listas rol
   estouram), **flocos de neve**, **fogo no chão** (uma faixa de fogo contínua atrás de cada roda
   traseira — fita virada para a câmera, presa ao chão —, brilho no asfalto, chamas curtas e brasas,
   com luz laranja), **brasas** com fumaça escura, **chuva de moedas**
-  de ouro girando, **fumaça colorida** (nas 3 cores da pintura) ou **faíscas de titânio** saindo do
-  assoalho. As formas são desenhadas no shader (`shaders/car/car_particle.gdshader`, sem textura;
+  de ouro girando, **fumaça colorida** (nas 3 cores da pintura) ou um **arco-íris** (faixa de sete
+  cores saindo da traseira, `car_rainbow_trail.gdshader`, com estrelinhas). As formas são desenhadas no shader (`shaders/car/car_particle.gdshader`, sem textura;
   as faixas de fogo em `car_fire_trail.gdshader`). Parado, só aparece na vitrine da garagem (fraco,
   de amostra; meta `showcase` do carro do menu); na pista só sai com o carro andando, cheio a partir
   de ~140 km/h. Tamanho: `CarParticles.SIZE` (0,6). As partículas nascem no mundo e herdam parte da velocidade
@@ -720,6 +750,15 @@ Garagem). O item focado ganha um contorno no acento secundário, e as listas rol
   com o carro devagar. Somem perto da câmera. A velocidade sai do quanto o carro andou, então vale
   também nos carros dos outros jogadores online (o rastro vai no equipamento). O servidor nem cria
   (tira o `Effects` inteiro).
+- **Faíscas de frenagem** (todo carro, não é item): numa frenagem forte o assoalho raspa e solta
+  faíscas brilhantes — só se o carro estava a 250 km/h ou mais no começo da frenagem e segura o
+  freio por mais de 1 s; param ao soltar o freio ou abaixo de 120 km/h
+  (`CarParticles.brake_spark_state`). Valem para o jogador, os bots e os carros dos outros (o freio
+  vem no snapshot).
+- **Luz de ultrapassagem** (garagem → Luz de ultrapassagem, `CarConfig.pass_light`): o pisca dos
+  retrovisores ao pedir passagem (X) é âmbar; com a **Sirene** (exclusivo da conquista Interceptor)
+  os dois LEDs alternam vermelho e azul, oito trocas por segundo, com o halo e a luz junto
+  (`F1Car.SirenBlinker`). Online vai no equipamento, como o rastro.
 - **Luz traseira de F1:** a lanterna central e os LEDs das placas da asa traseira ganham material
   próprio e piscam (~4 Hz) quando o carro freia (recuperando energia), com clarão e, à noite, luz
   vermelha no chão atrás do carro. Os LEDs do volante não são afetados.
@@ -792,8 +831,10 @@ dos vilarejos e nos camarotes no alto das arquibancadas cobertas.
 os presets ficam em `scripts/world/daylight_presets.gd`. Trocar é instantâneo, sem reconstruir a pista:
 
 - **Horário:** sol (ou lua), céu (degradê, nuvens, estrelas e lua à noite), luz ambiente, neblina e
-  luzes de três pontos. À noite (e fraco no entardecer) os postes acendem com `SpotLight3D` reais
-  apontados para a pista, as garagens acendem e as janelas de vidro brilham.
+  luzes de três pontos. À noite (e fraco no entardecer) os postes acendem com `SpotLight3D` reais de
+  luz branca apontados para a pista (em todas as pistas os postes ficam a 60% do intervalo do
+  layout, `TrackProps.LIGHT_DENSITY`, e a área iluminada é 1,3× maior, `LIGHT_REACH`), as garagens
+  acendem e as janelas de vidro brilham. A noite tem luz ambiente e exposição um pouco mais altas.
 - **Ambiente:** as cores da grama, das copas e das folhas vêm de uniforms globais de shader
   (`grass_*`, `leaf_*`, `leaf_mix`, `conifer_mix`, `petals`), usados pelo terreno, grama 3D, árvores
   e folhas. Outono: grama e árvores laranja/vermelho/amarelo, pinheiros verdes, algumas folhas na
@@ -1063,8 +1104,8 @@ monta a cena certa, e para os clientes no `race_start`).
   flutuantes, iates enormes de popa no cais, lanchas e veleiros nos pontões, superiates fundeados
   (MultiMesh com balanço e cor do casco no shader `boat.gdshader`) e lanchas navegando ao largo com
   rastro de espuma.
-- **Noite:** ~50 postes de rua (`LIGHTS` com `variant = 1`: coluna fina atrás da barreira, braço
-  curvo sobre a pista e luz quente) nos pontos-chave da volta, e parte das janelas dos prédios
+- **Noite:** postes de rua (`LIGHTS` com `variant = 1`: coluna fina atrás da barreira, braço
+  curvo sobre a pista e luz branca) nos pontos-chave da volta, e parte das janelas dos prédios
   acende (`city_building.gdshader`, `TrackCity.set_night`).
 - **Ambiente:** as copas das árvores e a grama dos jardins seguem o tema (outono laranja, sakura
   rosa, fantasia roxa) pelos globais do shader; as palmeiras puxam um pouco para ele
@@ -1207,6 +1248,92 @@ pistas: com o padrão (tradução) o Godot não os leva para o jogo exportado.
   dirigível e a cobertura de LED).
 - Dados: © colaboradores do OpenStreetMap, licença ODbL (https://www.openstreetmap.org/copyright).
 
+## Sky Aerobase (pista fantasia no céu)
+
+Primeira pista da categoria **Fantasia** (`"category": "fantasy"` em `RaceSettings.TRACKS`):
+`scenes/tracks/sky_aerobase.tscn` + `resources/tracks/sky_aerobase_layout.tres` (`sky = true`).
+
+- **Traçado** (`python tools/build_sky_aerobase.py [--debug pasta]`): sem dados reais, montado por
+  trechos (retas e arcos, cada um com a altura no fim); o fechamento é resolvido sozinho (ângulo da
+  última curva e comprimento de duas retas), e o script confere rampa, curvatura vertical e que
+  trechos não vizinhos fiquem a mais de 40 m. Saída em `assets/track/sky_aerobase/` (linha central
+  com elevação e linha de corrida de curvatura mínima). 3,81 km: Reta dos Hangares (boxes e grid, a
+  40 m), Curva da Torre, Esses do Vento, Grampo do Hangar (48 m), **Descida dos Jatos** até 9 m
+  (como a de Mônaco, rampa máx. ~9%), **Curva do Portal** (70° fechada à direita no pé da descida),
+  **Túnel do Reator** (quase reto), **Chicane do Abismo** (esquerda, 77 m de reta em diagonal,
+  direita: ~96 m entre os ápices), Reta Oposta subindo, Curva do Céu e a Última Curva. O fechamento
+  usa a Reta Oposta e a Reta da Plataforma, então tudo até a descida mantém o s. Os bots fazem
+  ~69–82 s (volta mínima plausível online: 50 s).
+- **Sem barreira** (`TrackFeature` BARRIER `variant = 2` → `Barrier.NONE`): por fora da Curva da
+  Torre (sem barreira nem arquibancada), por fora dos esses, por fora do Grampo do Hangar (a curva
+  mais fechada; a arquibancada dele foi para a reta que chega nele), por fora da Curva do Portal
+  (sem barreira nem arquibancada), nos dois lados da chicane e por
+  fora da Curva do Céu. Ali a pista não acaba no kerb: vem uma **área de escape** de placas metálicas (6 m na
+  chicane, 8–9 m nas outras, piso RUNOFF) com uma faixa de aviso amarela e preta antes do vazio
+  (`RaceTrack.open_edge` / `deck_edge`). Os bots contam com menos aderência nas curvas com borda
+  aberta por fora (`RacingLine.CAUTION`). Embaixo dos pisos há uma laje de colisão de 1 m
+  (`TrackRoad._deck_floor`, até a borda da plataforma): sem ela, um carro empurrado por outro
+  atravessaria o asfalto (os pisos não têm espessura e não há chão).
+- **Queda** (`scripts/race/fall_watch.gd`, só servidor/offline): quem passa da borda da plataforma
+  (ou fica abaixo da pista) sem roda no chão cai; depois de **2 s** de queda volta pelo box da equipe
+  (ou a vaga livre mais perto, se o companheiro estiver nele) e faz um **pit stop completo** (pneus,
+  conserto se precisar, conta como parada; a volta em andamento recomeça, como no "voltar aos
+  boxes"; na classificação a volta é anulada). Vale para bots e para o treino livre. Apertar R no ar
+  não segura o carro. A câmera de corrida detecta a queda sozinha (também online): fica parada na
+  borda olhando o carro cair e o HUD mostra "VOCÊ CAIU!". Na rede, o salto do teletransporte não é
+  interpolado nos carros dos outros. Os boxes ficam todos antes da linha de chegada.
+- **Visual** (ramo `layout.sky` do `RaceTrack.rebuild`: sem terreno nem cidade):
+  - **Placas de metal com parafusos** (`metal_plate*.gdshader`): com `TrackMaterials.metal` ligado
+    (o RaceTrack liga na pista no céu), todas as construções (barreiras, boxes, arquibancadas, objetos,
+    plataforma, nave e base) trocam o concreto por placas de 3 × 2 m em metal escuro, com juntas,
+    parafusos nos cantos e no meio dos lados maiores e relevo feito da forma das placas (chanfro nas
+    bordas e cabeça abaulada dos parafusos), com iluminação realista (sem o degrau do toon) e pouco
+    reflexiva; a faixa entre a pista e a barreira também é de placas. Asfalto bem mais escuro, também
+    sem o toon (`track_surface_smooth.gdshader`).
+  - **Barreiras**: metal com o topo arredondado, friso de LED e a faixa de anúncios em **holograma
+    correndo** (`holo_ads.gdshader`, `TrackAds.holo_material`): fundo transparente, letras
+    flutuando e faixas em cima e embaixo na cor da marca. Todos os anúncios da pista (pórticos, boxes,
+    arquibancadas) usam o mesmo estilo, parados.
+  - **LEDs** (`SkyLights`): os frisos da plataforma e das barreiras e os aros mudam de cor **a cada
+    volta** de quem lidera (no treino, do jogador), entre azul, verde e roxo; à noite, luzes a cada
+    18 m ao longo das barreiras, na mesma cor, iluminam onde a luz dos postes não chega.
+  - `SkyDeck`: laje sob a pista e **propulsores nas beiradas**, alternando os lados a cada 46 m: a
+    ponta arredondada e um pouco cônica, em metal escuro e de normais suaves (`MeshBuilder.lathe`),
+    com 1,6× o raio dos outros motores, aparece acima da
+    plataforma, com uma faixa acesa de
+    cor fixa em cada um (vermelho, amarelo, azul e verde, de um propulsor para o outro), e o jato azul
+    (`jet_plume.gdshader`) sai por baixo; MultiMesh com LOD.
+  - `SkyShip`: o túnel é uma **nave** de placas de metal: casco arredondado, parede cheia (com janelas
+    acesas) do lado de dentro do circuito e o lado de fora **vazado, com pilares**; espinha com luz,
+    núcleos do reator em cima, proa na saída e dois propulsores com o bocal aceso na entrada; à noite,
+    refletores brancos no forro a cada 10 m.
+  - Postes próprios: coluna de metal, anel de luz e um pescoço curvo até uma barra de LED sobre a pista.
+  - `SkyWorld`: o **mar** 1,4 km abaixo (`water.gdshader` em modo mar aberto), um **tapete de nuvens**
+    com buracos (`cloud_deck.gdshader`), nuvens 3D abaixo, no nível da pista (paradas, longe do
+    traçado) e altas, gaivotas, mecânicos nos boxes e menos névoa; de dia o céu é azul até o
+    horizonte e abaixo dele.
+  - `SkyBase`: torres de controle em plataformas flutuantes com motores, um **porta-aviões voador**
+    com caças estacionados e "SKY AEROBASE" no casco, **aros gigantes girando** sobre as retas (centro
+    no nível da pista, raio de 1,7× a meia-largura da plataforma; LEDs por dentro, uma faixa em cada
+    face com placas e pinos em volta, pontos por fora), o letreiro "SKY AEROBASE / HIGHER · FASTER ·
+    FURTHER" sobre os boxes, esquadrilhas de caças com rastro passando no alto e 12 **dirigíveis-nave** dando voltas
+    sobre trechos diferentes da pista, de 55 a ~260 m acima dela, mais um rente à pista (órbita de
+    60 m logo além da borda de uma reta, ~26 m acima) e um abaixo dela (20 m abaixo, do lado de uma
+    borda aberta, onde nenhuma barreira o esconde; `SkyBase._orbit_beside`): mais largos que altos (casco
+    achatado, convés, ponte de comando, flutuadores laterais com asas, cauda dupla), janelas acesas,
+    anúncio em holograma, seis propulsores (quatro para baixo, de jato curto, dois para trás), farol vermelho
+    piscando embaixo (`SkyBlink`) e, à noite, luzes nos propulsores e nas janelas iluminando o casco;
+  - `SkyBeams`: **holofotes** saindo de baixo da plataforma (`searchlight.gdshader`, cone de normais
+    suaves que some pelas bordas e onde atravessa alguma coisa), só ao entardecer e à noite (de dia
+    ficam desligados): dez varrendo o céu, mais transparentes, e os principais, dois em cada balão
+    de personagem, saindo de logo abaixo dele e subindo até passar do balão, que à noite também
+    recebe a luz deles.
+  Nada disso tem colisão; o servidor só gera pista, laje, barreiras e boxes.
+- **Arquibancadas**: na reta dos boxes, na reta do grampo, na reta oposta e na última curva (coberta).
+- Teste: `tests/sky_aerobase_test.gd` (traçado, pisos, bordas abertas com escape e nada embaixo, nada
+  sobre a pista, cenário, carro parado, e quedas do jogador e de um bot na corrida e no treino);
+  capturas em `tests/sky_aerobase_shots.gd`.
+
 ## Vitrine: balões de personagem, outdoors e murais
 
 `scripts/track/track_showcase.gd` (etapa "vitrine" da geração, nas duas pistas; o servidor pula):
@@ -1330,8 +1457,31 @@ liberada pelo nível) e paga.
   1000) por aba; só valores > 0; empates por nome e id dividem a posição (1, 2, 2, 4); 50 linhas e
   a sua; cache de 15 s; sem temporadas.
 - **Perfil** (só amigos e o dono): nome (até 16, vazio = Jogador), código, nível, título (validado
-  pelas conquistas), últimas 5 corridas, 21 conquistas, "como você pilota" (6 traços das últimas
-  10 corridas, 0,5 sem histórico). Ganhos totais só o dono vê.
+  pelas conquistas e pelos títulos-item da coleção), últimas 5 corridas, 25 conquistas, "como você
+  pilota" (6 traços das últimas 10 corridas, 0,5 sem histórico). Ganhos totais só o dono vê.
+- **Conquistas pagam** (uma vez, `counters.ach_paid`): 300 / 800 / 2.000 / 5.000 / 12.000 créditos
+  pelo grau; Interceptor (300 posições ganhas online) dá também a **Sirene**. Contas antigas
+  recebem as já feitas ao entrar (aviso "Recompensas de conquistas"). Conquistas difíceis novas,
+  com **títulos especiais**: **Midnight** (100 vitórias online à noite), **Winged Death** (1.000
+  batidas fortes causadas em outros jogadores: a culpa da colisão, `_penalize` "COLISÃO", junto de
+  uma peça arrancada da vítima em até 2 s, `RaceManager.note_crash`) e **Nightmare** (vencer
+  ultrapassando o líder humano na reta final da última volta; `RaceTrack.final_straight_s`).
+- **Títulos especiais** (`scripts/ui/title_label.gd`, `TitleLabel`): fonte própria
+  (`assets/fonts/neon/`) e animação — Midnight (Monoton, pulso azul), Winged Death (Rye, vermelho
+  com tremor), Nightmare (Bungee, glitch roxo), Tempestade (clarão percorrendo as letras), Fantasma
+  (some e volta) e Soberano do Céu (dourado com brilho deslizando). Aparecem na sala, no perfil,
+  na lista de amigos e nos cartões da Galeria; os comuns ficam na cor do grau.
+- **Missões diárias** (`scripts/server/missions.gd`, aba MISSÕES): três por dia, iguais para todos,
+  sorteadas pela data (Brasília) entre 10 tipos (corridas, pódio, vitória, voltas, corrida limpa,
+  volta mais rápida, pista do dia, corrida à noite, ganhar 4 posições, corridas online), de 300 a
+  1.000 créditos cada, pagos na hora. Completar as 21 da semana (segunda a domingo) dá 3.000
+  créditos e um exclusivo. Contam as corridas validadas pelo servidor (online e solo conectado); o
+  estado fica em `counters.missions`, sem tabela nova, e vira o dia sem job (comparação preguiçosa).
+- **Roleta do vencedor** (online, 1º lugar sem desclassificação): o servidor guarda o giro
+  (`counters.race_spins`) e sorteia em `race_spin` — 5% exclusivo (2.000 créditos se já tiver
+  todos), 50% 500 créditos, 30% 1.000 créditos, 15% um ticket (`ShopCatalog.WINNER_WHEEL`). A roda
+  (`scripts/ui/prize_wheel.gd`) tem as fatias do tamanho das chances e para na sorteada; quem fechar
+  a tela final sem girar gira depois na aba MISSÕES.
 - **Nível** = 1 + ⌊√(xp ÷ 40)⌋, xp dos contadores (volta 3, corrida 10, pódio 15, vitória 25).
   Bots liberados por nível: fácil 1, médio 3, difícil 6, mista 3.
 
@@ -1457,7 +1607,9 @@ godot --path . -s res://tests/capture_crash.gd -- <pasta>    # screenshots de um
 godot --path . -s res://tests/capture_moods.gd -- <pasta>    # todos os horários × ambientes
 godot --path . -s res://tests/capture_boost.gd -- <pasta>    # boost, marcas de pneu, sombra, fantasia
 godot --path . -s res://tests/capture_trails.gd -- <pasta> [efeito ...]   # rastros de partículas: perseguição, lado, parado e à noite
-godot --headless --path . -s res://tests/race_test.gd -- 3 9 3  # corrida de 3 voltas, 9 bots, dificuldade mista (+ monaco, suzuka ou las_vegas no fim = nessa pista)
+godot --headless --path . -s res://tests/race_test.gd -- 3 9 3  # corrida de 3 voltas, 9 bots, dificuldade mista (+ monaco, suzuka, las_vegas ou sky_aerobase no fim = nessa pista)
+godot --headless --path . -s res://tests/sky_aerobase_test.gd # Sky Aerobase: traçado, bordas abertas com escape e vazio embaixo, cenário, quedas (jogador, bot, treino) voltando pelo box
+godot --path . -s res://tests/sky_aerobase_shots.gd -- <pasta> [horário] [prefixo]  # screenshots da Sky Aerobase (curvas, túnel, borda do abismo, motores, base aérea)
 godot --headless --path . -s res://tests/monaco_test.gd     # Mônaco: traçado, desnível, pisos, túnel coberto, cidade, porto, carro na rampa
 godot --path . -s res://tests/monaco_shots.gd -- <pasta> [horário] [ambiente] [prefixo]  # screenshots de Mônaco (+ calçadas, navios, balões, dirigíveis e o céu visto da pista)
 godot --headless --path . -s res://tests/suzuka_test.gd     # Suzuka: traçado, desnível, cruzamento (folga, projeção nos dois níveis), nada acima do asfalto, terreno, carro na ponte e embaixo dela
@@ -1473,9 +1625,10 @@ godot --headless --path . -s res://tests/race_control_test.gd # bandeira amarela
 godot --headless --path . -s res://tests/last_lap_yellow_test.gd # amarela de 10 s só na última volta
 godot --path . -s res://tests/capture_yellow.gd -- <pasta>   # instrução da amarela, safety car
 godot --headless --path . -s res://tests/ui_nav_test.gd     # menus pelo controle: foco, D-pad, A/B, LB/RB
-godot --headless --path . -s res://tests/economy_test.gd    # economia: chances, sorteio, giro, repetidas, loja, estúdio, partículas, prêmios
+godot --headless --path . -s res://tests/economy_test.gd    # economia: chances, sorteio, giro, repetidas, loja, estúdio, partículas, faíscas de frenagem, tickets, exclusivos, Sirene
+godot --headless --path . -s res://tests/missions_test.gd   # missões diárias e da semana, conquistas pagas, títulos especiais e roleta do vencedor (sem rede)
 godot --path . -s res://tests/capture_menu.gd -- <pasta>     # menu principal: início, jogar solo, estúdio, galeria, loja, giro
-godot --headless --path . -s res://tests/track_carousel_test.gd # carrossel de pistas, peças por categoria na Galeria, Roleta Dragão
+godot --headless --path . -s res://tests/track_carousel_test.gd # carrossel de pistas e abas Reais/Fantasia, peças por categoria na Galeria, Roleta Dragão
 godot --path . -s res://tests/capture_cards.gd -- <pasta>    # capturas: carrossel, silhuetas e partículas no Estúdio/Galeria, giro da Dragão
 godot --path . -s res://tests/part_silhouette_probe.gd -- <pasta> # folha com a silhueta de todas as peças
 godot --path . -s res://tests/capture_settings.gd -- <pasta> # menu de configurações + monitor de desempenho

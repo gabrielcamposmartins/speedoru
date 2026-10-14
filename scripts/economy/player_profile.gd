@@ -4,9 +4,11 @@ extends Node
 ## ganhas nas roletas), o que está equipado (e o cenário da garagem) e estatísticas.
 ##
 ## Regras (ver ShopCatalog):
-## * spin(roleta): cobra o ticket, sorteia com gerador criptográfico e entrega na mesma operação;
-##   repetida devolve 30% do preço de tabela. As roletas têm peças, decalques, boost, neon e rastros
-##   de partículas.
+## * spin(roleta): cobra o ticket (2.500 créditos ou um ticket ganho), sorteia com gerador
+##   criptográfico e entrega na mesma operação; repetida devolve 30% do preço de tabela. As roletas
+##   têm peças, decalques, boost, neon e rastros de partículas.
+## * grant_item(id): prêmio (conquista, missão da semana, roleta do vencedor); repetida também vira
+##   créditos. Os exclusivos (títulos, Sirene) não saem nas roletas da loja.
 ## * Cores livres: carro (3 cores), capacete, macacão e rodas aceitam qualquer cor; as pinturas
 ##   prontas (ShopCatalog.PAINTS) são atalhos grátis. Brilho do boost e neon: só as cores ganhas.
 ## * Peças de desempenho: só as variantes ganhas; decalques padrão: só os ganhos (ou grátis); os
@@ -33,6 +35,8 @@ static var paints_path := "user://paint_presets.cfg"
 const MAX_CUSTOM_PAINTS := 24
 
 var credits := ShopCatalog.START_CREDITS
+## Tickets ganhos (roleta do vencedor): cada um paga um giro de roleta da loja.
+var tickets := 0
 var owned := {}
 var equipped := {}
 var stats := {"spins": 0, "races": 0, "earned": 0, "duplicates": 0}
@@ -49,6 +53,12 @@ var mode := "local"
 ## Conectado a um servidor que aceita o carro do aparelho: itens da coleção local também contam
 ## como "tem" (para montar o carro). PENDENTE (produção): o servidor validar a posse.
 var extra_owned := {}
+## Origem dos itens (selos do Estúdio e da Galeria). A outra coleção desta conta, quando se sabe:
+## * offline ("local"): a coleção da conta no servidor atual, guardada pelo Net na última conexão;
+## * conectado ("remote"): a coleção deste aparelho (o Net preenche ao conectar).
+## `other_known` falso = nunca conectou a este servidor: não dá para dizer de onde vem nada.
+var other_owned := {}
+var other_known := false
 
 
 func _ready() -> void:
@@ -74,6 +84,8 @@ static func default_equipped() -> Dictionary:
 		"neon_on": false, "neon": def["neon"],
 		# Rastro de partículas: id do item ("" = nenhum)
 		"trail": "",
+		# Luz de ultrapassagem: id do item ("" = âmbar padrão)
+		"signal": "",
 		"parts": {},
 		"paint_finish": 0,
 		"paint_scheme": 0,
@@ -89,6 +101,7 @@ static func default_equipped() -> Dictionary:
 
 func reset_profile() -> void:
 	credits = ShopCatalog.START_CREDITS
+	tickets = 0
 	owned = {}
 	equipped = default_equipped()
 	stats = {"spins": 0, "races": 0, "earned": 0, "duplicates": 0}
@@ -104,10 +117,8 @@ func load_profile() -> void:
 		save_profile()
 		return
 	credits = maxi(int(cfg.get_value("wallet", "credits", ShopCatalog.START_CREDITS)), 0)
-	owned = {}
-	for id in cfg.get_value("collection", "owned", []):
-		if ShopCatalog.ITEMS.has(str(id)):
-			owned[str(id)] = true
+	tickets = maxi(int(cfg.get_value("wallet", "tickets", 0)), 0)
+	_load_owned(cfg.get_value("collection", "owned", []))
 	var eq: Variant = cfg.get_value("equipped", "data", {})
 	if eq is Dictionary:
 		for key in equipped:
@@ -121,11 +132,28 @@ func load_profile() -> void:
 	clamp_equipped()
 
 
+## Coleção a partir de uma lista de ids: só o que existe no catálogo. Itens aposentados
+## (ShopCatalog.RETIRED) viram créditos na memória: carregar não grava nada (os testes carregam o
+## perfil do aparelho ao abrir); a troca fica no arquivo na próxima gravação normal e, até lá,
+## cada carga devolve o mesmo valor (uma vez só). Devolve se algum foi trocado.
+func _load_owned(ids: Array) -> bool:
+	owned = {}
+	var retired := false
+	for id in ids:
+		if ShopCatalog.ITEMS.has(str(id)):
+			owned[str(id)] = true
+		elif ShopCatalog.RETIRED.has(str(id)) and mode != "remote":
+			credits += int(ShopCatalog.RETIRED[str(id)])
+			retired = true
+	return retired
+
+
 func save_profile() -> void:
 	if mode != "local":
 		return
 	var cfg := ConfigFile.new()
 	cfg.set_value("wallet", "credits", credits)
+	cfg.set_value("wallet", "tickets", tickets)
 	cfg.set_value("collection", "owned", owned.keys())
 	cfg.set_value("equipped", "data", equipped)
 	cfg.set_value("stats", "data", stats)
@@ -134,15 +162,14 @@ func save_profile() -> void:
 
 ## Estado completo da conta (servidor → cliente, e servidor → banco).
 func to_dict() -> Dictionary:
-	return {"credits": credits, "owned": owned.keys(), "equipped": equipped.duplicate(true), "stats": stats.duplicate()}
+	return {"credits": credits, "tickets": tickets, "owned": owned.keys(), "equipped": equipped.duplicate(true),
+		"stats": stats.duplicate()}
 
 
 func from_dict(d: Dictionary) -> void:
 	credits = maxi(int(d.get("credits", ShopCatalog.START_CREDITS)), 0)
-	owned = {}
-	for id in d.get("owned", []):
-		if ShopCatalog.ITEMS.has(str(id)):
-			owned[str(id)] = true
+	tickets = maxi(int(d.get("tickets", 0)), 0)
+	_load_owned(d.get("owned", []))
 	var eq: Variant = d.get("equipped", {})
 	# Conectado: uma resposta do servidor mais velha que a última mudança feita aqui (ainda indo
 	# para ele) não desfaz a mudança
@@ -162,6 +189,16 @@ func from_dict(d: Dictionary) -> void:
 	clamp_equipped()
 	changed.emit()
 	setup_changed.emit()
+
+
+## Títulos que a coleção dá (itens do tipo "title").
+func owned_titles() -> Array[String]:
+	var out: Array[String] = []
+	for id in owned:
+		var t := ShopCatalog.title_of(str(id))
+		if t != "":
+			out.append(t)
+	return out
 
 
 ## Equipamento pedido pelo cliente (servidor): aceita só o que a conta tem.
@@ -194,13 +231,57 @@ static func sanitize_equipped(eq: Dictionary) -> Dictionary:
 	return out
 
 
-## Peças que a conta tem de um tipo (gratuitas incluídas).
-func owned_of_type(type: String) -> Array[String]:
+## Peças que a conta tem de um tipo (gratuitas incluídas). `with_other`: também as que só a outra
+## coleção tem (o Estúdio mostra apagadas as que não dá para usar agora, ver known()).
+func owned_of_type(type: String, with_other := false) -> Array[String]:
 	var out: Array[String] = []
 	for id in ShopCatalog.items_of_type(type):
-		if owns(id):
+		if known(id) if with_other else owns(id):
 			out.append(id)
 	return out
+
+
+## Pode usar agora ou a outra coleção desta conta tem (conta no servidor ou este aparelho).
+func known(id: String) -> bool:
+	return owns(id) or other_owned.has(id)
+
+
+## De onde vem um item: "free" (grátis), "both" (conta e aparelho, ou origem desconhecida),
+## "account" (só na conta do servidor), "device" (só neste aparelho) ou "" (não tem).
+func origin(id: String) -> String:
+	if ShopCatalog.is_free(id):
+		return "free"
+	var here := owned.has(id)
+	var other := other_owned.has(id)
+	if mode == "remote" and extra_owned.has(id):
+		other = true
+	if not here and not other:
+		return ""
+	if not other_known or (here and other):
+		return "both"
+	if mode == "remote":
+		return "account" if here else "device"
+	return "device" if here else "account"
+
+
+## Selo de origem: [texto, cor do tema (Retro.c), pode usar agora]; texto "" = sem selo (nos dois
+## lados, grátis ou origem desconhecida).
+func badge_of(id: String) -> Array:
+	match origin(id):
+		"account":
+			return ["CONTA", "accent_2", true] if owns(id) else ["SÓ ONLINE", "muted", false]
+		"device":
+			return ["APARELHO", "warn", true] if owns(id) else ["SÓ OFFLINE", "muted", false]
+	return ["", "", owns(id)]
+
+
+## Item da loja de uma variante de peça ("" = a padrão ou sem item).
+static func part_item(slot: String, variant: String) -> String:
+	for id in ShopCatalog.items_of_type("part"):
+		var it := ShopCatalog.item(id)
+		if it["slot"] == slot and it["variant"] == variant:
+			return id
+	return ""
 
 
 ## Sugestões de cor para um campo do Estúdio (sem repetir): [nome, cor]. As cores do carro saem
@@ -222,9 +303,9 @@ func color_suggestions(field: String) -> Array:
 
 
 ## Cores ganhas de um tipo ("boost"/"neon"): [id, nome, cor], grátis primeiro.
-func owned_colors(type: String) -> Array:
+func owned_colors(type: String, with_other := false) -> Array:
 	var out := []
-	for id in owned_of_type(type):
+	for id in owned_of_type(type, with_other):
 		var it := ShopCatalog.item(id)
 		out.append([id, it["name"], Color(str(it["color"]))])
 	return out
@@ -242,11 +323,11 @@ func owns_color(type: String, html: String) -> bool:
 
 
 ## Decalques padrão (ids do CarDecals) que a conta pode usar: grátis e ganhos nas roletas.
-func owned_decals() -> Array[String]:
+func owned_decals(with_other := false) -> Array[String]:
 	var out: Array[String] = []
 	for p in CarDecals.PRESETS:
 		var item := ShopCatalog.decal_item(p[0])
-		if item != "" and owns(item):
+		if item != "" and (known(item) if with_other else owns(item)):
 			out.append(p[0])
 	return out
 
@@ -259,9 +340,9 @@ func can_use_decal(id: String) -> bool:
 
 
 ## Variantes de uma peça que a conta pode montar (a padrão sempre).
-func owned_variants(slot: String) -> Array[String]:
+func owned_variants(slot: String, with_other := false) -> Array[String]:
 	var out: Array[String] = [CarPartCatalog.default_variant(slot)]
-	for id in owned_of_type("part"):
+	for id in owned_of_type("part", with_other):
 		var it := ShopCatalog.item(id)
 		if it["slot"] == slot and not it["variant"] in out:
 			out.append(it["variant"])
@@ -283,14 +364,40 @@ func collection_count(type: String) -> Vector2i:
 # ---------------------------------------------------------------------------
 # Loja
 # ---------------------------------------------------------------------------
-## Compra e gira um ticket. Devolve {ok, error?, item, dup, refund, rarity}.
-func spin(roulette: String) -> Dictionary:
-	if not ShopCatalog.ROULETTES.has(roulette):
+## Compra e gira um ticket (com [param use_ticket], gasta um ticket ganho em vez dos créditos).
+## Devolve {ok, error?, item, dup, refund, rarity, ticket}.
+func spin(roulette: String, use_ticket := false) -> Dictionary:
+	if not ShopCatalog.ROULETTES.has(roulette) or ShopCatalog.is_hidden(roulette):
 		return {"ok": false, "error": "Roleta desconhecida."}
-	if credits < ShopCatalog.TICKET_PRICE:
-		return {"ok": false, "error": "Créditos insuficientes: o ticket custa %s." % format_credits(ShopCatalog.TICKET_PRICE)}
-	credits -= ShopCatalog.TICKET_PRICE
+	if use_ticket:
+		if tickets <= 0:
+			return {"ok": false, "error": "Você não tem tickets."}
+		tickets -= 1
+	else:
+		if credits < ShopCatalog.TICKET_PRICE:
+			return {"ok": false, "error": "Créditos insuficientes: o ticket custa %s." % format_credits(ShopCatalog.TICKET_PRICE)}
+		credits -= ShopCatalog.TICKET_PRICE
 	var id := ShopCatalog.draw(roulette, _secure_roll())
+	var res := _give(id)
+	stats["spins"] += 1
+	save_profile()
+	changed.emit()
+	res["ticket"] = use_ticket
+	return res
+
+
+## Entrega um prêmio (conquista, missão, roleta do vencedor): repetida vira créditos.
+## Devolve {ok, item, dup, refund, rarity}.
+func grant_item(id: String) -> Dictionary:
+	if ShopCatalog.item(id).is_empty() or ShopCatalog.is_free(id):
+		return {"ok": false, "error": "Item desconhecido."}
+	var res := _give(id)
+	save_profile()
+	changed.emit()
+	return res
+
+
+func _give(id: String) -> Dictionary:
 	var dup := owned.has(id)
 	var refund := 0
 	if dup:
@@ -299,10 +406,23 @@ func spin(roulette: String) -> Dictionary:
 		stats["duplicates"] += 1
 	else:
 		owned[id] = true
-	stats["spins"] += 1
+	return {"ok": true, "item": id, "dup": dup, "refund": refund, "rarity": ShopCatalog.item(id)["rarity"]}
+
+
+## Créditos de prêmio (missões, conquistas, roleta do vencedor): entram em "earned".
+func add_credits(amount: int) -> void:
+	credits += maxi(amount, 0)
+	stats["earned"] += maxi(amount, 0)
 	save_profile()
 	changed.emit()
-	return {"ok": true, "item": id, "dup": dup, "refund": refund, "rarity": ShopCatalog.item(id)["rarity"]}
+
+
+## Exclusivo sorteado entre os que a conta ainda não tem ("" se já tem todos).
+func pick_exclusive(roll: float) -> String:
+	var left: Array = ShopCatalog.EXCLUSIVE_POOL.filter(func(id: String) -> bool: return not owned.has(id))
+	if left.is_empty():
+		return ""
+	return str(left[mini(int(roll * left.size()), left.size() - 1)])
 
 
 ## Créditos da corrida: por volta completada, pela dificuldade dos bots. Devolve o valor pago.
@@ -469,6 +589,14 @@ func equip_trail(id: String) -> void:
 	_commit()
 
 
+## Equipa uma luz de ultrapassagem (id do item; "" volta ao âmbar).
+func equip_signal(id: String) -> void:
+	if id != "" and (ShopCatalog.item(id).get("type", "") != "signal" or not owns(id)):
+		return
+	equipped["signal"] = id
+	_commit()
+
+
 func has_neon() -> bool:
 	return not owned_of_type("neon").is_empty()
 
@@ -613,6 +741,8 @@ func clamp_equipped() -> void:
 	equipped["neon_on"] = bool(equipped.get("neon_on", false)) and str(equipped["neon"]) != ""
 	var trail := str(equipped.get("trail", ""))
 	equipped["trail"] = trail if ShopCatalog.item(trail).get("type", "") == "trail" and owns(trail) else ""
+	var sig := str(equipped.get("signal", ""))
+	equipped["signal"] = sig if ShopCatalog.item(sig).get("type", "") == "signal" and owns(sig) else ""
 	# Decalques: só lugares/ids válidos, valores nos limites, e padrão só se a conta tiver
 	var decals := CarDecals.sanitize(equipped.get("decals", {}))
 	for slot in decals.keys():
@@ -702,6 +832,9 @@ func apply_to_config(config: CarConfig) -> void:
 	var trail := ShopCatalog.effect_of(str(equipped["trail"]))
 	if config.trail != trail:
 		config.trail = trail
+	var sig := ShopCatalog.signal_of(str(equipped["signal"]))
+	if config.pass_light != sig:
+		config.pass_light = sig
 	config.paint_finish = equipped["paint_finish"]
 	config.paint_scheme = equipped["paint_scheme"]
 	if var_to_str(config.decals) != var_to_str(equipped["decals"]):

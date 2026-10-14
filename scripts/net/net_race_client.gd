@@ -49,6 +49,9 @@ const RENDER_SNAP := 0.5
 const EXIT_BLEND_STEPS := 8
 ## Correção maior que isso (m) é um salto de verdade (carro levado de volta à pista): sem suavizar.
 const EXIT_BLEND_MAX := 6.0
+## Distância (m) entre dois retratos seguidos que só um teletransporte explica (nem a 350 km/h com
+## alguns retratos perdidos o carro anda isso).
+const TELEPORT_JUMP := 40.0
 
 var manager: RaceManager
 var _snaps: Array[Dictionary] = []
@@ -278,6 +281,14 @@ func _physics_process(delta: float) -> void:
 
 
 func _apply(idx: int, car: F1Car, a: Dictionary, b: Dictionary, w: float, extra: float, delta: float) -> void:
+	# Teletransporte entre os dois retratos (voltou ao box, caiu da pista no céu): sem interpolar,
+	# senão o carro desliza pelo meio do caminho
+	if (a["pos"] as Vector3).distance_to(b["pos"]) > TELEPORT_JUMP:
+		a = b
+		w = 1.0
+		_blend.erase(idx)
+		_extrapolated.erase(idx)
+		_last_pose.erase(idx)
 	var vel: Vector3 = (a["vel"] as Vector3).lerp(b["vel"], w)
 	var pos: Vector3 = (a["pos"] as Vector3).lerp(b["pos"], w) + vel * extra
 	var rot: Quaternion = (a["rot"] as Quaternion).slerp(b["rot"], w)

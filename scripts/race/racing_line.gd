@@ -8,6 +8,9 @@ extends RefCounted
 ## * Velocidade: limite de curva pela aderência lateral (que cresce com a downforce, v²),
 ##   depois passadas para trás (frenagem) e para frente (aceleração), em volta fechada.
 ##   `grip_scale`/`brake_scale` diminuem a agressividade (dificuldade dos bots).
+## * Pista no céu: nas curvas em que o lado de fora é borda aberta (sem barreira, só a área de
+##   escape e o vazio) os bots contam com menos aderência (CAUTION): sem muro para segurar, quem
+##   sai largo cai.
 
 const G := 9.81
 ## Aderência lateral do carro: a = (A0 + C·v²)·g (medido no drive_test: 2,2 g a 120 km/h,
@@ -17,12 +20,18 @@ const LAT_C := 0.000406
 const TOP_SPEED := 94.0
 ## Margem de cada lado entre o centro do carro e a borda da pista (m).
 const EDGE_MARGIN := 1.3
+## Aderência que os bots contam nas curvas com borda aberta por fora, e quantas amostras antes e
+## depois da borda a cautela vale (a saída da curva também).
+const CAUTION := 0.82
+const CAUTION_REACH := 20
 
 var path: TrackPath
 var margin := EDGE_MARGIN
 var lateral := PackedFloat32Array()
 var positions := PackedVector3Array()
 var curvature := PackedFloat32Array()
+## Fator de aderência por amostra (1 = normal; CAUTION perto de borda aberta por fora da curva).
+var caution := PackedFloat32Array()
 ## Cópia nativa (Rust, native/src/path.rs), feita no fim da montagem: os bots em Rust usam direto.
 var native: LineCore
 
@@ -33,6 +42,7 @@ static func build(track: RaceTrack, csv_path: String) -> RacingLine:
 	line.margin = track.layout.line_margin if track.layout else EDGE_MARGIN
 	line._compute_lateral(csv_path)
 	line._compute_geometry()
+	line._compute_caution(track)
 	line.native = LineCore.new()
 	line.native.setup(line.path.native, line.lateral, line.curvature)
 	return line
@@ -55,8 +65,9 @@ func speed_profile(grip_scale: float, brake_scale: float, accel_scale := 1.0) ->
 		vert[i] = (path.points[(i + h) % n].y - 2.0 * path.points[i].y + path.points[(i - h + n) % n].y) / (h * h * ds * ds)
 	for i in n:
 		var k := absf(curvature[i])
-		var denom := k - LAT_C * G * grip_scale
-		v[i] = TOP_SPEED if denom <= 1e-5 else minf(sqrt(LAT_A0 * G * grip_scale / denom), TOP_SPEED)
+		var grip := grip_scale * (caution[i] if caution.size() == n else 1.0)
+		var denom := k - LAT_C * G * grip
+		v[i] = TOP_SPEED if denom <= 1e-5 else minf(sqrt(LAT_A0 * G * grip / denom), TOP_SPEED)
 		# Na lombada o carro fica leve (menos aderência); no vale, mais
 		if vert[i] != 0.0 and v[i] < TOP_SPEED:
 			var load := clampf(1.0 + vert[i] * v[i] * v[i] / G, 0.55, 1.2)
@@ -75,6 +86,22 @@ func speed_profile(grip_scale: float, brake_scale: float, accel_scale := 1.0) ->
 			var a_acc := minf(1.25 * G, 760000.0 * accel_scale / (800.0 * maxf(v[i], 5.0))) - 0.00055 * v[i] * v[i] - G * grade[i]
 			v[j] = minf(v[j], sqrt(v[i] * v[i] + 2.0 * maxf(a_acc, 0.2) * ds))
 	return v
+
+
+## Cautela nas curvas com borda aberta por fora (lado oposto à curvatura), estendida CAUTION_REACH
+## amostras para os dois lados.
+func _compute_caution(track: RaceTrack) -> void:
+	var n := path.size()
+	caution.resize(n)
+	caution.fill(1.0)
+	if track == null or not track.layout or not track.layout.sky:
+		return
+	for i in n:
+		var k := path.curvature[i]
+		var outside := -1 if k > 0.0 else 1
+		if absf(k) > 1.0 / 400.0 and track.open_edge(i, outside):
+			for d in range(-CAUTION_REACH, CAUTION_REACH + 1):
+				caution[(i + d + n) % n] = CAUTION
 
 
 func position_at(s: float, extra_lateral := 0.0) -> Vector3:

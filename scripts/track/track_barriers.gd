@@ -15,6 +15,14 @@ const WHITE := Color(0.96, 0.96, 0.97)
 const POST := Color(0.42, 0.45, 0.5)
 ## Brita mais larga que isso ganha barreira de proteção (Tecpro) na frente do guard-rail.
 const PROTECTION_MIN_GRAVEL := 6.0
+## Pista no céu: muro de placas de metal escuro com o topo arredondado e a faixa de anúncios em
+## holograma correndo (holo_ads.gdshader).
+const SKY_METAL := Color(0.36, 0.38, 0.43)
+const SKY_HEIGHT := 1.25
+const SKY_THICK := 0.6
+const HOLO_BOTTOM := 0.14
+const HOLO_TOP := 0.68
+
 
 
 static func build(track: RaceTrack, parent: Node3D) -> void:
@@ -22,6 +30,9 @@ static func build(track: RaceTrack, parent: Node3D) -> void:
 	var n := p.size()
 	var walls := MeshBuilder.new()
 	var fence := MeshBuilder.new()
+	# Pista no céu: sem alambrado (a vista é o céu); friso de LED azul no alto do muro
+	var sky := track.layout.sky
+	var leds := MeshBuilder.new()
 	var collision: Array = []  # [Transform3D, tamanho]
 	var ads := MeshBuilder.new()
 	var ad_spans := []
@@ -41,6 +52,10 @@ static func build(track: RaceTrack, parent: Node3D) -> void:
 			var protect := track.gravel[k][i] > PROTECTION_MIN_GRAVEL and kind == RaceTrack.Barrier.ARMCO
 			var height := 1.25 if kind == RaceTrack.Barrier.CONCRETE else 0.95
 			var thick := 0.6 if kind == RaceTrack.Barrier.CONCRETE else 0.35
+			if sky:
+				height = SKY_HEIGHT
+				thick = SKY_THICK
+				protect = false
 			var front_i := d_i
 			var front_j := d_j
 			if protect:
@@ -49,7 +64,9 @@ static func build(track: RaceTrack, parent: Node3D) -> void:
 				_wall(walls, track, i, j, side, d_i - 1.1, d_j - 1.1, 1.1, 1.05, [[0.0, 1.05, c]])
 				front_i -= 1.1
 				front_j -= 1.1
-			if kind == RaceTrack.Barrier.CONCRETE:
+			if sky:
+				_round_wall(walls, track, i, j, side, d_i, d_j, thick, height, SKY_METAL)
+			elif kind == RaceTrack.Barrier.CONCRETE:
 				var top := RED if (i / 2) % 2 == 0 else WHITE
 				_wall(walls, track, i, j, side, d_i, d_j, thick, height, [[0.0, 1.0, CONCRETE], [1.0, height, top]])
 			else:
@@ -63,12 +80,16 @@ static func build(track: RaceTrack, parent: Node3D) -> void:
 				walls.quad(track.edge_point(i, side, back_i, -12.0), track.edge_point(j, side, back_j, -12.0),
 					track.edge_point(j, side, back_j, 0.05), track.edge_point(i, side, back_i, 0.05),
 					CONCRETE * 0.85, p.lefts[i] * side)
-			# Alambrado sobre a barreira (no túnel não há)
+			# Alambrado sobre a barreira (no túnel e no céu não há)
 			var fl_i := d_i + thick * 0.5
 			var fl_j := d_j + thick * 0.5
 			var s_i := p.s_at(i)
 			var s_j := s_i + p.spacing
-			if not track.in_tunnel(i):
+			if sky:
+				leds.quad(track.edge_point(i, side, d_i - 0.02, 0.76), track.edge_point(j, side, d_j - 0.02, 0.76),
+					track.edge_point(j, side, d_j - 0.02, 0.86), track.edge_point(i, side, d_i - 0.02, 0.86),
+					SkyDeck.LED, -p.lefts[i] * side, Vector2(s_i, 0), Vector2(s_j, 0), Vector2(s_j, 1), Vector2(s_i, 1))
+			elif not track.in_tunnel(i):
 				fence.quad(track.edge_point(i, side, fl_i, height), track.edge_point(j, side, fl_j, height),
 					track.edge_point(j, side, fl_j, height + FENCE_HEIGHT), track.edge_point(i, side, fl_i, height + FENCE_HEIGHT),
 					Color.WHITE, -p.lefts[i] * side,
@@ -84,7 +105,10 @@ static func build(track: RaceTrack, parent: Node3D) -> void:
 			# Anúncios na face da barreira
 			for f in ad_spans:
 				if side in f.sides() and track.in_span(s_i, f.s_start, f.s_end):
-					_ad_segment(ads, track, i, j, side, front_i - 0.03, front_j - 0.03, minf(height, 1.0), f)
+					if sky:
+						_holo_segment(ads, track, i, j, side, front_i - 0.06, front_j - 0.06, f)
+					else:
+						_ad_segment(ads, track, i, j, side, front_i - 0.03, front_j - 0.03, minf(height, 1.0), f)
 					break
 
 	_build_pit_wall(track, walls, fence, collision)
@@ -94,6 +118,8 @@ static func build(track: RaceTrack, parent: Node3D) -> void:
 	wall_mi.name = "Walls"
 	wall_mi.mesh = walls.commit(null, TrackMaterials.barrier())
 	body.add_child(wall_mi)
+	if not leds.is_empty():
+		leds.commit(wall_mi.mesh as ArrayMesh, SkyDeck.glow(0.5, 1.5, 3.4, true))
 	var fence_mi := MeshInstance3D.new()
 	fence_mi.name = "Fence"
 	fence_mi.mesh = fence.commit(null, TrackMaterials.fence())
@@ -102,7 +128,7 @@ static func build(track: RaceTrack, parent: Node3D) -> void:
 	if not ads.is_empty():
 		var ads_mi := MeshInstance3D.new()
 		ads_mi.name = "BarrierAds"
-		ads_mi.mesh = ads.commit(null, TrackMaterials.ads())
+		ads_mi.mesh = ads.commit(null, TrackAds.holo_material(true) if sky else TrackMaterials.ads())
 		ads_mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		body.add_child(ads_mi)
 	# Muro liso: o carro raspa e escorrega em vez de "agarrar" e capotar
@@ -149,6 +175,43 @@ static func _wall(mb: MeshBuilder, track: RaceTrack, i: int, j: int, side: int, 
 		bands[0][2].darkened(0.1), -to_track)
 
 
+## Muro com o topo arredondado (pista no céu): face reta até `height - thick/2`, meia-cana em cima
+## e a face de trás.
+static func _round_wall(mb: MeshBuilder, track: RaceTrack, i: int, j: int, side: int, d_i: float, d_j: float,
+		thick: float, height: float, color: Color) -> void:
+	var to_track := -track.path.lefts[i] * side
+	var r := thick * 0.5
+	var straight := height - r
+	mb.quad(track.edge_point(i, side, d_i, 0.0), track.edge_point(j, side, d_j, 0.0),
+		track.edge_point(j, side, d_j, straight), track.edge_point(i, side, d_i, straight), color, to_track)
+	mb.quad(track.edge_point(i, side, d_i + thick, 0.0), track.edge_point(j, side, d_j + thick, 0.0),
+		track.edge_point(j, side, d_j + thick, straight), track.edge_point(i, side, d_i + thick, straight),
+		color.darkened(0.15), -to_track)
+	var segs := 6
+	for k in segs:
+		var a0 := PI * k / segs
+		var a1 := PI * (k + 1) / segs
+		var am := (a0 + a1) * 0.5
+		mb.quad(track.edge_point(i, side, d_i + r - r * cos(a0), straight + r * sin(a0)),
+			track.edge_point(j, side, d_j + r - r * cos(a0), straight + r * sin(a0)),
+			track.edge_point(j, side, d_j + r - r * cos(a1), straight + r * sin(a1)),
+			track.edge_point(i, side, d_i + r - r * cos(a1), straight + r * sin(a1)),
+			color * 1.12, to_track * cos(am) + Vector3.UP * sin(am))
+
+
+## Uma fatia (i → j) da faixa de anúncios em holograma (pista no céu): UV.x = metros ao longo da
+## faixa (do lado direito ao contrário, para o texto ler certo); a marca e o movimento são do shader.
+static func _holo_segment(mb: MeshBuilder, track: RaceTrack, i: int, j: int, side: int, d_i: float, d_j: float,
+		f: TrackFeature) -> void:
+	var s_i := track.path.s_at(i) + f.variant * 37.0
+	var s_j := s_i + track.path.spacing
+	var u_i := s_i if side > 0 else -s_i
+	var u_j := s_j if side > 0 else -s_j
+	mb.quad(track.edge_point(i, side, d_i, HOLO_BOTTOM), track.edge_point(j, side, d_j, HOLO_BOTTOM),
+		track.edge_point(j, side, d_j, HOLO_TOP), track.edge_point(i, side, d_i, HOLO_TOP), Color.WHITE,
+		-track.path.lefts[i] * side, Vector2(u_i, 0), Vector2(u_j, 0), Vector2(u_j, 1), Vector2(u_i, 1))
+
+
 ## Uma fatia (i → j) de uma faixa contínua de anúncios; cada marca ocupa 6 amostras (~12 m).
 static func _ad_segment(mb: MeshBuilder, track: RaceTrack, i: int, j: int, side: int, d_i: float, d_j: float,
 		height: float, f: TrackFeature) -> void:
@@ -189,7 +252,10 @@ static func _build_pit_wall(track: RaceTrack, walls: MeshBuilder, fence: MeshBui
 		if track.pit_width[i] < full * 0.9 or track.pit_width[j] < full * 0.9:
 			continue
 		var top := RED if (i / 2) % 2 == 0 else WHITE
-		_wall(walls, track, i, j, side, 1.2, 1.2, 0.6, 1.1, [[0.0, 0.95, CONCRETE], [0.95, 1.1, top]])
+		if track.layout.sky:
+			_round_wall(walls, track, i, j, side, 1.2, 1.2, 0.6, 1.1, SKY_METAL)
+		else:
+			_wall(walls, track, i, j, side, 1.2, 1.2, 0.6, 1.1, [[0.0, 0.95, CONCRETE], [0.95, 1.1, top]])
 		var s_i := p.s_at(i)
 		fence.quad(track.edge_point(i, side, 1.5, 1.1), track.edge_point(j, side, 1.5, 1.1),
 			track.edge_point(j, side, 1.5, 3.4), track.edge_point(i, side, 1.5, 3.4), Color.WHITE, -p.lefts[i] * side,

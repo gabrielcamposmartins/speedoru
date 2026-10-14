@@ -8,7 +8,7 @@ enum Kind {
 	GRANDSTAND,     ## Arquibancada com público animado (rows = fileiras, roof = cobertura)
 	SPECTATORS,     ## Público em pé sobre um barranco de grama
 	GRAVEL,         ## Caixa de brita (distance = largura)
-	BARRIER,        ## Muda a barreira no trecho (distance = afastamento; variant 0 guard-rail, 1 concreto)
+	BARRIER,        ## Muda a barreira no trecho (distance = afastamento; variant 0 guard-rail, 1 concreto, 2 sem barreira: borda aberta da pista no céu com área de escape de distance m)
 	BARRIER_ADS,    ## Placas de anúncio na face da barreira
 	BILLBOARD,      ## Painéis de anúncio grandes sobre pernas (spacing = intervalo)
 	LIGHTS,         ## Postes de iluminação (spacing = intervalo)

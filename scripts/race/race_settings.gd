@@ -4,13 +4,18 @@ extends RefCounted
 
 enum Mode { RACE, PRACTICE }
 
-## Pistas disponíveis (id, nome e cena).
+## Pistas disponíveis (id, nome, cena e categoria).
 const TRACKS := [
-	{"id": "monza", "name": "Monza", "scene": "res://scenes/tracks/monza.tscn"},
-	{"id": "monaco", "name": "Mônaco", "scene": "res://scenes/tracks/monaco.tscn"},
-	{"id": "suzuka", "name": "Suzuka", "scene": "res://scenes/tracks/suzuka.tscn"},
-	{"id": "las_vegas", "name": "Las Vegas", "scene": "res://scenes/tracks/las_vegas.tscn"},
+	{"id": "monza", "name": "Monza", "scene": "res://scenes/tracks/monza.tscn", "category": "real"},
+	{"id": "monaco", "name": "Mônaco", "scene": "res://scenes/tracks/monaco.tscn", "category": "real"},
+	{"id": "suzuka", "name": "Suzuka", "scene": "res://scenes/tracks/suzuka.tscn", "category": "real"},
+	{"id": "las_vegas", "name": "Las Vegas", "scene": "res://scenes/tracks/las_vegas.tscn", "category": "real"},
+	{"id": "sky_aerobase", "name": "Sky Aerobase", "scene": "res://scenes/tracks/sky_aerobase.tscn", "category": "fantasy"},
 ]
+## Categorias de pista (abas na escolha de pista): [id, nome]. "real" = circuitos de verdade,
+## "fantasy" = pistas inventadas (no céu, ...).
+const CATEGORIES := [["real", "Reais"], ["fantasy", "Fantasia"]]
+
 enum Grid { POLE, MIDDLE, BACK }
 
 static var mode := Mode.RACE
@@ -81,3 +86,17 @@ static func quali_seconds(lap_index: int, time_index: int) -> float:
 
 static func valid_track(id: String) -> String:
 	return TRACKS[track_index(id)]["id"]
+
+
+## Categoria da pista (id de CATEGORIES).
+static func category_of(id: String) -> String:
+	return TRACKS[track_index(id)].get("category", "real")
+
+
+## Índices (em TRACKS) das pistas de uma categoria, na ordem da lista.
+static func tracks_in(category: String) -> Array[int]:
+	var out: Array[int] = []
+	for i in TRACKS.size():
+		if TRACKS[i].get("category", "real") == category:
+			out.append(i)
+	return out

@@ -31,6 +31,10 @@ var _focused := false
 var _clockwise := true
 var _orbit_tween: Tween
 var _previewing := false
+## Prévia de luz na garagem (o carro está parado): "boost" (rodas brilhando na cor do brilho do
+## boost, como com a bateria em uso) ou "signal" (o pisca dos retrovisores ao pedir passagem).
+var _light_preview := ""
+var _blink_t := 0.0
 var _yaw := BASE_YAW
 var _pitch := deg_to_rad(16.0)
 var _distance := 10.5
@@ -68,6 +72,30 @@ func _process(delta: float) -> void:
 		var target := BASE_YAW + sin(Time.get_ticks_msec() / 1000.0 * 0.12) * deg_to_rad(28.0)
 		_yaw = lerp_angle(_yaw, target, 1.0 - exp(-0.6 * delta))
 	_update_camera(delta)
+	_update_light_preview(delta)
+
+
+## Liga ("boost"/"signal") ou desliga ("") a prévia de luz no carro da garagem.
+func set_light_preview(kind: String) -> void:
+	if car and _light_preview == "signal" and kind != "signal":
+		car._show_signal_leds(false)
+	if car and _light_preview == "boost" and kind != "boost":
+		car.boost_active = false
+	_light_preview = kind
+	_blink_t = 0.0
+
+
+## O carro da garagem não anda: a cada quadro (antes dos efeitos dele, que são filhos) mantém o
+## boost aceso ou faz o pisca dos retrovisores (acende 0,6 s a cada segundo).
+func _update_light_preview(delta: float) -> void:
+	if car == null or _light_preview == "":
+		return
+	match _light_preview:
+		"boost":
+			car.boost_active = true
+		"signal":
+			_blink_t += delta
+			car._show_signal_leds(fmod(_blink_t, 1.0) < 0.6)
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -174,6 +202,9 @@ func preview_item(id: String) -> void:
 		"boost":
 			cfg.boost_color = cols[0]
 			focus_key = "boost"
+		"signal":
+			cfg.pass_light = ShopCatalog.signal_of(id)
+			focus_key = "mirrors"
 		"neon":
 			cfg.neon_enabled = true
 			cfg.neon_color = cols[0]
@@ -193,6 +224,7 @@ func preview_item(id: String) -> void:
 			focus_key = "sidepods"
 	car.config = cfg
 	_previewing = true
+	set_light_preview({"boost": "boost", "signal": "signal"}.get(it["type"], ""))
 	if focus_key != "" and FOCUS.has(focus_key):
 		focus_on(focus_key)
 	else:
@@ -204,6 +236,7 @@ func clear_preview() -> void:
 	if _previewing and car and car.config:
 		_profile.apply_to_config(car.config)
 	_previewing = false
+	set_light_preview("")
 	clear_focus()
 
 

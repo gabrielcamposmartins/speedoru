@@ -55,6 +55,8 @@ var _equip_pending: Variant = null
 var _retry := 0.0
 var _connecting := false
 var _local_owned := {}
+## Última coleção da conta guardada ("servidor|ids"; evita regravar o arquivo a cada "account").
+var _saved_collection := ""
 ## Tirado do servidor pelo anfitrião: não reconecta sozinho.
 var _kicked := false
 
@@ -83,6 +85,8 @@ func _ready() -> void:
 	multiplayer.connected_to_server.connect(_on_connected)
 	multiplayer.connection_failed.connect(_on_failed)
 	multiplayer.server_disconnected.connect(_on_disconnected)
+	if not is_server:
+		apply_saved_collection()
 	if not is_server and DisplayServer.get_name() != "headless" and not "--offline" in args:
 		connect_to_server.call_deferred()
 
@@ -144,6 +148,7 @@ func set_server(host_name: String, port: int) -> void:
 	cfg.set_value("server", "host", server_host)
 	cfg.set_value("server", "port", server_port)
 	cfg.save(account_file)
+	apply_saved_collection()
 
 
 ## Troca de servidor: desconecta e conecta no novo endereço (persist: vira o servidor padrão).
@@ -154,6 +159,7 @@ func switch_server(host_name: String, port: int, persist := true) -> void:
 		server_host = host_name.strip_edges()
 		server_port = port if port > 0 else NetProtocol.DEFAULT_PORT
 	disconnect_from_server()
+	apply_saved_collection()
 	_connecting = false
 	connect_to_server()
 
@@ -161,6 +167,43 @@ func switch_server(host_name: String, port: int, persist := true) -> void:
 ## Endereço atual para mostrar ("host:porta", IPv6 entre colchetes).
 func server_address() -> String:
 	return NetProtocol.format_address(server_host, server_port)
+
+
+## Guarda a coleção da conta deste servidor no arquivo da conta (por endereço: o servidor da
+## internet e o hospedado têm contas diferentes). Offline, o Estúdio e a Galeria mostram com ela o
+## que é só da conta e o que é só deste aparelho.
+func _save_collection(ids: Array) -> void:
+	var list := ids.map(func(id: Variant) -> String: return str(id))
+	list.sort()
+	var sig := server_address() + "|" + ",".join(list)
+	if sig == _saved_collection:
+		return
+	_saved_collection = sig
+	var cfg := ConfigFile.new()
+	cfg.load(account_file)
+	var by: Variant = cfg.get_value("collection", "by_server", {})
+	if not by is Dictionary:
+		by = {}
+	by[server_address()] = list
+	cfg.set_value("collection", "by_server", by)
+	cfg.save(account_file)
+
+
+## Offline: a coleção guardada da conta no servidor atual vira a "outra" coleção do perfil.
+func apply_saved_collection() -> void:
+	var profile := get_node_or_null("/root/Profile") as PlayerProfile if auto_profile else null
+	if profile == null or profile.mode != "local":
+		return
+	var cfg := ConfigFile.new()
+	cfg.load(account_file)
+	var by: Variant = cfg.get_value("collection", "by_server", {})
+	var ids: Variant = (by as Dictionary).get(server_address()) if by is Dictionary else null
+	profile.other_owned = {}
+	profile.other_known = ids is Array
+	if ids is Array:
+		for id in ids:
+			profile.other_owned[str(id)] = true
+	profile.changed.emit()
 
 
 # ---------------------------------------------------------------------------
@@ -290,6 +333,9 @@ func _set_online(value: bool) -> void:
 			profile.mode = "remote"
 			# Servidor que aceita o carro do aparelho: a coleção local também vale para montar o carro
 			profile.extra_owned = _local_owned.duplicate() if bool(account.get("trust_car", false)) else {}
+			# A outra coleção, para os selos de origem: a deste aparelho
+			profile.other_owned = _local_owned.duplicate()
+			profile.other_known = true
 			if not profile.equip_requested.is_connected(_on_equip_requested):
 				profile.equip_requested.connect(_on_equip_requested)
 		else:
@@ -297,6 +343,7 @@ func _set_online(value: bool) -> void:
 			profile.mode = "local"
 			profile.extra_owned = {}
 			profile.load_profile()
+			apply_saved_collection()
 			profile.changed.emit()
 	connection_changed.emit(online)
 
@@ -386,6 +433,8 @@ func msg(type: String, data: Dictionary) -> void:
 			if type == "welcome":
 				_set_online(true)
 				_remember_connection()
+			if account.has("profile"):
+				_save_collection(account["profile"].get("owned", []))
 			if profile and account.has("profile"):
 				profile.from_dict(account["profile"])
 				profile.store_equipped_locally()

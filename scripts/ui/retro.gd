@@ -827,7 +827,8 @@ static func _pop_segments(ci: CanvasItem, r: Rect2, value: float, count: int, co
 		var col: Color = color.call((k + 0.5) / count) if color is Callable else color
 		var amount := clampf(lit - k, 0.0, 1.0)
 		ci.draw_colored_polygon(_para(x, w, r.position.y, r.size.y, lean), trackc)
-		if amount > 0.0:
+		# Um fio (menos de 0,25 px) vira um polígono degenerado: o Godot não triangula e reclama
+		if w * amount > 0.25:
 			ci.draw_colored_polygon(_para(x, w * amount, r.position.y, r.size.y, lean), col)
 
 

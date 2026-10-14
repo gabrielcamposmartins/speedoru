@@ -43,6 +43,12 @@ var penalties: Array[String] = []
 var penalty_log: Array = []
 var disqualified := false
 var dsq_reason := ""
+## Online (servidor): batidas fortes causadas em outros jogadores nesta corrida (conquista Winged
+## Death) e se venceu ultrapassando o líder humano na reta final (Nightmare).
+var crashes_caused := 0
+var nightmare := false
+## Título equipado na conta (humanos; "" = nenhum): aparece na apresentação dos carros.
+var title := ""
 
 ## A volta em andamento não vale para melhor volta.
 var lap_invalid := false

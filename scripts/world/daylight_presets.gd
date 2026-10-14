@@ -29,7 +29,7 @@ const TIMES := {
 	},
 	TimeOfDay.NIGHT: {
 		"sun_elevation": 38.0, "sun_azimuth": 200.0, "sun_energy": 0.16, "sun_color": Color(0.6, 0.7, 1.0),
-		"ambient_color": Color(0.4, 0.46, 0.7), "ambient_energy": 0.22, "exposure": 1.05,
+		"ambient_color": Color(0.4, 0.46, 0.7), "ambient_energy": 0.3, "exposure": 1.15,
 		"fog_color": Color(0.08, 0.1, 0.18), "fog_density": 0.0009, "mist": Color(0.25, 0.3, 0.45), "mist_density": 0.01,
 		"sky_top": Color(0.01, 0.02, 0.07), "sky_horizon": Color(0.06, 0.09, 0.2), "sky_ground": Color(0.03, 0.04, 0.06),
 		"cloud_lit": Color(0.3, 0.33, 0.45), "cloud_shade": Color(0.09, 0.1, 0.17), "cloud_coverage": 0.3, "sky_energy": 1.0,

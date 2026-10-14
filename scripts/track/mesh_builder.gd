@@ -171,6 +171,43 @@ func cylinder(xf: Transform3D, radius_bottom: float, radius_top: float, height: 
 			tri(xf * (Vector3.UP * height), p3, p2, color, xf.basis.y)
 
 
+## Superfície de revolução em volta do eixo Y local de `xf`, com normais suaves (sem as faixas de
+## faceta): `profile` = pontos (raio, altura) de baixo para cima. Raio 0 no último ponto fecha a ponta.
+func lathe(xf: Transform3D, profile: PackedVector2Array, color: Color, sides := 20) -> void:
+	var n := profile.size()
+	if n < 2:
+		return
+	var normals_2d := PackedVector2Array()
+	for k in n:
+		var a := profile[maxi(k - 1, 0)]
+		var b := profile[mini(k + 1, n - 1)]
+		var t := b - a
+		var nn := Vector2(t.y, -t.x).normalized()
+		if profile[k].x < 1e-4:
+			nn = Vector2(0, 1)
+		normals_2d.append(nn)
+	var nb := xf.basis.inverse().transposed()
+	for s in sides:
+		var a0 := TAU * s / sides
+		var a1 := TAU * (s + 1) / sides
+		var d0 := Vector3(cos(a0), 0, sin(a0))
+		var d1 := Vector3(cos(a1), 0, sin(a1))
+		for k in n - 1:
+			var p0 := profile[k]
+			var p1 := profile[k + 1]
+			var v00 := xf * (d0 * p0.x + Vector3.UP * p0.y)
+			var v10 := xf * (d1 * p0.x + Vector3.UP * p0.y)
+			var v01 := xf * (d0 * p1.x + Vector3.UP * p1.y)
+			var v11 := xf * (d1 * p1.x + Vector3.UP * p1.y)
+			var n00 := (nb * (d0 * normals_2d[k].x + Vector3.UP * normals_2d[k].y)).normalized()
+			var n10 := (nb * (d1 * normals_2d[k].x + Vector3.UP * normals_2d[k].y)).normalized()
+			var n01 := (nb * (d0 * normals_2d[k + 1].x + Vector3.UP * normals_2d[k + 1].y)).normalized()
+			var n11 := (nb * (d1 * normals_2d[k + 1].x + Vector3.UP * normals_2d[k + 1].y)).normalized()
+			tri_smooth(v00, v10, v11, n00, n10, n11, color)
+			if p1.x > 1e-4:
+				tri_smooth(v00, v11, v01, n00, n11, n01, color)
+
+
 ## Acrescenta outro builder (ex.: peças montadas em espaço local).
 func append(other: MeshBuilder, xf := Transform3D.IDENTITY) -> void:
 	var nb := xf.basis.inverse().transposed()
