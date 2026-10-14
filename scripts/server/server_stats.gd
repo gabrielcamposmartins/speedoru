@@ -53,10 +53,14 @@ func _process(delta: float) -> void:
 	_t = 0.0
 	var server := get_parent() as GameServer
 	var racing := server.room_counts().y if server else 0
-	print("Servidor: física no último minuto: %d passos, %d acima de %.1f ms (pior %.1f ms); quadros com passo do motor acima: %d (pior %.1f ms); salas correndo: %d; comandos repetidos %d, passos pulados %d" % [
-		_steps, _slow, BUDGET_MS, _worst, _slow_frames, _worst_engine, racing, RaceSession.input_repeats, RaceSession.input_skipped])
+	print("Servidor: física no último minuto: %d passos, %d acima de %.1f ms (pior %.1f ms); quadros com passo do motor acima: %d (pior %.1f ms); salas correndo: %d; comandos repetidos %d, atrasados %d, passos segurados %d, pulados %d, realinhados %d" % [
+		_steps, _slow, BUDGET_MS, _worst, _slow_frames, _worst_engine, racing, RaceSession.input_repeats, RaceSession.input_late,
+		RaceSession.input_held, RaceSession.input_skipped, RaceSession.input_resyncs])
 	RaceSession.input_repeats = 0
+	RaceSession.input_late = 0
+	RaceSession.input_held = 0
 	RaceSession.input_skipped = 0
+	RaceSession.input_resyncs = 0
 	_steps = 0
 	_slow = 0
 	_worst = 0.0

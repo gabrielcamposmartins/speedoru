@@ -95,7 +95,8 @@ func _run() -> void:
 	car.repair()
 	await _physics(5)
 	_check(damage.get_overall() > 0.999 and damage.detached.is_empty() and car.damage_front_downforce == 1.0
-		and not car.wheel_broken.has(true), "reparo zera o dano")
+		and not car.wheel_broken.has(true), "reparo zera o dano (geral %.3f, soltas %s, downforce %.2f, rodas quebradas %s)" % [
+			damage.get_overall(), damage.detached.keys(), car.damage_front_downforce, car.wheel_broken])
 	print("Falhas: %d" % failures)
 	quit(1 if failures > 0 else 0)
 

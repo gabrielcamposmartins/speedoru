@@ -63,7 +63,8 @@ var car: F1Car
 var health := {}
 var detached := {}
 
-static var _debris: Array[Node3D] = []
+## Destroços soltos, de todas as corridas (sem tipo: pode conter os já liberados).
+static var _debris: Array = []
 
 var _pieces := {}  # nome -> Piece
 var _sparks: GPUParticles3D
@@ -440,11 +441,14 @@ func _detach(piece_name: String, outward: Vector3, severity: float) -> void:
 		+ (car.global_transform.basis * outward).normalized() * randf_range(2.0, 5.0) * clampf(severity, 0.5, 2.0) \
 		+ Vector3.UP * randf_range(1.0, 4.0)
 	body.angular_velocity = Vector3(randf_range(-1, 1), randf_range(-1, 1), randf_range(-1, 1)) * randf_range(4.0, 14.0)
+	# A lista é de todas as corridas (estática): os destroços de uma corrida que acabou já foram
+	# liberados junto com a cena dela
+	_debris = _debris.filter(func(n: Variant) -> bool: return is_instance_valid(n))
 	_debris.append(body)
 	while _debris.size() > max_debris:
-		var old: Node3D = _debris.pop_front()
+		var old: Variant = _debris.pop_front()
 		if is_instance_valid(old):
-			old.queue_free()
+			(old as Node).queue_free()
 	if p.wheel >= 0:
 		var w := car.get_wheels()[p.wheel]
 		w.wheel_radius = 0.12

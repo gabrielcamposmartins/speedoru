@@ -46,6 +46,10 @@ const SKIN_CACHE_MAX := 64
 func _ready() -> void:
 	_rng.randomize()
 	RaceTrack.server_mode = true
+	# Depois de um quadro longo, recupera os passos de física perdidos (até ~250 ms): passo perdido
+	# no servidor é tempo que o mundo deixou de andar enquanto os jogadores continuaram mandando
+	# comandos (as corridas pulariam números de comando para alcançar).
+	Engine.max_physics_steps_per_frame = maxi(Engine.max_physics_steps_per_frame, NetRaceClient.CATCH_UP_STEPS)
 	var cfg := _config()
 	races = Node.new()
 	races.name = "Races"

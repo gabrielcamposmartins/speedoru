@@ -10,14 +10,18 @@ extends Node
 ##
 ## Comandos dos jogadores (predição no cliente, NetRaceClient): cada comando tem um número de
 ## sequência, um por passo de física do cliente, e entra numa fila. Cada passo do servidor
-## corresponde a UM número (_step_seq, sempre +1 por passo): o servidor aplica o comando com esse
-## número. Se ele ainda não chegou (o jogo ou a rede engasgou), repete o último e o número passa
-## assim mesmo; quando o atrasado chega, já ficou para trás (só as ações de toque e os pedais mais
-## novos valem). Assim o número do passo nunca se desencontra dos passos que o carro andou. Se a
-## fila acumula comandos à frente demais (o servidor ficou para trás), o número pula para perto do
-## mais novo. Cada instantâneo leva, só para o jogador, o "ack" = número do passo: o passo do
-## cliente que corresponde ao estado do carro no servidor — o cliente compara com o que previu para
-## aquele passo e corrige o carro.
+## corresponde a UM número (_step_seq, normalmente +1 por passo): o servidor aplica o comando com
+## esse número. Se ele ainda não chegou (a rede engasgou), repete o último e o número passa assim
+## mesmo; quando o atrasado chega, já ficou para trás (só as ações de toque e os pedais mais novos
+## valem). Cada instantâneo leva, só para o jogador, o "ack" = número do passo: o passo do cliente
+## que corresponde ao estado do carro no servidor — o cliente compara com o que previu para aquele
+## passo e corrige o carro.
+## O relógio do cliente e o do servidor não andam juntos: um quadro longo (> max_physics_steps_per_frame
+## passos) faz o jogo perder passos, e o servidor também. Por isso o número acompanha a chegada dos
+## comandos: a folga (o comando mais novo que chegou menos o número do passo) é medida a cada passo,
+## e um percentil baixo da última janela (SLACK_WINDOW) decide. Folga sempre abaixo de SLACK_MIN (o
+## servidor está à frente: os comandos chegam depois do passo deles) segura o número um passo;
+## sempre acima de SLACK_MAX (atrás) pula um. Descompasso grande (SLACK_RESYNC) realinha de uma vez.
 ##
 ## Votações (comando "vote" {kind, yes}; uma de cada vez; aprovam com a maioria dos humanos ainda
 ## na corrida em até VOTE_TIME s):
@@ -58,12 +62,32 @@ var _queues := {}
 var _applied_seq := {}
 var _step_seq := {}
 var _last_counts := {}
-## Comandos à frente do passo atual no máximo (≈ 33 ms a 120 Hz) antes de o passo pular adiante.
-const INPUT_AHEAD_MAX := 4
+## Folga (ver acima): o comando mais novo que chegou de cada conta, as folgas da janela (guardadas
+## sem os ajustes feitos depois: valor + _slack_shift = folga de agora) e a soma dos ajustes.
+var _newest := {}
+var _slack := {}
+var _slack_shift := {}
+## Folga desejada entre SLACK_MIN e SLACK_MAX passos (o pior valor da janela).
+const SLACK_MIN := 1
+const SLACK_MAX := 4
+## Janela da folga (passos, 1 s a 120 Hz), quantos passos medidos antes de ajustar e o percentil
+## que decide (um pico de rede mais curto que essa fração da janela não conta: os comandos
+## atrasados chegam juntos depois e a repetição do último já cobre).
+const SLACK_WINDOW := 120
+const SLACK_WINDOW_MIN := 30
+const SLACK_PERCENTILE := 0.2
+## Descompasso que realinha de uma vez (passos): o servidor à frente (o jogo perdeu esse tempo) ou
+## atrás.
+const SLACK_RESYNC_AHEAD := 12
+const SLACK_RESYNC_BEHIND := 24
 ## Medidas para o log do servidor (ServerStats, por minuto): passos sem o comando do número (repetiu
-## o último) e passos pulados (servidor atrás do jogador).
+## o último), comandos aplicados depois do passo deles, passos segurados (servidor à frente),
+## pulados (atrás) e realinhamentos.
 static var input_repeats := 0
+static var input_late := 0
+static var input_held := 0
 static var input_skipped := 0
+static var input_resyncs := 0
 var _loaded := {}
 var _left := {}
 var _phase := "loading"
@@ -191,10 +215,14 @@ func set_input(acc_id: String, data: PackedFloat32Array) -> void:
 				_applied_seq.erase(acc_id)
 				_step_seq.erase(acc_id)
 				_last_counts.erase(acc_id)
+				_newest.erase(acc_id)
+				_slack.erase(acc_id)
+				_slack_shift.erase(acc_id)
 			else:
 				return
 		q.append(data)
 		_queues[acc_id] = q
+		_newest[acc_id] = int(data[0])
 
 
 func command(acc_id: String, cmd: String, data: Dictionary) -> void:
@@ -395,12 +423,10 @@ func _apply_inputs() -> void:
 		if not _step_seq.has(acc_id):
 			if q.is_empty():
 				continue
-			_step_seq[acc_id] = int((q[0] as PackedFloat32Array)[0]) - 1
-		var cur: int = _step_seq[acc_id] + 1
-		if not q.is_empty() and int((q[-1] as PackedFloat32Array)[0]) - cur > INPUT_AHEAD_MAX:
-			var to := int((q[-1] as PackedFloat32Array)[0]) - INPUT_AHEAD_MAX
-			input_skipped += to - cur
-			cur = to
+			_step_seq[acc_id] = int((q[0] as PackedFloat32Array)[0]) - 1 - SLACK_MIN
+			_slack[acc_id] = PackedInt32Array()
+			_slack_shift[acc_id] = 0
+		var cur: int = _next_step(acc_id)
 		_step_seq[acc_id] = cur
 		var got: Variant = null
 		while not q.is_empty() and int((q[0] as PackedFloat32Array)[0]) <= cur:
@@ -410,7 +436,7 @@ func _apply_inputs() -> void:
 			_inputs[acc_id] = got
 			_applied_seq[acc_id] = int((got as PackedFloat32Array)[0])
 			if _applied_seq[acc_id] < cur:
-				input_repeats += 1
+				input_late += 1
 		elif _inputs.has(acc_id):
 			repeat = true
 			input_repeats += 1
@@ -442,6 +468,42 @@ func _apply_inputs() -> void:
 			var times := clampi(int(counts[k] - last[k]), 0, 3)
 			for _i in times:
 				_action(car, k)
+
+
+## Número do passo de agora para a conta: o seguinte, ou o mesmo (segura), ou dois adiante (pula),
+## ou realinhado com o comando mais novo, pela folga da janela (ver o topo).
+func _next_step(acc_id: String) -> int:
+	var last: int = _step_seq[acc_id]
+	var newest: int = _newest.get(acc_id, last)
+	var win: PackedInt32Array = _slack[acc_id]
+	var shift: int = _slack_shift[acc_id]
+	var cur := last + 1
+	if win.size() >= SLACK_WINDOW_MIN:
+		var sorted := win.duplicate()
+		sorted.sort()
+		var worst: int = sorted[int(sorted.size() * SLACK_PERCENTILE)] + shift
+		if worst < -SLACK_RESYNC_AHEAD or worst > SLACK_RESYNC_BEHIND:
+			# Descompasso grande: o número vai direto para perto do comando mais novo (pode voltar)
+			input_resyncs += 1
+			cur = newest - SLACK_MIN
+			win.clear()
+			shift = 0
+		elif worst < SLACK_MIN:
+			# À frente: os comandos chegam depois do passo deles; este passo não avança o número
+			input_held += 1
+			cur = last
+			shift += 1
+		elif worst > SLACK_MAX:
+			# Atrás: comandos demais esperando; avança dois
+			input_skipped += 1
+			cur = last + 2
+			shift -= 1
+	win.append(newest - cur - shift)
+	if win.size() > SLACK_WINDOW:
+		win = win.slice(win.size() - SLACK_WINDOW)
+	_slack[acc_id] = win
+	_slack_shift[acc_id] = shift
+	return cur
 
 
 func _action(car: F1Car, k: int) -> void:

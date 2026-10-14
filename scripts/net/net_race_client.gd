@@ -89,6 +89,14 @@ static var prediction_enabled := true
 ## descartados pelo servidor, como no canal "unreliable_ordered").
 static var lag_ms := 0
 static var jitter_ms := 0
+## Engasgo simulado (-- --net-hitch=ms, só para testes): a cada HITCH_EVERY s o jogo trava por isso
+## (os passos de física atrasam e saem juntos depois, como num quadro longo de verdade).
+static var hitch_ms := 0
+const HITCH_EVERY := 5.0
+var _next_hitch := 0.0
+## Passos de física por quadro na corrida em rede (≈ 250 ms a 120 Hz) e o valor de antes.
+const CATCH_UP_STEPS := 30
+var _steps_before := 0
 var _out_lag: Array = []
 var _in_lag: Array = []
 
@@ -116,6 +124,13 @@ func setup(p_manager: RaceManager) -> void:
 			lag_ms = maxi(int(a.substr(10)), 0)
 		elif a.begins_with("--net-jitter="):
 			jitter_ms = maxi(int(a.substr(13)), 0)
+		elif a.begins_with("--net-hitch="):
+			hitch_ms = maxi(int(a.substr(12)), 0)
+	# Corrida em rede: depois de um quadro longo o jogo recupera todos os passos de física perdidos
+	# (até CATCH_UP_STEPS). Passo perdido é tempo que o carro do servidor andou e o daqui não: o
+	# número dos comandos atrasa e o carro salta para a frente na correção.
+	_steps_before = Engine.max_physics_steps_per_frame
+	Engine.max_physics_steps_per_frame = maxi(_steps_before, CATCH_UP_STEPS)
 	var me := manager.player_entry
 	if me and me.car and not me.car.puppet:
 		if prediction_enabled:
@@ -129,6 +144,8 @@ func setup(p_manager: RaceManager) -> void:
 
 
 func _exit_tree() -> void:
+	if _steps_before > 0:
+		Engine.max_physics_steps_per_frame = _steps_before
 	if _net and _net.race_snapshot.is_connected(_on_snapshot):
 		_net.race_snapshot.disconnect(_on_snapshot)
 		_net.race_state.disconnect(_on_state)
@@ -221,6 +238,10 @@ func _stop_prediction() -> void:
 
 
 func _physics_process(delta: float) -> void:
+	if hitch_ms > 0 and _now() >= _next_hitch:
+		if _next_hitch > 0.0:
+			OS.delay_msec(hitch_ms)
+		_next_hitch = _now() + HITCH_EVERY
 	if lag_ms > 0 or jitter_ms > 0:
 		var now := Time.get_ticks_msec()
 		while not _in_lag.is_empty() and int(_in_lag[0][0]) <= now:
