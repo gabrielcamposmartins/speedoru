@@ -12,7 +12,10 @@ extends RefCounted
 
 ## 6: pista de Las Vegas, observadores na sala e voltas da bandeirada no estado da prova (um cliente
 ## antigo não conhece a pista nova e correria em outra).
-const VERSION := 7
+## 8: piso sem vincos (TrackRoad divide as faixas que torcem: a colisão da pista mudou e a previsão
+## de um cliente antigo erraria nesses trechos), colisões no box, aviso de saída depois do pódio e a
+## pista Atlantis Abyss (um cliente antigo não a conhece).
+const VERSION := 8
 ## O servidor aceita o carro (skins, peças e engenharia) que o jogador traz do aparelho, sem
 ## conferir se a conta tem os itens.
 ## PENDENTE (produção): desligar e validar no servidor que a conta tem as skins e peças.
@@ -67,6 +70,14 @@ const RACE_STATE_HZ := 5.0
 ## chegada dos instantâneos (NetRaceClient, folga adaptativa).
 const INTERP_DELAY := 0.15
 
+## Comando do carro (inp, cliente → servidor, um por passo de física): [número, acelerador, freio,
+## ré, direção, botões, contadores das ações de toque (NetRaceClient.ACTIONS)…] e, depois, os
+## INPUT_REDUNDANCY comandos anteriores, do mais novo ao mais velho, só com pedais, direção e botões
+## (INPUT_PREV_FIELDS cada): um comando que se perdeu ou chegou fora de ordem (o canal descarta o
+## que chega depois de um mais novo) vem de novo nos pacotes seguintes.
+const INPUT_REDUNDANCY := 4
+const INPUT_PREV_FIELDS := 5
+
 # Bits dos botões no comando contínuo (inp)
 const BTN_DRS := 1
 const BTN_BOOST := 2
@@ -76,8 +87,10 @@ const BTN_REVERSE := 4
 const MIN_PLAUSIBLE_LAP := 78.0
 ## O mesmo por pista (Mônaco é bem mais curta; Suzuka tem o comprimento de Monza, mas bem mais curvas;
 ## Las Vegas é um pouco mais longa que Monza, com retas enormes; a Sky Aerobase é curta e travada,
-## com grampo e chicane: os bots mais rápidos fazem ~64 s).
-const MIN_LAP_BY_TRACK := {"monza": MIN_PLAUSIBLE_LAP, "monaco": 55.0, "suzuka": 85.0, "las_vegas": 80.0, "sky_aerobase": 50.0}
+## com grampo e chicane: os bots mais rápidos fazem ~64 s; a Atlantis Abyss tem 4,7 km com retas
+## rápidas e um grampo: os bots fazem ~74 s).
+const MIN_LAP_BY_TRACK := {"monza": MIN_PLAUSIBLE_LAP, "monaco": 55.0, "suzuka": 85.0, "las_vegas": 80.0, "sky_aerobase": 50.0,
+	"atlantis_abyss": 55.0}
 
 
 ## Lê o endereço que o jogador digitou: "host", "host:porta", IPv6 puro ("2001:db8::1") ou IPv6

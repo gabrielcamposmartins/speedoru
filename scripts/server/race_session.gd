@@ -19,9 +19,15 @@ extends Node
 ## O relógio do cliente e o do servidor não andam juntos: um quadro longo (> max_physics_steps_per_frame
 ## passos) faz o jogo perder passos, e o servidor também. Por isso o número acompanha a chegada dos
 ## comandos: a folga (o comando mais novo que chegou menos o número do passo) é medida a cada passo,
-## e um percentil baixo da última janela (SLACK_WINDOW) decide. Folga sempre abaixo de SLACK_MIN (o
-## servidor está à frente: os comandos chegam depois do passo deles) segura o número um passo;
-## sempre acima de SLACK_MAX (atrás) pula um. Descompasso grande (SLACK_RESYNC) realinha de uma vez.
+## e um percentil baixo da última janela (SLACK_WINDOW) é a folga do jogador. Ela vai no instantâneo
+## de cada um e o cliente a mantém entre NetRaceClient.SLACK_LOW e SLACK_HIGH andando um pouco mais
+## rápido ou mais devagar (1 ou 2 passos por segundo, sem o jogador perceber). Segurar ou pular o
+## número aqui move o carro do servidor um passo inteiro (~0,7 m a 300 km/h, um tranco na correção),
+## então só acontece fora disso: folga abaixo de SLACK_MIN (os comandos chegam depois do passo
+## deles) segura o número um passo; acima de SLACK_MAX (atrás) pula um. Descompasso grande
+## (SLACK_RESYNC) realinha de uma vez.
+## Cada comando traz também os INPUT_REDUNDANCY anteriores (NetProtocol): o que se perdeu ou chegou
+## fora de ordem entra na fila pelo pacote seguinte, sem precisar repetir o último.
 ##
 ## Votações (comando "vote" {kind, yes}; uma de cada vez; aprovam com a maioria dos humanos ainda
 ## na corrida em até VOTE_TIME s):
@@ -67,15 +73,18 @@ var _last_counts := {}
 var _newest := {}
 var _slack := {}
 var _slack_shift := {}
-## Folga desejada entre SLACK_MIN e SLACK_MAX passos (o pior valor da janela).
-const SLACK_MIN := 1
-const SLACK_MAX := 4
+## Folga do jogador (percentil baixo da janela, passos): abaixo de SLACK_MIN o servidor segura o
+## número, acima de SLACK_MAX pula (o cliente normalmente a mantém no meio). A folga no começo e
+## depois de realinhar é SLACK_START.
+const SLACK_MIN := 0
+const SLACK_MAX := 8
+const SLACK_START := 2
 ## Janela da folga (passos, 1 s a 120 Hz), quantos passos medidos antes de ajustar e o percentil
 ## que decide (um pico de rede mais curto que essa fração da janela não conta: os comandos
 ## atrasados chegam juntos depois e a repetição do último já cobre).
 const SLACK_WINDOW := 120
 const SLACK_WINDOW_MIN := 30
-const SLACK_PERCENTILE := 0.2
+const SLACK_PERCENTILE := 0.05
 ## Descompasso que realinha de uma vez (passos): o servidor à frente (o jogo perdeu esse tempo) ou
 ## atrás.
 const SLACK_RESYNC_AHEAD := 12
@@ -88,6 +97,10 @@ static var input_late := 0
 static var input_held := 0
 static var input_skipped := 0
 static var input_resyncs := 0
+## Comandos que chegaram só no pacote seguinte (perdidos ou fora de ordem).
+static var input_recovered := 0
+## Folga de cada conta (percentil da janela), mandada no instantâneo.
+var _slack_report := {}
 var _loaded := {}
 var _left := {}
 var _phase := "loading"
@@ -134,6 +147,7 @@ func start(p_server: GameServer, p_room: String, p_settings: Dictionary, p_playe
 	for p in players:
 		list.append({"id": p["id"], "name": p["name"], "title": p.get("title", ""), "profile": p["profile"]})
 	manager.net_setup = {"laps": settings.get("laps", 5), "difficulty": settings.get("difficulty", 1), "drs": settings.get("drs", 0),
+		"pit_collisions": settings.get("pit_collisions", true),
 		"bots": settings.get("bots", true), "cars": settings.get("cars", NetProtocol.MAX_ROOM_PLAYERS),
 		"quali_laps": settings.get("quali_laps", 0), "quali_collisions": settings.get("quali_collisions", true),
 		"quali_time": settings.get("quali_time", 0), "quali_strict": settings.get("quali_strict", true), "players": list}
@@ -180,7 +194,7 @@ func _on_grid_ready() -> void:
 ## Largada para um cliente: o grid e os ajustes; `me` vazio = observador (assiste, sem carro).
 func _race_start_data(me: String) -> Dictionary:
 	var race_settings := {"track": settings.get("track", "monza"), "laps": manager.laps, "drs": settings.get("drs", 0), "time_of_day": settings.get("time_of_day", 0),
-		"biome": settings.get("biome", 0), "difficulty": settings.get("difficulty", 1)}
+		"biome": settings.get("biome", 0), "difficulty": settings.get("difficulty", 1), "pit_collisions": settings.get("pit_collisions", true)}
 	return {"room": room_id, "me": me, "spectator": me == "", "roster": manager.net_roster(), "settings": race_settings}
 
 
@@ -203,26 +217,48 @@ func _go() -> void:
 
 
 func set_input(acc_id: String, data: PackedFloat32Array) -> void:
-	if data.size() >= 14:
-		var q: Array = _queues.get(acc_id, [])
-		var last_seq: int = int((q[-1] as PackedFloat32Array)[0]) if not q.is_empty() else int(_applied_seq.get(acc_id, -1))
-		if int(data[0]) <= last_seq:
-			# Numeração que voltou muito para trás: o jogo recomeçou a contar (reiniciado, versão
-			# antiga que recomeça a cada corrida). Recomeça a fila desse jogador em vez de descartar
-			# tudo até a numeração nova passar da velha.
-			if last_seq - int(data[0]) > 240:
-				q.clear()
-				_applied_seq.erase(acc_id)
-				_step_seq.erase(acc_id)
-				_last_counts.erase(acc_id)
-				_newest.erase(acc_id)
-				_slack.erase(acc_id)
-				_slack_shift.erase(acc_id)
-			else:
-				return
-		q.append(data)
-		_queues[acc_id] = q
-		_newest[acc_id] = int(data[0])
+	if data.size() < 14:
+		return
+	var base := 6 + NetRaceClient.ACTIONS.size()
+	var q: Array = _queues.get(acc_id, [])
+	var last_seq: int = int((q[-1] as PackedFloat32Array)[0]) if not q.is_empty() else int(_applied_seq.get(acc_id, -1))
+	var seq := int(data[0])
+	if seq <= last_seq:
+		# Numeração que voltou muito para trás: o jogo recomeçou a contar (reiniciado, versão
+		# antiga que recomeça a cada corrida). Recomeça a fila desse jogador em vez de descartar
+		# tudo até a numeração nova passar da velha.
+		if last_seq - seq > 240:
+			q.clear()
+			_applied_seq.erase(acc_id)
+			_step_seq.erase(acc_id)
+			_last_counts.erase(acc_id)
+			_newest.erase(acc_id)
+			_slack.erase(acc_id)
+			_slack_shift.erase(acc_id)
+			_slack_report.erase(acc_id)
+			last_seq = -1
+		else:
+			return
+	# Os anteriores que não chegaram (do mais velho ao mais novo). Sem as ações de toque: repetem os
+	# contadores do comando de antes, e as ações valem no comando que as trouxe.
+	var prev := maxi(data.size() - base, 0) / NetProtocol.INPUT_PREV_FIELDS
+	if prev > 0:
+		if last_seq >= 0:
+			var counts: PackedFloat32Array = (q[-1] as PackedFloat32Array).slice(6, base) if not q.is_empty() \
+				else _last_counts.get(acc_id, data.slice(6, base))
+			for h in range(mini(prev, NetProtocol.INPUT_REDUNDANCY), 0, -1):
+				var s_h := seq - h
+				if s_h <= last_seq:
+					continue
+				var o := base + (h - 1) * NetProtocol.INPUT_PREV_FIELDS
+				var cmd := PackedFloat32Array([s_h, data[o], data[o + 1], data[o + 2], data[o + 3], data[o + 4]])
+				cmd.append_array(counts)
+				q.append(cmd)
+				input_recovered += 1
+		data = data.slice(0, base)
+	q.append(data)
+	_queues[acc_id] = q
+	_newest[acc_id] = seq
 
 
 func command(acc_id: String, cmd: String, data: Dictionary) -> void:
@@ -337,14 +373,18 @@ func _begin_resume() -> void:
 	_broadcast_event({"event": "resuming", "in": RESUME_DELAY})
 
 
-## Saiu da sala ou da corrida: o carro abandona (DNF).
+## Saiu da sala ou da corrida: o carro abandona (DNF). Depois que os três primeiros chegaram, sair
+## conta como chegada com as voltas que tinha (recebe os créditos da corrida inteiros).
 func player_left(acc_id: String) -> void:
 	_left[acc_id] = true
 	if _vote_until >= 0.0 and _phase == "racing":
 		_check_vote()
 	var e: RaceEntry = manager.humans.get(acc_id) if manager else null
 	if e and not e.finished and not e.retired:
-		manager.retire(e)
+		if manager.podium_done and e.laps_completed() > 0:
+			manager.leave_after_podium(e)
+		else:
+			manager.retire(e)
 	if _phase == "waiting" and _all_loaded():
 		_go()
 
@@ -381,9 +421,11 @@ func _physics_process(delta: float) -> void:
 			if _left.has(pl["id"]):
 				continue
 			var ack := int(_step_seq.get(pl["id"], 0))
+			# ack (u32) e a folga do jogador (i8; 127 = ainda sem medida)
 			var tail := PackedByteArray()
-			tail.resize(4)
+			tail.resize(5)
 			tail.encode_u32(0, clampi(ack, 0, 0xFFFFFFFF))
+			tail.encode_s8(4, clampi(int(_slack_report.get(pl["id"], 127)), -127, 127))
 			var personal := bytes + tail
 			for peer in server.online.get(pl["id"], []):
 				if not server._gone.has(peer):
@@ -423,7 +465,7 @@ func _apply_inputs() -> void:
 		if not _step_seq.has(acc_id):
 			if q.is_empty():
 				continue
-			_step_seq[acc_id] = int((q[0] as PackedFloat32Array)[0]) - 1 - SLACK_MIN
+			_step_seq[acc_id] = int((q[0] as PackedFloat32Array)[0]) - 1 - SLACK_START
 			_slack[acc_id] = PackedInt32Array()
 			_slack_shift[acc_id] = 0
 		var cur: int = _next_step(acc_id)
@@ -482,10 +524,11 @@ func _next_step(acc_id: String) -> int:
 		var sorted := win.duplicate()
 		sorted.sort()
 		var worst: int = sorted[int(sorted.size() * SLACK_PERCENTILE)] + shift
+		_slack_report[acc_id] = worst
 		if worst < -SLACK_RESYNC_AHEAD or worst > SLACK_RESYNC_BEHIND:
 			# Descompasso grande: o número vai direto para perto do comando mais novo (pode voltar)
 			input_resyncs += 1
-			cur = newest - SLACK_MIN
+			cur = newest - SLACK_START
 			win.clear()
 			shift = 0
 		elif worst < SLACK_MIN:

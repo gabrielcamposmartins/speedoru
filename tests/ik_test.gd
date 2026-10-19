@@ -8,6 +8,7 @@ var car: F1Car
 
 
 func _initialize() -> void:
+	DriverRig.capture_poses = true
 	var root3d := Node3D.new()
 	root.add_child(root3d)
 	var ground := StaticBody3D.new()

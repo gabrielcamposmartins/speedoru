@@ -73,12 +73,13 @@ func _exit_tree() -> void:
 
 
 ## Velocidade herdada (inherit_velocity_ratio) dos emissores no mundo: o GPUParticles3D grava a
-## dele a cada quadro (zero aqui), então a do carro vai logo antes de desenhar.
+## dele a cada quadro (zero aqui), então a do carro vai logo antes de desenhar. Só vale para as
+## partículas que nascem: emissor desligado não precisa (14 carros, todo quadro).
 func _push_velocity() -> void:
 	for e in _emitters:
-		if is_instance_valid(e) and not e.local_coords:
+		if is_instance_valid(e) and e.emitting and not e.local_coords:
 			RenderingServer.particles_set_emitter_velocity(e.get_base(), _velocity)
-	if is_instance_valid(_brake_sparks):
+	if is_instance_valid(_brake_sparks) and _brake_sparks.emitting:
 		RenderingServer.particles_set_emitter_velocity(_brake_sparks.get_base(), _velocity)
 
 
@@ -103,7 +104,9 @@ func _process(delta: float) -> void:
 		var state := brake_spark_state(_brake_time, _brake_armed, car.speed_kmh, car.brake_input, delta)
 		_brake_time = state[0]
 		_brake_armed = state[1]
-		_brake_sparks.emitting = state[2]
+		var sparks: bool = state[2]
+		if _brake_sparks.emitting != sparks:
+			_brake_sparks.emitting = sparks
 	if effect == "" and _brake_sparks == null:
 		return
 	_time += delta
@@ -121,8 +124,11 @@ func _process(delta: float) -> void:
 	for e in _emitters:
 		var idle: float = e.get_meta("idle", 0.3) if showcase else 0.0
 		var ratio := lerpf(idle, 1.0, f)
-		e.amount_ratio = ratio
-		e.emitting = ratio > 0.005
+		if absf(e.amount_ratio - ratio) > 0.002:
+			e.amount_ratio = ratio
+		var on := ratio > 0.005
+		if e.emitting != on:
+			e.emitting = on
 		var drag: float = e.get_meta("drag", 0.0)
 		if drag > 0.0:
 			var damp: float = float(e.get_meta("damp", 0.0)) + drag * f

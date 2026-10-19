@@ -1025,7 +1025,7 @@ func _new_room(kind: String, name: String, host_id: String) -> Dictionary:
 		"members": [], "ready": {}, "state": "lobby", "session": null, "invited": {},
 		# Observadores: membros que só assistem (fora do grid; não contam para pronto nem lotação)
 		"spectators": {},
-		"settings": {"track": "monza", "laps": 5, "difficulty": 1, "bots": true, "cars": NetProtocol.MAX_ROOM_PLAYERS, "quali_laps": 0, "quali_collisions": true, "quali_time": 0, "quali_strict": true, "drs": 0, "time_of_day": 0, "biome": 0, "max": NetProtocol.MAX_ROOM_PLAYERS},
+		"settings": {"track": "monza", "laps": 5, "difficulty": 1, "bots": true, "cars": NetProtocol.MAX_ROOM_PLAYERS, "quali_laps": 0, "quali_collisions": true, "quali_time": 0, "quali_strict": true, "drs": 0, "pit_collisions": true, "time_of_day": 0, "biome": 0, "max": NetProtocol.MAX_ROOM_PLAYERS},
 	}
 
 
@@ -1081,6 +1081,8 @@ func _apply_room_settings(room: Dictionary, data: Dictionary) -> void:
 		st["quali_laps"] = clampi(int(data["quali_laps"]), 0, RaceSettings.QUALI_FREE)
 	if data.has("quali_collisions"):
 		st["quali_collisions"] = bool(data["quali_collisions"])
+	if data.has("pit_collisions"):
+		st["pit_collisions"] = bool(data["pit_collisions"])
 	if data.has("quali_time"):
 		st["quali_time"] = clampi(int(data["quali_time"]), 0, RaceSettings.QUALI_TIMES.size() - 1)
 	if data.has("quali_strict"):

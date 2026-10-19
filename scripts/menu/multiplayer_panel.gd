@@ -830,6 +830,8 @@ func _build_room() -> void:
 		func(on: bool) -> void: _ask("room_settings", {"quali_strict": on}))
 	_setting(grid, "DRS", ["Livre", "Até 1 s do carro da frente"], int(st.get("drs", 0)), editable,
 		func(i: int) -> void: _ask("room_settings", {"drs": i}))
+	_check(grid, "Colisões no box", bool(st.get("pit_collisions", true)), editable,
+		func(on: bool) -> void: _ask("room_settings", {"pit_collisions": on}))
 	_setting(grid, "Horário", Array(DaylightPresets.TIME_NAMES), int(st.get("time_of_day", 0)), editable,
 		func(i: int) -> void: _ask("room_settings", {"time_of_day": i}))
 	_setting(grid, "Ambiente", Array(DaylightPresets.BIOME_NAMES), int(st.get("biome", 0)), editable,

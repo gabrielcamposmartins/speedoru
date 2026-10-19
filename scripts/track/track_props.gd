@@ -64,6 +64,9 @@ static func build(track: RaceTrack, parent: Node3D) -> void:
 ## arquibancadas e, do lado dos boxes, atrás do prédio; à noite iluminam bem o grid e a largada. Na
 ## pista no céu ficam na beira da plataforma (não há chão além dela).
 static func _finish_lights(track: RaceTrack, mb: MeshBuilder, lamps: MeshBuilder, parent: Node3D) -> void:
+	# No fundo do mar a pista corre dentro do tubo de vidro: mastros de 20 m o furariam
+	if track.layout.undersea:
+		return
 	var p := track.path
 	for side: int in [1, -1]:
 		for s: float in FINISH_LIGHTS:
@@ -73,7 +76,7 @@ static func _finish_lights(track: RaceTrack, mb: MeshBuilder, lamps: MeshBuilder
 			if track.layout.has_pit and side == track.layout.pit_side and track.pit_width[i] > 0.5:
 				d += PitComplex.DEPTH + 3.0
 				height += 6.0
-			if track.layout.sky:
+			if track.layout.sky or track.layout.undersea:
 				d = minf(d, track.deck_edge(i, side) - p.half_width(i, side) - 1.0)
 			var base := track.edge_point(i, side, d)
 			var to_track := -p.lefts[i] * side
@@ -179,6 +182,9 @@ static func _street_lamps(track: RaceTrack, f: TrackFeature, mb: MeshBuilder, la
 		if track.layout.sky:
 			_sky_lamp(track, i, base, to_track, mb, lamps, parent)
 			continue
+		if track.layout.undersea:
+			_sea_lamp(track, i, base, to_track, mb, lamps, parent)
+			continue
 		var height := 9.0
 		var dark := Color(0.16, 0.17, 0.2)
 		mb.posts().cylinder(Transform3D(Basis(), base), 0.16, 0.1, height, dark, 7)
@@ -228,6 +234,38 @@ static func _sky_lamp(track: RaceTrack, i: int, base: Vector3, to_track: Vector3
 	mb.box(Transform3D(bar, tip), Vector3(2.6, 0.22, 0.5), metal * 0.7)
 	lamps.box(Transform3D(bar, tip + Vector3.DOWN * 0.12), Vector3(2.4, 0.03, 0.36), LAMP)
 	night_light(parent, tip + Vector3.DOWN * 0.3, p.points[i] + to_track * 0.5 + Vector3.UP * 0.1, 7.5, 70.0)
+
+
+## Pista no fundo do mar: coluna de pedra canelada com capitel e um braço de bronze curvo sobre a
+## pista segurando uma lanterna redonda de luz fria (acesa também de dia, mais forte à noite).
+static func _sea_lamp(track: RaceTrack, i: int, base: Vector3, to_track: Vector3, mb: MeshBuilder, lamps: MeshBuilder,
+		parent: Node3D) -> void:
+	var p := track.path
+	var stone := Color(0.84, 0.82, 0.76)
+	var bronze := Color(0.3, 0.5, 0.46)
+	var height := 6.6
+	var bend := 1.9
+	mb.posts().box(Transform3D(Basis(), base + Vector3.UP * 0.35), Vector3(0.95, 0.7, 0.95), stone * 0.92)
+	var shaft := PackedVector2Array()
+	for k in 9:
+		var t := k / 8.0
+		shaft.append(Vector2(lerpf(0.3, 0.24, t) * (1.0 + 0.04 * sin(t * PI)), 0.7 + t * (height - 1.0)))
+	mb.posts().lathe(Transform3D(Basis(), base), shaft, stone, 12)
+	mb.posts().box(Transform3D(Basis(), base + Vector3.UP * (height - 0.2)), Vector3(0.78, 0.4, 0.78), stone)
+	var center := base + Vector3.UP * height + to_track * bend
+	var prev := base + Vector3.UP * height
+	var segs := 6
+	for k in range(1, segs + 1):
+		var a := PI * 0.5 * k / segs
+		var q := center - to_track * bend * cos(a) + Vector3.UP * bend * sin(a)
+		var dir := (q - prev).normalized()
+		var x := dir.cross(Vector3.UP).normalized() if absf(dir.y) < 0.99 else p.tangents[i]
+		mb.posts().cylinder(Transform3D(Basis(x, dir, x.cross(dir)).orthonormalized(), prev), 0.1, 0.08, prev.distance_to(q), bronze, 8, false)
+		prev = q
+	var tip := prev + to_track * 0.5
+	mb.posts().cylinder(Transform3D(Basis(), tip + Vector3.DOWN * 0.3), 0.06, 0.06, 0.3, bronze, 6, false)
+	lamps.blob(tip + Vector3.DOWN * 0.62, Vector3(0.34, 0.36, 0.34), Color(0.7, 0.97, 1.0), 10, 6)
+	night_light(parent, tip + Vector3.DOWN * 0.8, p.points[i] + to_track * 0.5 + Vector3.UP * 0.1, 7.0, 70.0)
 
 
 static func _billboards(track: RaceTrack, f: TrackFeature, mb: MeshBuilder, ads: MeshBuilder) -> void:

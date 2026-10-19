@@ -83,6 +83,7 @@ func _ready() -> void:
 	manager.infraction.connect(_on_infraction)
 	manager.state_changed.connect(_on_state)
 	manager.leader_flag.connect(_on_leader_flag)
+	manager.may_leave.connect(_on_may_leave)
 	manager.reward_received.connect(func(_d: Dictionary) -> void: _refresh_prize())
 	_on_state(manager.state)
 	_move_base_hud()
@@ -224,6 +225,14 @@ func _on_leader_flag(entry: RaceEntry) -> void:
 	banner.push("BANDEIRADA!", "%s venceu — complete sua última volta" % who if me else "%s venceu a corrida" % entry.name, false)
 
 
+## Online: os três primeiros chegaram; quem ainda corre já pode sair sem perder os créditos.
+func _on_may_leave() -> void:
+	var me := manager.player_entry
+	if manager.net != RaceManager.Net.CLIENT or me == null or me.finished or me.retired:
+		return
+	banner.push("PODE SAIR DA CORRIDA", "Os 3 primeiros chegaram: saia quando quiser (Esc → Sair da corrida) e receba os créditos da corrida", false)
+
+
 func _on_infraction(entry: RaceEntry, title: String, detail: String, is_penalty: bool) -> void:
 	if entry.is_player:
 		banner.push(title, detail, is_penalty)
@@ -330,6 +339,7 @@ func _show_menu() -> void:
 		func(i: int) -> void: RaceSettings.grid = i as RaceSettings.Grid)
 	_option(box, "DRS", ["Livre", "Só a até 1 s do carro da frente"], RaceSettings.drs_rule,
 		func(i: int) -> void: RaceSettings.drs_rule = i)
+	_row_check(box, "Colisões no box", RaceSettings.pit_collisions, func(on: bool) -> void: RaceSettings.pit_collisions = on)
 	_option(box, "Classificatória", RaceSettings.QUALI_LAP_NAMES, RaceSettings.quali_laps,
 		func(i: int) -> void: RaceSettings.quali_laps = i)
 	_row_check(box, "Colisão", RaceSettings.quali_collisions, func(on: bool) -> void: RaceSettings.quali_collisions = on)
@@ -605,6 +615,14 @@ func _toggle_pause() -> void:
 				"Recomeçar descarta a corrida (sem resultado nem prêmio); a pausa dura até 3 min. %s vota sim nas votações abertas." \
 				% RaceControl.key_label("vote_yes")
 			box.add_child(status)
+		var me := manager.player_entry
+		if manager.podium_done and me and not me.finished and not me.retired and manager.state != RaceManager.State.FINISHED:
+			var leave_note := Label.new()
+			leave_note.theme_type_variation = "RetroMuted"
+			leave_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			leave_note.add_theme_color_override("font_color", Retro.c("good"))
+			leave_note.text = "Os 3 primeiros já chegaram: saindo agora você recebe os créditos das voltas que completou (sem a metade do abandono)."
+			box.add_child(leave_note)
 		_button(box, "Sair da corrida", func() -> void: manager.restart(false))
 		return
 	if manager.state == RaceManager.State.PRACTICE:
@@ -632,13 +650,47 @@ class Standings extends Control:
 	var page := 0
 	const W := 340.0
 	const ROW := 36.0
+	## O que a tabela mostrou no último desenho: só redesenha (cartão com retícula, textos) quando
+	## isso muda — posições, intervalos, pneus, box, página.
+	var _shown: Array = []
 
 	func _ready() -> void:
 		mouse_filter = Control.MOUSE_FILTER_IGNORE
 		size = Vector2(W, 240)
+		Retro.events.changed.connect(queue_redraw)
 
 	func _process(_d: float) -> void:
-		queue_redraw()
+		var now := _signature()
+		if now != _shown:
+			_shown = now
+			queue_redraw()
+
+	## Linhas da página atual (o jogador entra na última se não estiver nela) e o total de páginas.
+	func _rows() -> Array[RaceEntry]:
+		var m := hud.manager
+		var entries := m.entries
+		var rows: Array[RaceEntry] = []
+		if entries.is_empty():
+			return rows
+		var pages := maxi(ceili(float(entries.size()) / PAGE_SIZE), 1)
+		page = clampi(page, 0, pages - 1)
+		var first := page * PAGE_SIZE
+		for k in range(first, mini(first + PAGE_SIZE, entries.size())):
+			rows.append(entries[k])
+		var player := m.player_entry
+		if player and not rows.has(player):
+			rows[rows.size() - 1] = player
+		return rows
+
+	func _signature() -> Array:
+		var m := hud.manager
+		var player := m.player_entry
+		var sig: Array = [page, m.entries.size(), player.current_lap() if player else 1, m.laps]
+		for e in _rows():
+			sig.append_array([e.position, e.code, e.color, e.car.config.tyre_compound if e.car and e.car.config else 1,
+				e == m.fastest_entry, e.in_pit, roundi(e.penalty_seconds), e.disqualified, e.retired,
+				"" if e.disqualified or e.retired else m.interval_text(e), e == player])
+		return sig
 
 	func _draw() -> void:
 		var m := hud.manager
@@ -648,14 +700,8 @@ class Standings extends Control:
 		var disp := Retro.display(800)
 		var body := Retro.body(600)
 		var pages := maxi(ceili(float(entries.size()) / PAGE_SIZE), 1)
-		page = clampi(page, 0, pages - 1)
-		var first := page * PAGE_SIZE
-		var rows: Array[RaceEntry] = []
-		for k in range(first, mini(first + PAGE_SIZE, entries.size())):
-			rows.append(entries[k])
+		var rows := _rows()
 		var player := m.player_entry
-		if player and not rows.has(player):
-			rows[rows.size() - 1] = player
 		var top := 12.0
 		var panel := Rect2(0, top, W, rows.size() * ROW + 34)
 		Retro.draw_panel(self, panel, 0.42, false)
@@ -717,14 +763,45 @@ class Minimap extends Control:
 	var _poly := PackedVector2Array()
 	var _pit := PackedVector2Array()
 	var _xform := Transform2D.IDENTITY
+	## O traçado (fixo) é desenhado aqui e só muda na montagem, no tema ou no tamanho; os carros e o
+	## safety car ficam numa camada redesenhada todo quadro e os nomes numa por cima (a mesma ordem de
+	## antes). Antes o traçado inteiro (~700 pontos, três linhas suavizadas) era refeito todo quadro.
+	var _dots: Layer
+	var _labels: Layer
+	var _name := ""
+	var _km := ""
+
+	## Camada de desenho que chama uma função do Minimap.
+	class Layer extends Control:
+		var drawer: Callable
+
+		func _draw() -> void:
+			drawer.call(self)
 
 	func _ready() -> void:
 		mouse_filter = Control.MOUSE_FILTER_IGNORE
+		for k in 2:
+			var layer := Layer.new()
+			layer.drawer = _draw_dots if k == 0 else _draw_labels
+			layer.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			layer.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+			add_child(layer)
+			if k == 0:
+				_dots = layer
+			else:
+				_labels = layer
+		Retro.events.changed.connect(_redraw_static)
+		resized.connect(_redraw_static)
+
+	func _redraw_static() -> void:
+		queue_redraw()
+		_labels.queue_redraw()
 
 	func _process(_d: float) -> void:
 		if _poly.is_empty() and hud.manager.track and hud.manager.track.is_built:
 			_build()
-		queue_redraw()
+			_redraw_static()
+		_dots.queue_redraw()
 
 	func _build() -> void:
 		var track := hud.manager.track
@@ -742,6 +819,8 @@ class Minimap extends Control:
 				if track.pit_width[idx] > 2.0:
 					var pt := track.edge_point(idx, lay.pit_side, RaceTrack.PIT_WALL_STRIP + 6.0)
 					_pit.append(_xform * Vector2(pt.x, pt.z))
+		_name = lay.display_name.to_upper()
+		_km = ("%.2f km" % (p.length / 1000.0)).replace(".", ",")
 
 	func _draw() -> void:
 		var r := Rect2(Vector2.ZERO, size)
@@ -762,29 +841,39 @@ class Minimap extends Control:
 		var t := track.path.tangent_at(0.0)
 		var n := Vector2(-t.z, t.x) * 9.0
 		draw_line(s2 - n, s2 + n, Retro.c("bad"), 3.0)
+
+	## Safety car e carros (todo quadro).
+	func _draw_dots(ci: CanvasItem) -> void:
+		if _poly.size() < 2:
+			return
 		var control := hud.manager.control
 		if control and control.safety_car:
 			var sc := control.safety_car.global_position
 			var sp := _xform * Vector2(sc.x, sc.z)
-			draw_rect(Rect2(sp - Vector2(6, 6), Vector2(12, 12)), Color("ffb000"))
-			draw_string(Retro.display(800), sp + Vector2(8, 4), "SC", HORIZONTAL_ALIGNMENT_LEFT, -1, 10, Color("ffb000"))
+			ci.draw_rect(Rect2(sp - Vector2(6, 6), Vector2(12, 12)), Color("ffb000"))
+			ci.draw_string(Retro.display(800), sp + Vector2(8, 4), "SC", HORIZONTAL_ALIGNMENT_LEFT, -1, 10, Color("ffb000"))
 		var player := hud.manager.player_entry
+		var bg := Color(Retro.c("bg"), 0.85)
 		for e: RaceEntry in hud.manager.entries:
 			if e == player or e.car == null or e.retired:
 				continue
 			var pos := _xform * Vector2(e.car.global_position.x, e.car.global_position.z)
-			draw_circle(pos, 6.0, Color(Retro.c("bg"), 0.85))
-			draw_circle(pos, 4.5, Retro.ctx(e.color))
+			ci.draw_circle(pos, 6.0, bg)
+			ci.draw_circle(pos, 4.5, Retro.ctx(e.color))
 		if player:
 			var pos := _xform * Vector2(player.car.global_position.x, player.car.global_position.z)
 			var pulse := 0.5 + 0.5 * sin(Time.get_ticks_msec() / 1000.0 * 5.0)
-			draw_circle(pos, 12.0 + pulse * 3.0, Color(Retro.c("accent_2"), 0.18))
-			draw_circle(pos, 8.0, Retro.c("bg"))
-			draw_circle(pos, 6.0, Retro.c("accent_2"))
-		Retro.draw_label(self, Retro.display(800), Vector2(14, size.y - 14), track.layout.display_name.to_upper(),
-			HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Retro.c("accent_2"))
-		var km := ("%.2f km" % (track.path.length / 1000.0)).replace(".", ",") if track and track.path else ""
-		Retro.draw_label(self, Retro.body(500), Vector2(0, size.y - 14), km, HORIZONTAL_ALIGNMENT_RIGHT, size.x - 14, 12,
+			ci.draw_circle(pos, 12.0 + pulse * 3.0, Color(Retro.c("accent_2"), 0.18))
+			ci.draw_circle(pos, 8.0, Retro.c("bg"))
+			ci.draw_circle(pos, 6.0, Retro.c("accent_2"))
+
+	## Nome da pista e comprimento (por cima dos carros).
+	func _draw_labels(ci: CanvasItem) -> void:
+		if _poly.size() < 2:
+			return
+		Retro.draw_label(ci, Retro.display(800), Vector2(14, size.y - 14), _name, HORIZONTAL_ALIGNMENT_LEFT, -1, 12,
+			Retro.c("accent_2"))
+		Retro.draw_label(ci, Retro.body(500), Vector2(0, size.y - 14), _km, HORIZONTAL_ALIGNMENT_RIGHT, size.x - 14, 12,
 			Retro.c("muted"))
 
 
@@ -822,11 +911,14 @@ class Banner extends Control:
 		if _current.is_empty() and not _queue.is_empty():
 			_current = _queue.pop_front()
 			_t = 0.0
-		if not _current.is_empty():
+		var was := not _current.is_empty()
+		if was:
 			_t += delta
 			if _t > DURATION:
 				_current = []
-		queue_redraw()
+		# Só enquanto há aviso (e uma vez ao terminar, para apagar)
+		if was:
+			queue_redraw()
 
 	func _draw() -> void:
 		if _current.is_empty():
@@ -1068,19 +1160,23 @@ class RaceInfo extends Control:
 class FlagPanel extends Control:
 	var hud: RaceModeHud
 	var _t := 0.0
+	## Instrução do quadro (vazia = nada a mostrar: só redesenha uma vez para apagar).
+	var _info: Array = []
 
 	func _ready() -> void:
 		mouse_filter = Control.MOUSE_FILTER_IGNORE
 
 	func _process(delta: float) -> void:
 		_t += delta
-		queue_redraw()
+		var m := hud.manager
+		var info: Array = m.control.instruction_for(m.player_entry) if m.control and m.player_entry else []
+		if not info.is_empty() or not _info.is_empty():
+			queue_redraw()
+		_info = info
 
 	func _draw() -> void:
 		var m := hud.manager
-		if m.control == null or m.player_entry == null:
-			return
-		var info := m.control.instruction_for(m.player_entry)
+		var info := _info
 		if info.is_empty():
 			return
 		var yellow := m.control.yellow
@@ -1138,9 +1234,15 @@ class VoteBar extends Control:
 	func _ready() -> void:
 		mouse_filter = Control.MOUSE_FILTER_IGNORE
 
+	var _active := false
+
 	func _process(delta: float) -> void:
 		_t += delta
-		queue_redraw()
+		var m := hud.manager
+		var active := m.net_paused or (not m.vote_state.is_empty() and m.vote_left() > 0.0)
+		if active or _active:
+			queue_redraw()
+		_active = active
 
 	func _draw() -> void:
 		var m := hud.manager

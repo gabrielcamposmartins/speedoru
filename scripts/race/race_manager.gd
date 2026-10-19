@@ -33,6 +33,9 @@ signal net_grid_ready
 signal net_event(data: Dictionary)
 ## O primeiro recebeu a bandeirada (offline, no servidor e, pelo evento, nos clientes).
 signal leader_flag(entry: RaceEntry)
+## Online: os três primeiros chegaram; quem ainda corre pode sair e recebe os créditos da corrida
+## (no servidor e, pelo estado, nos clientes).
+signal may_leave
 ## O servidor pagou a corrida do jogador: {reward, extras: {missions, week, achievements, spin}}.
 signal reward_received(data: Dictionary)
 
@@ -66,6 +69,10 @@ var laps := 10
 var fastest_lap := 0.0
 var fastest_entry: RaceEntry
 var leader_finished := false
+## Quantos precisam chegar para quem ainda corre poder sair sem perder os créditos (online).
+const PODIUM_SIZE := 3
+## Os três primeiros (ou todos, com menos carros) já chegaram.
+var podium_done := false
 ## Composto escolhido para o próximo pit stop do jogador.
 var pit_compound := CarConfig.TyreCompound.HARD
 var player_pit_timer := 0.0
@@ -145,10 +152,13 @@ func _ready() -> void:
 	match net:
 		Net.OFF:
 			drs_rule = RaceSettings.drs_rule
+			pit_collisions = RaceSettings.pit_collisions
 		Net.SERVER:
 			drs_rule = int(net_setup.get("drs", 0))
+			pit_collisions = bool(net_setup.get("pit_collisions", true))
 		Net.CLIENT:
 			drs_rule = int((net_setup.get("settings", {}) as Dictionary).get("drs", 0))
+			pit_collisions = bool((net_setup.get("settings", {}) as Dictionary).get("pit_collisions", true))
 	# O carro do jogador corre com o que está equipado na garagem (na rede, com o que o servidor manda)
 	var profile := get_node_or_null("/root/Profile") as PlayerProfile
 	if profile and player.config and net == Net.OFF:
@@ -398,6 +408,8 @@ func _make_entry(car: F1Car, is_player: bool, slot: int, garage: int) -> RaceEnt
 		e.color = track.layout.team_colors[(garage / 2) % track.layout.team_colors.size()]
 	e.compounds_used.append(car.config.tyre_compound if car.config else 1)
 	car.car_contact.connect(_on_car_contact.bind(e))
+	# Longe da câmera o carro vira um modelo só (CarFarModel; nada sem janela)
+	CarFarModel.attach(car)
 	entries.append(e)
 	return e
 
@@ -548,6 +560,9 @@ func _on_line_crossed(e: RaceEntry) -> void:
 		if e.is_player and net == Net.OFF:
 			_pay_player()
 			_crowd("finish")
+		if not podium_done and _finished_count() >= mini(PODIUM_SIZE, entries.size()):
+			podium_done = true
+			may_leave.emit()
 		if (e.is_player and net == Net.OFF) or _all_finished() or (net == Net.SERVER and _humans_done()):
 			state = State.FINISHED
 			state_changed.emit(state)
@@ -788,6 +803,30 @@ func _repair(e: RaceEntry) -> void:
 
 
 ## Carro destruído: sai da corrida (DNF) e é tirado da pista depois de alguns segundos.
+## Carros que já receberam a bandeirada (sem os que abandonaram).
+func _finished_count() -> int:
+	var n := 0
+	for e in entries:
+		if e.finished and not e.retired:
+			n += 1
+	return n
+
+
+## Online: saiu da corrida depois que os três primeiros chegaram. Conta como chegada com as voltas
+## que tinha (recebe os créditos da corrida, sem a metade do abandono) e o carro sai da pista.
+func leave_after_podium(e: RaceEntry) -> void:
+	if e.finished or e.retired:
+		return
+	e.finish_laps = e.laps_completed()
+	e.finished = true
+	e.finish_time = race_time
+	# Como na bandeirada: sem o pit stop obrigatório não vale
+	if e.pit_count < RaceSettings.mandatory_pits:
+		e.disqualified = true
+		e.dsq_reason = "Pit stop obrigatório não cumprido"
+	_park(e)
+
+
 func retire(e: RaceEntry) -> void:
 	if e.retired:
 		return
@@ -797,7 +836,13 @@ func retire(e: RaceEntry) -> void:
 		_pay_player()
 	_notify(e, "ABANDONO", "%s está fora da corrida" % e.name, false)
 	await get_tree().create_timer(4.0, false).timeout
+	_park(e)
+
+
+## Tira o carro da pista: some, sem colisão nem física.
+func _park(e: RaceEntry) -> void:
 	if is_instance_valid(e.car):
+		e.car.hold = true
 		e.car.visible = false
 		e.car.process_mode = Node.PROCESS_MODE_DISABLED
 		e.car.collision_layer = 0
@@ -1297,7 +1342,7 @@ func net_state() -> Dictionary:
 			inv[e.index] = [control.involved[e]["time_left"], control.involved[e]["in_box"]]
 	return {
 		"state": state, "race_time": race_time, "laps": laps, "entries": list,
-		"fastest": fastest_entry.index if fastest_entry else -1, "fastest_lap": fastest_lap, "leader_finished": leader_finished,
+		"fastest": fastest_entry.index if fastest_entry else -1, "fastest_lap": fastest_lap, "leader_finished": leader_finished, "podium_done": podium_done,
 		"yellow": control.yellow if control else false, "involved": inv,
 		"sc": [control.safety_car.progress, control.safety_car.speed, control.yellow_min_left()] if control and control.safety_car else [],
 	}
@@ -1404,6 +1449,9 @@ func _client_physics(delta: float) -> void:
 		e.s = pr.x
 		e.lateral = pr.y
 		e.race_time = race_time
+	# Sem colisões no box: o carro previsto também atravessa os outros nos boxes (como no servidor)
+	if not pit_collisions:
+		_native_update_ghosts()
 	if control:
 		control.mirror_update(delta)
 	if _box_marker and player_entry:
@@ -1464,6 +1512,9 @@ func apply_net_state(d: Dictionary) -> void:
 	fastest_entry = roster[fi] if fi >= 0 and fi < roster.size() else null
 	fastest_lap = float(d.get("fastest_lap", 0.0))
 	leader_finished = bool(d.get("leader_finished", false))
+	if bool(d.get("podium_done", false)) and not podium_done:
+		podium_done = true
+		may_leave.emit()
 	var sorted := roster.duplicate()
 	sorted.sort_custom(func(a: RaceEntry, b: RaceEntry) -> bool: return a.position < b.position)
 	entries.assign(sorted)

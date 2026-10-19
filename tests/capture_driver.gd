@@ -10,6 +10,7 @@ var cam: RaceCamera
 
 
 func _initialize() -> void:
+	DriverRig.capture_poses = true
 	var args := OS.get_cmdline_user_args()
 	out_dir = args[1] if args.size() > 1 else OS.get_user_data_dir()
 	var scene := (load("res://scenes/test/test_track.tscn") as PackedScene).instantiate()

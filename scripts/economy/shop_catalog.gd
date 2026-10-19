@@ -40,7 +40,7 @@ const TYPES := [
 	["decal", "Decalques", 1.0],
 	["boost", "Brilho do boost", 1.0],
 	["neon", "Neon", 1.1],
-	["trail", "Partículas", 1.3],
+	["trail", "Aura", 1.3],
 	["signal", "Luz de ultrapassagem", 1.2],
 	["title", "Títulos", 1.5],
 ]

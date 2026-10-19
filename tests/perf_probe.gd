@@ -3,20 +3,33 @@ extends SceneTree
 ## carro do jogador é posto em alguns pontos da volta (a câmera da corrida segue) e mede FPS, tempo
 ## de CPU e de GPU, chamadas de desenho e triângulos. Com "grupos", desliga um grupo de nós da pista
 ## de cada vez e mede quanto cada um custa. Com "sombras", compara variações da sombra do sol em
-## cada ponto (cascatas e distância), separando os desenhos da tela dos da sombra.
-##   godot --path . -s res://tests/perf_probe.gd -- [pistas: monza,suzuka,monaco] [grupos] [sombras]
+## cada ponto (cascatas e distância), separando os desenhos da tela dos da sombra. Com "hud", mede o
+## quanto a interface da corrida (HUD, classificação, minimapa…) custa: com ela e escondida.
+##   godot --path . -s res://tests/perf_probe.gd -- [pistas: monza,suzuka,monaco] [grupos] [sombras] [hud]
 
 const POINTS := [0.0, 0.25, 0.5, 0.75]
 const SAMPLE_S := 2.5
 
 var by_group := false
+## Ponto da volta (fração) onde medir os grupos ("grupos@0.75"; padrão: o meio).
+var group_at := 0.5
+## Com "sombra_grupos": quanto a sombra de cada grupo custa (desliga só o cast_shadow dele).
+var shadow_groups := false
 ## Média da última amostra: [scripts (_process), física, render na CPU] em ms.
 var _cpu := [0.0, 0.0, 0.0]
 var pines := false
 var shadows := false
+var hud := false
 
 
 func _initialize() -> void:
+	# Com janela e sem --offline o Net conecta sozinho com a conta real e regrava o account.cfg do
+	# jogador: desconecta e passa a gravar num arquivo de teste
+	var net := root.get_node_or_null("Net")
+	if net and not "--offline" in OS.get_cmdline_user_args():
+		net.account_file = "user://test_perf_account.cfg"
+		net.disconnect_from_server()
+		net._retry = 0.0
 	_run.call_deferred()
 
 
@@ -57,12 +70,20 @@ func _sample(seconds: float) -> Array:
 func _run() -> void:
 	var tracks := ["monza", "suzuka"]
 	for a in OS.get_cmdline_user_args():
-		if a == "grupos":
+		if a == "grupos" or a.begins_with("grupos@"):
 			by_group = true
+			if a.contains("@"):
+				group_at = float(a.get_slice("@", 1))
 		elif a == "pinheiros":
 			pines = true
 		elif a == "sombras":
 			shadows = true
+		elif a.begins_with("sombra_grupos"):
+			shadow_groups = true
+			if a.contains("@"):
+				group_at = float(a.get_slice("@", 1))
+		elif a == "hud":
+			hud = true
 		elif not a.begins_with("--"):
 			tracks = a.split(",")
 	DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_DISABLED)
@@ -105,8 +126,12 @@ func _run() -> void:
 		if shadows:
 			await _shadows(scene, manager)
 		print("  média: %4.0f fps · quadro %.1f ms · GPU %.1f ms · %4.0f desenhos · %5.0f mil triângulos" % [total[0], total[1], total[2], total[3], total[4]])
+		if hud:
+			await _hud(scene, manager, path.length * 0.5 + 30.0)
 		if by_group:
-			await _groups(manager, path.length * 0.5 + 30.0)
+			await _groups(manager, path.length * group_at + 30.0)
+		if shadow_groups:
+			await _shadow_groups(manager, path.length * group_at + 30.0)
 		if pines:
 			await _pines(manager, path.length * 0.75 + 30.0)
 		scene.queue_free()
@@ -183,6 +208,59 @@ func _pines(manager: RaceManager, s: float) -> void:
 		n.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	r = await _sample(SAMPLE_S)
 	print("    leve a partir de 150 m e sem sombra → GPU %.1f ms, %.0f mil triângulos" % [r[2], r[4]])
+
+
+## Custo da sombra de cada grupo de nós da pista (só o cast_shadow desligado; o grupo continua
+## visível), no ponto dado.
+func _shadow_groups(manager: RaceManager, s: float) -> void:
+	var car := manager.player
+	car.global_transform = manager.track.path.frame_at(s, 0.0, 0.6)
+	car.reset_physics_interpolation()
+	await _frames(20)
+	var vp := root.get_viewport().get_viewport_rid()
+	var base := await _sample(SAMPLE_S)
+	var base_sh := RenderingServer.viewport_get_render_info(vp, RenderingServer.VIEWPORT_RENDER_INFO_TYPE_SHADOW,
+		RenderingServer.VIEWPORT_RENDER_INFO_DRAW_CALLS_IN_FRAME)
+	print("  sombra de cada grupo (base %.1f ms GPU, %d desenhos da sombra):" % [base[2], base_sh])
+	for child in manager.track.get_node("Generated").get_children():
+		var geos: Array[GeometryInstance3D] = []
+		var saved: Array[int] = []
+		for n in child.find_children("*", "GeometryInstance3D", true, false) + ([child] if child is GeometryInstance3D else []):
+			var g := n as GeometryInstance3D
+			if g.cast_shadow != GeometryInstance3D.SHADOW_CASTING_SETTING_OFF:
+				geos.append(g)
+				saved.append(g.cast_shadow)
+				g.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		if geos.is_empty():
+			continue
+		var r := await _sample(1.5)
+		var sh := RenderingServer.viewport_get_render_info(vp, RenderingServer.VIEWPORT_RENDER_INFO_TYPE_SHADOW,
+			RenderingServer.VIEWPORT_RENDER_INFO_DRAW_CALLS_IN_FRAME)
+		for k in geos.size():
+			geos[k].cast_shadow = saved[k] as GeometryInstance3D.ShadowCastingSetting
+		print("    sombra de %-22s → GPU -%.2f ms, -%d desenhos da sombra (%d objetos com sombra)" % [
+			child.name, base[2] - r[2], base_sh - sh, geos.size()])
+
+
+## Custo da interface da corrida (as CanvasLayer da cena): com ela e escondida, no ponto dado.
+func _hud(scene: Node, manager: RaceManager, s: float) -> void:
+	var car := manager.player
+	car.global_transform = manager.track.path.frame_at(s, 0.0, 0.6)
+	car.reset_physics_interpolation()
+	await _frames(20)
+	var base := await _sample(SAMPLE_S)
+	var cpu_base: Array = _cpu.duplicate()
+	var layers: Array[CanvasLayer] = []
+	for n in scene.find_children("*", "CanvasLayer", true, false):
+		if (n as CanvasLayer).visible:
+			layers.append(n)
+			(n as CanvasLayer).visible = false
+	await _frames(10)
+	var r := await _sample(SAMPLE_S)
+	for l in layers:
+		l.visible = true
+	print("  interface: com %.2f ms quadro (scripts %.2f, render CPU %.2f, GPU %.2f) · sem %.2f ms (scripts %.2f, render CPU %.2f, GPU %.2f)" % [
+		base[1], cpu_base[0], cpu_base[2], base[2], r[1], _cpu[0], _cpu[2], r[2]])
 
 
 ## Custo de cada grupo de nós da pista (desliga um de cada vez, no meio da volta).

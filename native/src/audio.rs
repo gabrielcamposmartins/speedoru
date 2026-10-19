@@ -2,6 +2,7 @@
 //! camadas do motor, turbo, engrenagens, vento, pneus e pisos, estouros do escapamento, batidas e
 //! o passa-baixa do capacete. O GDScript cria os players e carrega os sons.
 
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::f64::consts::{PI, TAU};
 
@@ -11,7 +12,7 @@ use godot::global::{linear_to_db, randf, randf_range, randi_range};
 use godot::prelude::*;
 
 use crate::car::{F1CarCore, AIR, LOCK, SPIN};
-use crate::fx::race_camera;
+use crate::fx::{camera_position, race_camera};
 use crate::surface;
 use crate::util::{clamp, lerp, move_toward, smoothstep};
 
@@ -35,6 +36,20 @@ const NEAR_BOOST_DB: f64 = 7.0;
 const NEAR_CLOSE: f64 = 8.0;
 const NEAR_FAR: f64 = 45.0;
 const RIVAL_CULL: f64 = 260.0;
+/// Só os rivais mais perto da câmera têm som (os outros ficam mudos: eram ~30 players 3D por carro
+/// atualizados a cada quadro). Quem já está tocando leva vantagem de RIVAL_KEEP m na escolha (sem
+/// ficar trocando entre dois carros quase à mesma distância) e entra/sai em RIVAL_FADE s.
+const AUDIBLE_RIVALS: usize = 2;
+const RIVAL_KEEP: f64 = 5.0;
+const RIVAL_FADE: f64 = 0.25;
+
+thread_local! {
+    /// Rivais com som (CarAudioCore) e a escolha do quadro: (quadro, os mais perto).
+    static RIVALS: RefCell<Vec<InstanceId>> = const { RefCell::new(Vec::new()) };
+    static RANK: RefCell<(u64, Vec<InstanceId>)> = const { RefCell::new((u64::MAX, Vec::new())) };
+    /// Passa-baixa do capacete: (quadro, bus) já conferidos neste quadro.
+    static HELMET: RefCell<(u64, Vec<i32>)> = const { RefCell::new((u64::MAX, Vec::new())) };
+}
 
 #[derive(GodotClass)]
 #[class(init, base=Node3D)]
@@ -85,6 +100,13 @@ pub struct CarAudioCore {
     idle_detune: f64,
     idle_phase: f64,
     silent: bool,
+    /// Rival entre os que têm som (0..1, com transição) e se já está na lista de rivais.
+    audible: f64,
+    registered: bool,
+    /// Volume e pitch já aplicados em cada player (só escreve quando muda).
+    on_last: Vec<(f32, f32)>,
+    off_last: Vec<(f32, f32)>,
+    loops_last: Vec<(f32, f32)>,
     base: Base<Node3D>,
 }
 
@@ -93,20 +115,38 @@ fn players(arr: &AnyArray) -> Vec<Gd<AudioStreamPlayer3D>> {
 }
 
 /// Nível linear (0..1) e pitch de um loop; para os que estão em silêncio (e volta a tocar de um
-/// ponto qualquer do loop: os carros não ficam em fase).
-fn set_loop(p: &mut Gd<AudioStreamPlayer3D>, level: f64, pitch: f64, offset_db: f64) {
+/// ponto qualquer do loop: os carros não ficam em fase). `last` guarda o volume e o pitch aplicados
+/// (NAN = parado): só chama o player quando algo muda de verdade.
+fn set_loop(p: &mut Gd<AudioStreamPlayer3D>, last: &mut (f32, f32), level: f64, pitch: f64, offset_db: f64) {
     if level < 0.003 {
-        if p.is_playing() {
-            p.stop();
+        if !last.0.is_nan() {
+            if p.is_playing() {
+                p.stop();
+            }
+            *last = (f32::NAN, f32::NAN);
         }
         return;
     }
-    p.set_volume_db((linear_to_db(level) + offset_db) as f32);
-    p.set_pitch_scale(clamp(pitch, 0.3, 3.5) as f32);
-    if !p.is_playing() {
+    let db = (linear_to_db(level) + offset_db) as f32;
+    let pitch = clamp(pitch, 0.3, 3.5) as f32;
+    let starting = last.0.is_nan();
+    if starting || (db - last.0).abs() > 0.05 {
+        p.set_volume_db(db);
+        last.0 = db;
+    }
+    if starting || (pitch - last.1).abs() > 0.0005 {
+        p.set_pitch_scale(pitch);
+        last.1 = pitch;
+    }
+    if starting && !p.is_playing() {
         let length = p.get_stream().map(|s| s.get_length()).unwrap_or(0.0);
         p.play_ex().from_position((randf() * length) as f32).done();
     }
+}
+
+/// Estado inicial do "último aplicado" de uma lista de players (todos parados).
+fn stopped(n: usize) -> Vec<(f32, f32)> {
+    vec![(f32::NAN, f32::NAN); n]
 }
 
 #[godot_api]
@@ -117,7 +157,7 @@ impl INode3D for CarAudioCore {
         let body = car.clone().upcast::<VehicleBody3D>();
         let node: Gd<Node> = self.base().clone().upcast();
         let cam = race_camera(&node);
-        let cam_pos = node.get_viewport().and_then(|v| v.get_camera_3d()).map(|c| c.get_global_position());
+        let cam_pos = camera_position(&node);
         let car_pos = body.get_global_position();
         // Rival perto da câmera: reforço de volume
         if self.rival {
@@ -125,13 +165,14 @@ impl INode3D for CarAudioCore {
                 .map(|p| NEAR_BOOST_DB * (1.0 - smoothstep(NEAR_CLOSE, NEAR_FAR, p.distance_to(car_pos) as f64)))
                 .unwrap_or(0.0);
             self._near_db = move_toward(self._near_db, target, delta * 20.0);
+            // Só os AUDIBLE_RIVALS rivais mais perto da câmera têm som
+            let chosen = self.audible_rival(cam_pos, car_pos);
+            self.audible = move_toward(self.audible, if chosen { 1.0 } else { 0.0 }, delta / RIVAL_FADE);
         }
         let far = cam_pos.is_some_and(|p| p.distance_squared_to(car_pos) as f64 > RIVAL_CULL * RIVAL_CULL);
-        if self.rival && far {
+        if self.rival && (far || self.audible <= 0.0) {
             if !self.silent {
-                for p in self.on.iter_mut().chain(self.off.iter_mut()).chain(self.loops.iter_mut()) {
-                    set_loop(p, 0.0, 1.0, 0.0);
-                }
+                self.stop_all();
                 self.silent = true;
             }
             return;
@@ -157,8 +198,23 @@ impl INode3D for CarAudioCore {
         self.update_helmet(cam.map(|(_, mode, _)| mode == CAMERA_DRIVER).unwrap_or(false));
     }
 
+    fn exit_tree(&mut self) {
+        if self.registered {
+            let id = self.base().instance_id();
+            RIVALS.with(|r| r.borrow_mut().retain(|x| *x != id));
+            self.registered = false;
+        }
+    }
+
     fn physics_process(&mut self, delta: f64) {
         let Some(car) = self.car.clone() else { return };
+        // Rival sem som: nem as batidas
+        if self.rival && self.silent {
+            let body = car.clone().upcast::<VehicleBody3D>();
+            self._prev_velocity = body.get_linear_velocity();
+            self._prev_position = body.get_global_position();
+            return;
+        }
         let body = car.clone().upcast::<VehicleBody3D>();
         // Batida: mudança brusca de velocidade num único passo (> ~30 G), ignorando teleportes
         self.impact_cooldown -= delta;
@@ -196,6 +252,9 @@ impl CarAudioCore {
             .collect();
         self.idle_detune = randf_range(-0.05, 0.05);
         self.idle_phase = randf() * TAU;
+        self.on_last = stopped(self.on.len());
+        self.off_last = stopped(self.off.len());
+        self.loops_last = stopped(self.loops.len());
     }
 
     /// Toca um som curto (posição local no carro).
@@ -222,6 +281,61 @@ impl CarAudioCore {
 }
 
 impl CarAudioCore {
+    fn stop_all(&mut self) {
+        for (p, last) in self.on.iter_mut().zip(self.on_last.iter_mut()) {
+            set_loop(p, last, 0.0, 1.0, 0.0);
+        }
+        for (p, last) in self.off.iter_mut().zip(self.off_last.iter_mut()) {
+            set_loop(p, last, 0.0, 1.0, 0.0);
+        }
+        for (p, last) in self.loops.iter_mut().zip(self.loops_last.iter_mut()) {
+            set_loop(p, last, 0.0, 1.0, 0.0);
+        }
+    }
+
+    /// Este rival está entre os AUDIBLE_RIVALS mais perto da câmera? A escolha é feita uma vez por
+    /// quadro (o primeiro rival a perguntar mede todos).
+    fn audible_rival(&mut self, cam_pos: Option<Vector3>, car_pos: Vector3) -> bool {
+        let me = self.base().instance_id();
+        if !self.registered {
+            RIVALS.with(|r| r.borrow_mut().push(me));
+            self.registered = true;
+        }
+        let Some(cam) = cam_pos else { return true };
+        let frame = Engine::singleton().get_process_frames();
+        let fresh = RANK.with(|r| r.borrow().0 == frame);
+        if !fresh {
+            let ids = RIVALS.with(|r| r.borrow().clone());
+            let mut dist: Vec<(f64, InstanceId)> = Vec::with_capacity(ids.len());
+            let mut alive: Vec<InstanceId> = Vec::with_capacity(ids.len());
+            for id in ids {
+                let entry = if id == me {
+                    // Este (já está em uso: não dá para ler pelo objeto)
+                    Some((car_pos, self.audible))
+                } else {
+                    Gd::<CarAudioCore>::try_from_instance_id(id).ok().and_then(|other| {
+                        let o = other.bind();
+                        let car = o.car.as_ref().filter(|c| c.is_instance_valid())?;
+                        if !o.rival {
+                            return None;
+                        }
+                        Some((car.clone().upcast::<Node3D>().get_global_position(), o.audible))
+                    })
+                };
+                if let Some((pos, audible)) = entry {
+                    alive.push(id);
+                    let keep = if audible > 0.0 { RIVAL_KEEP } else { 0.0 };
+                    dist.push((cam.distance_to(pos) as f64 - keep, id));
+                }
+            }
+            RIVALS.with(|r| *r.borrow_mut() = alive);
+            dist.sort_by(|a, b| a.0.total_cmp(&b.0));
+            let best: Vec<InstanceId> = dist.iter().take(AUDIBLE_RIVALS).map(|(_, id)| *id).collect();
+            RANK.with(|r| *r.borrow_mut() = (frame, best));
+        }
+        RANK.with(|r| r.borrow().1.contains(&me))
+    }
+
     fn update_engine(&mut self, car: &Gd<F1CarCore>, rpm: f64) {
         let n = ENGINE_RPMS.len();
         let r = clamp(rpm, ENGINE_RPMS[0], ENGINE_RPMS[n - 1] - 1.0);
@@ -246,7 +360,7 @@ impl CarAudioCore {
                     + 0.015 * (self.time * TAU * 0.7 + self.idle_phase).sin()
                     + 0.008 * (self.time * TAU * 2.3).sin());
         loudness *= 1.0 - idle * if self.rival { 0.45 } else { 0.2 };
-        let offset = self.engine_db + self._near_db;
+        let offset = self.engine_db + self._near_db + self.fade_db();
         for i in 0..n.min(self.on.len()).min(self.off.len()) {
             let w = if i == lo {
                 (t * PI * 0.5).cos()
@@ -256,8 +370,8 @@ impl CarAudioCore {
                 0.0
             };
             let pitch = rpm / ENGINE_RPMS[i] * wobble;
-            set_loop(&mut self.on[i], w * on_gain * loudness, pitch, offset);
-            set_loop(&mut self.off[i], w * off_gain * loudness, pitch, offset);
+            set_loop(&mut self.on[i], &mut self.on_last[i], w * on_gain * loudness, pitch, offset);
+            set_loop(&mut self.off[i], &mut self.off_last[i], w * off_gain * loudness, pitch, offset);
         }
     }
 
@@ -267,15 +381,15 @@ impl CarAudioCore {
         }
         let speed = body.get_linear_velocity().length() as f64;
         let kmh = speed * 3.6;
-        let fx = self.effects_db + self._near_db;
+        let fx = self.effects_db + self._near_db + self.fade_db();
         let load = self.engine_load;
         // Turbo/MGU-H: assobio que sobe com o giro, com carga
-        set_loop(&mut self.loops[TURBO], load * smoothstep(5000.0, 12000.0, rpm) * 0.32, 0.55 + 0.6 * rpm / 12000.0, fx);
+        self.loop_at(TURBO, load * smoothstep(5000.0, 12000.0, rpm) * 0.32, 0.55 + 0.6 * rpm / 12000.0, fx);
         // Engrenagens retas: aparecem ao aliviar o acelerador em velocidade
         let whine = ((1.0 - load) * 0.3 + 0.05) * smoothstep(15.0, 120.0, kmh);
-        set_loop(&mut self.loops[GEAR_WHINE], whine, 0.35 + kmh / 260.0, fx);
+        self.loop_at(GEAR_WHINE, whine, 0.35 + kmh / 260.0, fx);
         // Vento
-        set_loop(&mut self.loops[WIND], clamp(speed / 90.0, 0.0, 1.0).powf(2.0) * 0.45, 0.75 + kmh / 450.0, fx);
+        self.loop_at(WIND, clamp(speed / 90.0, 0.0, 1.0).powf(2.0) * 0.45, 0.75 + kmh / 450.0, fx);
 
         // Pneus e pisos
         let mut squeal: f64 = 0.0;
@@ -283,9 +397,10 @@ impl CarAudioCore {
         let (mut gravel, mut grass, mut kerb) = (0, 0, 0);
         let (wheels, boost_active) = {
             let c = car.bind();
-            let states = c.tire_state.as_slice();
-            let surfaces = c.tire_surface.as_slice();
-            let usage = c.tire_usage.as_slice();
+            // Cópias no Rust do estado dos pneus (o carro de outro jogador online não roda o modelo)
+            let states = &c.rs_state;
+            let surfaces = &c.rs_surface;
+            let usage = &c.rs_usage;
             for i in 0..states.len() {
                 let state = states[i];
                 if state == AIR {
@@ -311,20 +426,32 @@ impl CarAudioCore {
             (states.len().max(1) as f64, c.boost_active)
         };
         let moving = clamp(speed / 8.0, 0.0, 1.0);
-        set_loop(&mut self.loops[TIRE_SQUEAL], squeal * moving * 0.55, 0.9 + 0.25 * squeal + kmh / 1500.0, fx);
-        set_loop(&mut self.loops[TIRE_SCRUB], clamp(scrub / 2.0, 0.0, 1.0) * moving * 0.6, 0.7 + kmh / 220.0, fx);
+        self.loop_at(TIRE_SQUEAL, squeal * moving * 0.55, 0.9 + 0.25 * squeal + kmh / 1500.0, fx);
+        self.loop_at(TIRE_SCRUB, clamp(scrub / 2.0, 0.0, 1.0) * moving * 0.6, 0.7 + kmh / 220.0, fx);
         let loose = clamp(speed / 15.0, 0.0, 1.0);
-        set_loop(&mut self.loops[GRAVEL], gravel as f64 / wheels * loose * 0.8, 0.8 + kmh / 400.0, fx);
-        set_loop(&mut self.loops[GRASS], grass as f64 / wheels * loose * 0.6, 0.8 + kmh / 400.0, fx);
-        set_loop(&mut self.loops[SCRAPE], self.scrape_level * 0.9, 0.8 + kmh / 400.0, fx);
+        self.loop_at(GRAVEL, gravel as f64 / wheels * loose * 0.8, 0.8 + kmh / 400.0, fx);
+        self.loop_at(GRASS, grass as f64 / wheels * loose * 0.6, 0.8 + kmh / 400.0, fx);
+        self.loop_at(SCRAPE, self.scrape_level * 0.9, 0.8 + kmh / 400.0, fx);
         self.boost_level = move_toward(self.boost_level, if boost_active { 1.0 } else { 0.0 }, delta * 5.0);
-        set_loop(&mut self.loops[BOOST], self.boost_level * 0.55, 0.9 + kmh / 900.0, fx);
-        set_loop(
-            &mut self.loops[KERB],
+        self.loop_at(BOOST, self.boost_level * 0.55, 0.9 + kmh / 900.0, fx);
+        self.loop_at(
+            KERB,
             kerb as f64 / wheels * clamp(speed / 5.0, 0.0, 1.0) * 0.8,
             speed / self.kerb_reference_speed,
             fx,
         );
+    }
+
+    fn loop_at(&mut self, k: usize, level: f64, pitch: f64, offset_db: f64) {
+        set_loop(&mut self.loops[k], &mut self.loops_last[k], level, pitch, offset_db);
+    }
+
+    /// Volume da transição de um rival que entra ou sai da lista dos que têm som (dB).
+    fn fade_db(&self) -> f64 {
+        if !self.rival || self.audible >= 1.0 {
+            return 0.0;
+        }
+        linear_to_db(self.audible.max(0.001))
     }
 
     /// Ronco do escapamento ao aliviar em giro alto: um único "brap-brap" por alívio.
@@ -348,6 +475,23 @@ impl CarAudioCore {
     /// Na câmera do piloto o som passa por um passa-baixa (capacete).
     fn update_helmet(&self, inside: bool) {
         let bus = self._bus_index as i32;
+        // Uma conferência por bus e por quadro (os rivais dividem o mesmo bus)
+        let frame = Engine::singleton().get_process_frames();
+        let done = HELMET.with(|h| {
+            let mut h = h.borrow_mut();
+            if h.0 != frame {
+                *h = (frame, Vec::new());
+            }
+            if h.1.contains(&bus) {
+                true
+            } else {
+                h.1.push(bus);
+                false
+            }
+        });
+        if done {
+            return;
+        }
         let mut audio = AudioServer::singleton();
         if bus < 0 || audio.get_bus_effect_count(bus) <= HELMET_EFFECT {
             return;

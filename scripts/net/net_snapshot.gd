@@ -7,7 +7,8 @@ extends RefCounted
 ## parado, escondido, TC, ABS, automático), bateria, desgaste dos 4 pneus, composto, dano
 ## (asa dianteira/traseira, arrasto, motor), rodas quebradas, uso dos pneus, balanço de freio e
 ## quanto cada roda está abaixo da fixação (suspensão, em mm). Depois dos carros, o servidor põe
-## (só no instantâneo de cada jogador) o ack dos comandos dele, u32 — clientes antigos ignoram.
+## (só no instantâneo de cada jogador) o ack dos comandos dele, u32, e a folga dos comandos (i8,
+## passos; 127 = sem medida ainda: ver RaceSession).
 
 const F_DRS := 1
 const F_BOOST := 2
@@ -122,6 +123,10 @@ static func decode(data: PackedByteArray) -> Dictionary:
 	# Servidor com predição: no fim, o último comando deste jogador aplicado (ack)
 	if b.get_available_bytes() >= 4:
 		out["ack"] = b.get_u32()
+		if b.get_available_bytes() >= 1:
+			var slack := b.get_8()
+			if slack != 127:
+				out["slack"] = slack
 	return out
 
 

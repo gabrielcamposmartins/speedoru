@@ -16,6 +16,9 @@ extends RefCounted
 ##   erro não ser contado duas vezes;
 ## * grande (> SNAP_POS: batida, carro levado aos boxes ou de volta à pista): o carro salta para o
 ##   estado do servidor (adiantado pelos comandos que ele ainda não aplicou).
+## Os destroços (peças soltas nas batidas) são simulados à parte em cada máquina e se espalham
+## diferente: aqui o carro previsto não colide com eles (nem as rodas os pisam); no servidor, sim, e
+## o efeito chega pela correção.
 ## O que é decisão do servidor vem dele em todo instantâneo: largada/parada (hold), carro escondido,
 ## dano, pneus, rodas quebradas e bateria (se a diferença for grande). Limitador, controle de tração
 ## e câmbio automático seguem o servidor, menos logo depois de o jogador trocar aqui.
@@ -59,6 +62,7 @@ func _init(p_car: F1Car, p_index: int) -> void:
 	index = p_index
 	car.net_predicted = true
 	car.player_controlled = false
+	car.collision_mask &= ~CarDamage.DEBRIS_LAYER
 
 
 ## Antes do passo: guarda o estado que resultou do comando `seq` (aplicado no passo anterior),
@@ -175,12 +179,20 @@ func reconcile(s: Dictionary, latest_seq: int) -> void:
 		e[2] = (e[2] as Vector3) + err_vel
 
 
-## Salto para o estado do servidor, adiantado pelos `ahead` comandos que ele ainda não aplicou.
+## Salto para o estado do servidor, adiantado pelos `ahead` comandos que ele ainda não aplicou. O
+## adiantado vai em linha reta pela velocidade: numa curva ou num desnível ele pode cair dentro do
+## chão (o carro ficava enterrado, com as rodas de trás no ar). Por isso o carro fica na mesma
+## altura acima do piso em que está no servidor.
 func _snap(c: Dictionary, ahead: int) -> void:
 	snaps += 1
 	var dt := 1.0 / Engine.physics_ticks_per_second
 	var vel: Vector3 = c["vel"]
-	car.global_transform = Transform3D(Basis(c["rot"] as Quaternion), (c["pos"] as Vector3) + vel * maxi(ahead, 0) * dt)
+	var pos: Vector3 = (c["pos"] as Vector3) + vel * maxi(ahead, 0) * dt
+	var floor_there := _floor_at(c["pos"])
+	var floor_here := _floor_at(pos)
+	if not is_nan(floor_there) and not is_nan(floor_here):
+		pos.y = floor_here + ((c["pos"] as Vector3).y - floor_there)
+	car.global_transform = Transform3D(Basis(c["rot"] as Quaternion), pos)
 	car.linear_velocity = vel
 	car.angular_velocity = Vector3.ZERO
 	car.reset_physics_interpolation()
@@ -188,6 +200,15 @@ func _snap(c: Dictionary, ahead: int) -> void:
 	_pending_rot = Quaternion.IDENTITY
 	_history.clear()
 	_order.clear()
+
+
+## Altura do piso (pista, zebra, escape; só o mundo) sob um ponto, ou NAN.
+func _floor_at(p: Vector3) -> float:
+	if not car.is_inside_tree():
+		return NAN
+	var q := PhysicsRayQueryParameters3D.create(p + Vector3.UP * 3.0, p + Vector3.DOWN * 6.0, 1, [car.get_rid()])
+	var hit := car.get_world_3d().direct_space_state.intersect_ray(q)
+	return (hit["position"] as Vector3).y if not hit.is_empty() else NAN
 
 
 ## O que só o servidor decide (vale do jeito que ele mandou).

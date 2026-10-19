@@ -39,6 +39,23 @@ extends Resource
 ## Trecho (s inicial, s final) do túnel quando não há cidade; (0, 0) = sem túnel.
 @export var tunnel := Vector2.ZERO
 
+@export_group("Mar")
+## Pista no fundo do mar (Atlantis Abyss): sem campo nem cidade. A pista corre sobre uma laje de
+## pedra entre ruínas, arcos de aqueduto e o leito do mar, com barreiras de vidro; o túnel (tunnel)
+## vira um tubo de cristal. Onde a pista passa acima de water_level, o trecho é emerso (Portão de
+## Poseidon); a câmera atravessando a linha d'água troca o ambiente (SeaAtmosphere).
+@export var undersea := false
+## Altura da linha d'água (m).
+@export var water_level := 28.0
+## Profundidade do leito do mar abaixo da pista (m), longe das fossas.
+@export var seabed_depth := 14.0
+## Trechos (s inicial, s final) em que o leito afunda numa fossa (a pista cruza sobre arcos).
+@export var trenches := PackedVector2Array()
+## Trechos em cânion (SeaCanyon): (s inicial, s final, folga à esquerda, folga à direita) — a pista
+## corre entre paredes de rocha que sobem até perto da superfície, a `folga` m do tubo de vidro.
+## Onde a pista sai da água as paredes viram montanhas (sem precisar de trecho próprio).
+@export var canyons := PackedVector4Array()
+
 @export_group("Relevo")
 ## Relevo de base do terreno dos circuitos de campo com subidas (gerado por tools/build_suzuka.py):
 ## grade de alturas suave presa à altura da pista; os morros somam por cima. Vazio = plano.

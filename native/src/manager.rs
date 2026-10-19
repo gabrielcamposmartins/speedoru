@@ -134,6 +134,11 @@ struct TrackInfo {
 pub struct RaceManagerCore {
     #[var]
     _wrong_way_cooldown: f64,
+    /// Colisões nos boxes ("Colisões no box" da corrida). Desligadas, nenhum carro (nem o jogador
+    /// nem os humanos online) colide com outro enquanto um dos dois está nos boxes.
+    #[var]
+    #[init(val = true)]
+    pit_collisions: bool,
     /// Colisões já punidas entre dois carros (par de ids → segundos até poder punir de novo).
     contact_cooldown: HashMap<(i64, i64), f64>,
     /// Pares de bots sem colisão entre si na largada (até a saída da 1ª chicane).
@@ -141,8 +146,22 @@ pub struct RaceManagerCore {
     /// Pares de bots sem colisão entre si nos boxes (na ordem em que entraram).
     pit_ghosts: Vec<((i64, i64), Gd<RaceEntryCore>, Gd<RaceEntryCore>)>,
     track: TrackInfo,
+    /// A pista nativa em cache (antes: 3 leituras por nome a cada chamada, várias por passo) e quantas
+    /// vezes foi usada desde a última conferência.
+    cached_path: Option<Gd<PathCore>>,
+    path_uses: u32,
+    /// Do passo atual (lidos uma vez, não por carro): tempo de prova e estado.
+    step_race_time: f64,
+    step_state: Option<i64>,
+    /// Contador dos fantasmas dos boxes (conferidos a cada PIT_GHOST_EVERY passos).
+    pit_ghost_tick: u32,
     base: Base<Node>,
 }
+
+/// Fantasmas dos boxes: conferidos a cada tantos passos (o raio de 40 m dá folga de sobra).
+const PIT_GHOST_EVERY: u32 = 4;
+/// A cada quantos usos o cache da pista é conferido de novo.
+const PATH_RECHECK: u32 = 240;
 
 fn entries_of(v: &Variant) -> Vec<Gd<RaceEntryCore>> {
     v.try_to::<AnyArray>()
@@ -177,16 +196,23 @@ impl RaceManagerCore {
             *t > 0.0
         });
         let Some(path) = self.path() else { return };
+        self.step_race_time = self.base().get("race_time").try_to::<f64>().unwrap_or(0.0);
+        self.step_state = None;
         for e in self.entries() {
             self.update_entry(&path, &e, delta, racing);
         }
+        self.step_state = None;
     }
 
     /// Fantasmas: os da largada saem quando os dois passaram da 1ª chicane e se afastaram; os dos
     /// boxes entram e saem pela distância.
     #[func]
     fn _native_update_ghosts(&mut self) {
-        self.update_pit_ghosts();
+        self.pit_ghost_tick += 1;
+        if self.pit_ghost_tick >= PIT_GHOST_EVERY {
+            self.pit_ghost_tick = 0;
+            self.update_pit_ghosts();
+        }
         if self.ghost_pairs.is_empty() {
             return;
         }
@@ -196,13 +222,17 @@ impl RaceManagerCore {
                 let e = e.bind();
                 e.progress > GHOST_UNTIL || e.retired
             };
+            // O teste barato primeiro: só pede as posições quando os dois já passaram da chicane
+            if !(done(&a) && done(&b)) {
+                self.ghost_pairs.push((a, b));
+                continue;
+            }
             let (ba, bb) = (body(&a), body(&b));
-            let apart = match (&ba, &bb) {
-                (Some(x), Some(y)) => x.get_global_position().distance_to(y.get_global_position()) > 6.0,
-                _ => false,
+            let (Some(mut x), Some(y)) = (ba, bb) else {
+                // Um dos carros não existe mais: o par sai (antes ficava para sempre)
+                continue;
             };
-            if done(&a) && done(&b) && apart {
-                let (mut x, y) = (ba.unwrap(), bb.unwrap());
+            if x.get_global_position().distance_to(y.get_global_position()) > 6.0 {
                 x.remove_collision_exception_with(&y.upcast::<Node>());
             } else {
                 self.ghost_pairs.push((a, b));
@@ -324,7 +354,23 @@ fn drs_gap_ok(entries: &[Gd<RaceEntryCore>], e: &Gd<RaceEntryCore>) -> bool {
 
 impl RaceManagerCore {
     fn state(&self) -> i64 {
+        if let Some(st) = self.step_state {
+            return st;
+        }
         self.base().get("state").try_to::<i64>().unwrap_or(0)
+    }
+
+    /// Estado lido uma vez durante a atualização dos carros (as regras chamadas no meio podem mudá-lo:
+    /// ver update_entry).
+    fn step_state(&mut self) -> i64 {
+        match self.step_state {
+            Some(st) => st,
+            None => {
+                let st = self.base().get("state").try_to::<i64>().unwrap_or(0);
+                self.step_state = Some(st);
+                st
+            }
+        }
     }
 
     fn entries(&self) -> Vec<Gd<RaceEntryCore>> {
@@ -338,6 +384,19 @@ impl RaceManagerCore {
 
     /// A pista nativa (e, na primeira vez, os dados dos boxes).
     fn path(&mut self) -> Option<Gd<PathCore>> {
+        self.path_uses += 1;
+        if let Some(p) = self.cached_path.as_ref().filter(|p| p.is_instance_valid()) {
+            if self.path_uses < PATH_RECHECK {
+                return Some(p.clone());
+            }
+        }
+        self.path_uses = 0;
+        let found = self.read_path();
+        self.cached_path = found.clone();
+        found
+    }
+
+    fn read_path(&mut self) -> Option<Gd<PathCore>> {
         let track = self.base().get("track").try_to::<Gd<Node3D>>().ok()?;
         let path = track.get("path").try_to::<Gd<RefCounted>>().ok()?.get("native").try_to::<Gd<PathCore>>().ok()?;
         if self.track.path_id != Some(path.instance_id()) {
@@ -368,7 +427,7 @@ impl RaceManagerCore {
             return;
         }
         let Some(car) = body(e) else { return };
-        let race_time = self.base().get("race_time").try_to::<f64>().unwrap_or(0.0);
+        let race_time = self.step_race_time;
         let (length, pr) = {
             let p = path.bind();
             (p.length, p.project_pos(car.get_global_position(), true, true))
@@ -391,6 +450,8 @@ impl RaceManagerCore {
         }
         if crossed {
             self.call_gd("_on_line_crossed", &[e.to_variant()]);
+            // A chegada pode ter mudado o estado da prova
+            self.step_state = None;
         }
         {
             let mut m = e.clone();
@@ -407,7 +468,7 @@ impl RaceManagerCore {
             return;
         }
         self.update_pit(path, e, &car, delta);
-        if self.state() != FINISHED || !e.bind().finished {
+        if self.step_state() != FINISHED || !e.bind().finished {
             self.update_track_limits(e, &car, delta);
         }
         if e.bind().is_player {
@@ -614,7 +675,8 @@ impl RaceManagerCore {
     }
 
     /// Pista dos boxes: bots não colidem entre si enquanto um deles está nos boxes (seguem fazendo
-    /// fila e liberação segura); o jogador colide com todos normalmente.
+    /// fila e liberação segura); o jogador colide com todos normalmente, a menos que a corrida
+    /// desligue as colisões no box (`pit_collisions`): aí vale para todos os carros.
     fn update_pit_ghosts(&mut self) {
         // Saem os pares que já deixaram os boxes e se afastaram
         let pairs = std::mem::take(&mut self.pit_ghosts);
@@ -632,13 +694,14 @@ impl RaceManagerCore {
                 x.remove_collision_exception_with(&y.upcast::<Node>());
             }
         }
-        // Entram os pares de bots com um deles nos boxes, a menos de 40 m
+        // Entram os pares de bots (ou de todos, sem colisões no box) com um deles nos boxes, a menos de 40 m
+        let everyone = !self.pit_collisions;
         let bots: Vec<(Gd<RaceEntryCore>, Gd<VehicleBody3D>, bool)> = self
             .entries()
             .into_iter()
             .filter(|e| {
                 let m = e.bind();
-                !m.is_player && !m.is_human
+                everyone || (!m.is_player && !m.is_human)
             })
             .filter_map(|e| {
                 let b = body(&e)?;

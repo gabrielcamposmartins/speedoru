@@ -78,6 +78,11 @@ const FPS_LIMITS := [0, 30, 60, 120, 144, 165, 240]
 const UI_SCALES := [0.0, 0.75, 0.9, 1.0, 1.15, 1.25, 1.5]
 const UI_BASE := Vector2(1600, 900)
 const SHADOW_SIZES := [2048, 4096, 8192, 16384]
+## Atlas da sombra do sol por qualidade. O Ultra usa 8192 (cada uma das 4 cascatas com 4096²): com
+## 16384 a imagem era a mesma (comparação pixel a pixel em Monza, Suzuka e Las Vegas: só o vento nas
+## folhas mudava) e a GPU gastava 1–4 ms a mais por quadro só preenchendo o mapa (e 380 MB de VRAM;
+## tests/shadow_atlas_probe.gd). As luzes da noite seguem com SHADOW_SIZES / 2.
+const SUN_SHADOW_SIZES := [2048, 4096, 8192, 8192]
 const SHADOW_FILTERS := [1, 2, 3, 4]
 ## Sombra do sol (o "Sun" dos nós no grupo "daylight") por qualidade: cascatas, alcance (m) e onde
 ## termina a 1ª cascata (fração do alcance; ~28 m com 2 cascatas). Cada cascata desenha de novo
@@ -487,7 +492,7 @@ func _apply_graphics() -> void:
 	vp.use_taa = g["taa"] or g["upscaler"] == 2
 	vp.mesh_lod_threshold = LOD_THRESHOLDS[clampi(g["lod"], 0, 3)]
 	var shadows := clampi(g["shadows"], 0, 3)
-	RenderingServer.directional_shadow_atlas_set_size(SHADOW_SIZES[shadows], true)
+	RenderingServer.directional_shadow_atlas_set_size(SUN_SHADOW_SIZES[shadows], true)
 	RenderingServer.directional_soft_shadow_filter_set_quality(SHADOW_FILTERS[shadows] as RenderingServer.ShadowQuality)
 	RenderingServer.positional_soft_shadow_filter_set_quality(SHADOW_FILTERS[shadows] as RenderingServer.ShadowQuality)
 	vp.positional_shadow_atlas_size = SHADOW_SIZES[shadows] / 2

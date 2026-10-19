@@ -11,9 +11,10 @@ const TRACKS := [
 	{"id": "suzuka", "name": "Suzuka", "scene": "res://scenes/tracks/suzuka.tscn", "category": "real"},
 	{"id": "las_vegas", "name": "Las Vegas", "scene": "res://scenes/tracks/las_vegas.tscn", "category": "real"},
 	{"id": "sky_aerobase", "name": "Sky Aerobase", "scene": "res://scenes/tracks/sky_aerobase.tscn", "category": "fantasy"},
+	{"id": "atlantis_abyss", "name": "Atlantis Abyss", "scene": "res://scenes/tracks/atlantis_abyss.tscn", "category": "fantasy"},
 ]
 ## Categorias de pista (abas na escolha de pista): [id, nome]. "real" = circuitos de verdade,
-## "fantasy" = pistas inventadas (no céu, ...).
+## "fantasy" = pistas inventadas (no céu, no fundo do mar...).
 const CATEGORIES := [["real", "Reais"], ["fantasy", "Fantasia"]]
 
 enum Grid { POLE, MIDDLE, BACK }
@@ -35,6 +36,8 @@ static var time_of_day := 0
 static var biome := 0
 ## DRS: 0 = livre, 1 = só a até 1 s do carro da frente.
 static var drs_rule := 0
+## Colisões no box: desligadas, nenhum carro colide com outro enquanto um dos dois está nos boxes.
+static var pit_collisions := true
 ## Classificatória antes da corrida: voltas cronometradas (índice de QUALI_LAP_NAMES: 0 = sem,
 ## 1-3 voltas, QUALI_FREE = livres até o tempo acabar), se os carros colidem nela, tempo limite
 ## (índice de QUALI_TIMES) e se infrações (sair da pista, penalidades) anulam a volta.

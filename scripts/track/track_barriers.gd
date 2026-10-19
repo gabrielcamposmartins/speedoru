@@ -22,6 +22,13 @@ const SKY_HEIGHT := 1.25
 const SKY_THICK := 0.6
 const HOLO_BOTTOM := 0.14
 const HOLO_TOP := 0.68
+## Pista no fundo do mar: mureta de pedra com o topo arredondado, painel de vidro em cima (com
+## montantes a cada 8 m) e friso de LED ciano no alto do vidro. A colisão é a mesma das outras.
+const SEA_STONE := Color(0.8, 0.79, 0.74)
+const SEA_BASE := 0.62
+const SEA_THICK := 0.55
+const SEA_GLASS_TOP := 1.75
+const SEA_MULLION := Color(0.32, 0.36, 0.4)
 
 
 
@@ -32,6 +39,8 @@ static func build(track: RaceTrack, parent: Node3D) -> void:
 	var fence := MeshBuilder.new()
 	# Pista no céu: sem alambrado (a vista é o céu); friso de LED azul no alto do muro
 	var sky := track.layout.sky
+	var sea := track.layout.undersea
+	var glass := MeshBuilder.new()
 	var leds := MeshBuilder.new()
 	var collision: Array = []  # [Transform3D, tamanho]
 	var ads := MeshBuilder.new()
@@ -56,6 +65,10 @@ static func build(track: RaceTrack, parent: Node3D) -> void:
 				height = SKY_HEIGHT
 				thick = SKY_THICK
 				protect = false
+			elif sea:
+				height = SEA_BASE
+				thick = SEA_THICK
+				protect = false
 			var front_i := d_i
 			var front_j := d_j
 			if protect:
@@ -66,6 +79,9 @@ static func build(track: RaceTrack, parent: Node3D) -> void:
 				front_j -= 1.1
 			if sky:
 				_round_wall(walls, track, i, j, side, d_i, d_j, thick, height, SKY_METAL)
+			elif sea:
+				_round_wall(walls, track, i, j, side, d_i, d_j, thick, height, SEA_STONE)
+				_glass_panel(glass, walls, leds, track, i, j, side, d_i + thick * 0.5, d_j + thick * 0.5)
 			elif kind == RaceTrack.Barrier.CONCRETE:
 				var top := RED if (i / 2) % 2 == 0 else WHITE
 				_wall(walls, track, i, j, side, d_i, d_j, thick, height, [[0.0, 1.0, CONCRETE], [1.0, height, top]])
@@ -89,6 +105,8 @@ static func build(track: RaceTrack, parent: Node3D) -> void:
 				leds.quad(track.edge_point(i, side, d_i - 0.02, 0.76), track.edge_point(j, side, d_j - 0.02, 0.76),
 					track.edge_point(j, side, d_j - 0.02, 0.86), track.edge_point(i, side, d_i - 0.02, 0.86),
 					SkyDeck.LED, -p.lefts[i] * side, Vector2(s_i, 0), Vector2(s_j, 0), Vector2(s_j, 1), Vector2(s_i, 1))
+			elif sea:
+				pass  # o vidro faz o papel do alambrado
 			elif not track.in_tunnel(i):
 				fence.quad(track.edge_point(i, side, fl_i, height), track.edge_point(j, side, fl_j, height),
 					track.edge_point(j, side, fl_j, height + FENCE_HEIGHT), track.edge_point(i, side, fl_i, height + FENCE_HEIGHT),
@@ -111,7 +129,7 @@ static func build(track: RaceTrack, parent: Node3D) -> void:
 						_ad_segment(ads, track, i, j, side, front_i - 0.03, front_j - 0.03, minf(height, 1.0), f)
 					break
 
-	_build_pit_wall(track, walls, fence, collision)
+	_build_pit_wall(track, walls, fence, collision, glass, leds)
 
 	var body := TrackSurface.make_body("Barriers", TrackSurface.Type.BARRIER)
 	var wall_mi := MeshInstance3D.new()
@@ -119,7 +137,14 @@ static func build(track: RaceTrack, parent: Node3D) -> void:
 	wall_mi.mesh = walls.commit(null, TrackMaterials.barrier())
 	body.add_child(wall_mi)
 	if not leds.is_empty():
-		leds.commit(wall_mi.mesh as ArrayMesh, SkyDeck.glow(0.5, 1.5, 3.4, true))
+		# Céu: na cor dos LEDs da pista (SkyLights); fundo do mar: ciano da cor de vértice
+		leds.commit(wall_mi.mesh as ArrayMesh, SkyDeck.glow(0.5, 1.5, 3.4, not sea))
+	if not glass.is_empty():
+		var glass_mi := MeshInstance3D.new()
+		glass_mi.name = "Glass"
+		glass_mi.mesh = glass.commit(null, TrackMaterials.sea_glass())
+		glass_mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		body.add_child(glass_mi)
 	var fence_mi := MeshInstance3D.new()
 	fence_mi.name = "Fence"
 	fence_mi.mesh = fence.commit(null, TrackMaterials.fence())
@@ -199,6 +224,26 @@ static func _round_wall(mb: MeshBuilder, track: RaceTrack, i: int, j: int, side:
 			color * 1.12, to_track * cos(am) + Vector3.UP * sin(am))
 
 
+## Fundo do mar: painel de vidro (i → j) no meio da mureta de pedra, de SEA_BASE a SEA_GLASS_TOP, com
+## friso de LED ciano no alto (UV.x = s, para o pulso) e um montante de metal a cada 4 amostras.
+static func _glass_panel(glass: MeshBuilder, walls: MeshBuilder, leds: MeshBuilder, track: RaceTrack, i: int, j: int,
+		side: int, g_i: float, g_j: float, base := SEA_BASE) -> void:
+	var p := track.path
+	var to_track := -p.lefts[i] * side
+	var s_i := p.s_at(i)
+	var s_j := s_i + p.spacing
+	glass.quad(track.edge_point(i, side, g_i, base), track.edge_point(j, side, g_j, base),
+		track.edge_point(j, side, g_j, SEA_GLASS_TOP), track.edge_point(i, side, g_i, SEA_GLASS_TOP),
+		Color.WHITE, to_track, Vector2(s_i, 0), Vector2(s_j, 0), Vector2(s_j, 1), Vector2(s_i, 1))
+	leds.quad(track.edge_point(i, side, g_i - 0.03, SEA_GLASS_TOP - 0.06), track.edge_point(j, side, g_j - 0.03, SEA_GLASS_TOP - 0.06),
+		track.edge_point(j, side, g_j - 0.03, SEA_GLASS_TOP + 0.04), track.edge_point(i, side, g_i - 0.03, SEA_GLASS_TOP + 0.04),
+		TrackRoad.SEA_LED, to_track, Vector2(s_i, 0), Vector2(s_j, 0), Vector2(s_j, 1), Vector2(s_i, 1))
+	if i % 4 == 0:
+		var flat := Vector3(p.tangents[i].x, 0.0, p.tangents[i].z)
+		var mid := track.edge_point(i, side, g_i, (base + SEA_GLASS_TOP) * 0.5)
+		walls.posts().box(Transform3D(Basis.looking_at(flat), mid), Vector3(0.07, SEA_GLASS_TOP - base, 0.09), SEA_MULLION)
+
+
 ## Uma fatia (i → j) da faixa de anúncios em holograma (pista no céu): UV.x = metros ao longo da
 ## faixa (do lado direito ao contrário, para o texto ler certo); a marca e o movimento são do shader.
 static func _holo_segment(mb: MeshBuilder, track: RaceTrack, i: int, j: int, side: int, d_i: float, d_j: float,
@@ -239,7 +284,8 @@ static func _ad_segment(mb: MeshBuilder, track: RaceTrack, i: int, j: int, side:
 
 
 ## Muro entre a pista e os boxes (concreto + tela), só onde a pista dos boxes já está aberta.
-static func _build_pit_wall(track: RaceTrack, walls: MeshBuilder, fence: MeshBuilder, collision: Array) -> void:
+static func _build_pit_wall(track: RaceTrack, walls: MeshBuilder, fence: MeshBuilder, collision: Array,
+		glass: MeshBuilder = null, leds: MeshBuilder = null) -> void:
 	if not track.layout.has_pit:
 		return
 	var p := track.path
@@ -254,6 +300,12 @@ static func _build_pit_wall(track: RaceTrack, walls: MeshBuilder, fence: MeshBui
 		var top := RED if (i / 2) % 2 == 0 else WHITE
 		if track.layout.sky:
 			_round_wall(walls, track, i, j, side, 1.2, 1.2, 0.6, 1.1, SKY_METAL)
+		elif track.layout.undersea and glass:
+			# Fundo do mar: mureta de pedra com vidro, como as barreiras (sem tela)
+			_round_wall(walls, track, i, j, side, 1.2, 1.2, 0.6, SEA_BASE, SEA_STONE)
+			_glass_panel(glass, walls, leds, track, i, j, side, 1.5, 1.5)
+			collision.append(_wall_box(track.edge_point(i, side, 1.2), track.edge_point(j, side, 1.2), p.lefts[i] * side, 0.6))
+			continue
 		else:
 			_wall(walls, track, i, j, side, 1.2, 1.2, 0.6, 1.1, [[0.0, 0.95, CONCRETE], [0.95, 1.1, top]])
 		var s_i := p.s_at(i)

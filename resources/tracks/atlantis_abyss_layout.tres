@@ -1,0 +1,329 @@
+[gd_resource type="Resource" script_class="TrackLayout" load_steps=25 format=3]
+
+[ext_resource type="Script" path="res://scripts/track/track_layout.gd" id="1_layout"]
+[ext_resource type="Script" path="res://scripts/track/track_feature.gd" id="2_feature"]
+
+[sub_resource type="Resource" id="F0"]
+script = ExtResource("2_feature")
+kind = 3
+label = "Muros de vidro"
+s_start = 0.0
+s_end = 4728.0
+side = 2
+distance = 2.5
+rows = 12
+spacing = 40.0
+roof = false
+variant = 1
+
+[sub_resource type="Resource" id="F1"]
+script = ExtResource("2_feature")
+kind = 3
+label = "Muros do túnel de cristal"
+s_start = 1000.0
+s_end = 1366.0
+side = 2
+distance = 1.2
+rows = 12
+spacing = 40.0
+roof = false
+variant = 1
+
+[sub_resource type="Resource" id="F2"]
+script = ExtResource("2_feature")
+kind = 3
+label = "Curva do Templo: escape"
+s_start = 430.0
+s_end = 545.0
+side = 1
+distance = 7.0
+rows = 12
+spacing = 40.0
+roof = false
+variant = 1
+
+[sub_resource type="Resource" id="F3"]
+script = ExtResource("2_feature")
+kind = 3
+label = "Curva do Polvo: escape"
+s_start = 770.0
+s_end = 900.0
+side = 0
+distance = 5.0
+rows = 12
+spacing = 40.0
+roof = false
+variant = 1
+
+[sub_resource type="Resource" id="F4"]
+script = ExtResource("2_feature")
+kind = 3
+label = "Grampo da Âncora: escape"
+s_start = 1405.0
+s_end = 1500.0
+side = 1
+distance = 8.0
+rows = 12
+spacing = 40.0
+roof = false
+variant = 1
+
+[sub_resource type="Resource" id="F5"]
+script = ExtResource("2_feature")
+kind = 3
+label = "Curva da Tartaruga: escape"
+s_start = 2700.0
+s_end = 2770.0
+side = 1
+distance = 8.0
+rows = 12
+spacing = 40.0
+roof = false
+variant = 1
+
+[sub_resource type="Resource" id="F6"]
+script = ExtResource("2_feature")
+kind = 3
+label = "Chicane dos Corais: escape"
+s_start = 2805.0
+s_end = 2925.0
+side = 2
+distance = 4.0
+rows = 12
+spacing = 40.0
+roof = false
+variant = 1
+
+[sub_resource type="Resource" id="F7"]
+script = ExtResource("2_feature")
+kind = 3
+label = "Última Curva: escape"
+s_start = 4150.0
+s_end = 4235.0
+side = 1
+distance = 7.0
+rows = 12
+spacing = 40.0
+roof = false
+variant = 1
+
+[sub_resource type="Resource" id="F8"]
+script = ExtResource("2_feature")
+kind = 0
+label = "Anfiteatro principal"
+s_start = -330.0
+s_end = -170.0
+side = 0
+distance = 2.0
+rows = 16
+spacing = 40.0
+roof = false
+variant = 0
+
+[sub_resource type="Resource" id="F9"]
+script = ExtResource("2_feature")
+kind = 0
+label = "Anfiteatro da largada"
+s_start = -150.0
+s_end = 60.0
+side = 0
+distance = 2.0
+rows = 14
+spacing = 40.0
+roof = false
+variant = 3
+
+[sub_resource type="Resource" id="F10"]
+script = ExtResource("2_feature")
+kind = 0
+label = "Arquibancada da Avenida"
+s_start = 560.0
+s_end = 690.0
+side = 1
+distance = 2.0
+rows = 12
+spacing = 40.0
+roof = false
+variant = 1
+
+[sub_resource type="Resource" id="F11"]
+script = ExtResource("2_feature")
+kind = 0
+label = "Arquibancada da Tartaruga"
+s_start = 2620.0
+s_end = 2695.0
+side = 1
+distance = 2.0
+rows = 12
+spacing = 40.0
+roof = false
+variant = 2
+
+[sub_resource type="Resource" id="F12"]
+script = ExtResource("2_feature")
+kind = 0
+label = "Arquibancada dos Tritões"
+s_start = 3900.0
+s_end = 4040.0
+side = 0
+distance = 2.0
+rows = 12
+spacing = 40.0
+roof = false
+variant = 1
+
+[sub_resource type="Resource" id="F13"]
+script = ExtResource("2_feature")
+kind = 4
+label = "Reta do Anfiteatro"
+s_start = -440.0
+s_end = 440.0
+side = 2
+distance = 2.0
+rows = 12
+spacing = 40.0
+roof = false
+variant = 0
+
+[sub_resource type="Resource" id="F14"]
+script = ExtResource("2_feature")
+kind = 6
+label = "Lanternas da pista"
+s_start = 0.0
+s_end = 4728.0
+side = 2
+distance = 1.0
+rows = 12
+spacing = 60.0
+roof = false
+variant = 1
+
+[sub_resource type="Resource" id="F15"]
+script = ExtResource("2_feature")
+kind = 8
+label = "Largada"
+s_start = 12.0
+s_end = 12.0
+side = 2
+distance = 2.0
+rows = 12
+spacing = 40.0
+roof = false
+variant = 0
+
+[sub_resource type="Resource" id="F16"]
+script = ExtResource("2_feature")
+kind = 7
+label = "Pórtico da reta"
+s_start = -260.0
+s_end = -260.0
+side = 2
+distance = 2.0
+rows = 12
+spacing = 40.0
+roof = false
+variant = 0
+
+[sub_resource type="Resource" id="F17"]
+script = ExtResource("2_feature")
+kind = 9
+label = "Curva do Templo"
+s_start = 450.0
+s_end = 450.0
+side = 1
+distance = 2.0
+rows = 12
+spacing = 40.0
+roof = false
+variant = 0
+
+[sub_resource type="Resource" id="F18"]
+script = ExtResource("2_feature")
+kind = 9
+label = "Curva do Polvo"
+s_start = 775.0
+s_end = 775.0
+side = 0
+distance = 2.0
+rows = 12
+spacing = 40.0
+roof = false
+variant = 0
+
+[sub_resource type="Resource" id="F19"]
+script = ExtResource("2_feature")
+kind = 9
+label = "Grampo da Âncora"
+s_start = 1426.0
+s_end = 1426.0
+side = 1
+distance = 2.0
+rows = 12
+spacing = 40.0
+roof = false
+variant = 0
+
+[sub_resource type="Resource" id="F20"]
+script = ExtResource("2_feature")
+kind = 9
+label = "Curva da Tartaruga"
+s_start = 2722.0
+s_end = 2722.0
+side = 1
+distance = 2.0
+rows = 12
+spacing = 40.0
+roof = false
+variant = 0
+
+[sub_resource type="Resource" id="F21"]
+script = ExtResource("2_feature")
+kind = 9
+label = "Última Curva"
+s_start = 4173.0
+s_end = 4173.0
+side = 1
+distance = 2.0
+rows = 12
+spacing = 40.0
+roof = false
+variant = 0
+
+[resource]
+script = ExtResource("1_layout")
+centerline = "res://assets/track/atlantis_abyss/atlantis_abyss_centerline.csv"
+raceline = "res://assets/track/atlantis_abyss/atlantis_abyss_raceline.csv"
+line_margin = 1.6
+bot_pace = 0.95
+start_offset = 0.0
+width_scale = 1.0
+min_half_width = 5.0
+display_name = "Atlantis Abyss"
+flag_colors = PackedColorArray(0.06, 0.12, 0.34, 1, 0.98, 0.78, 0.22, 1, 0.95, 0.96, 0.98, 1)
+flag_style = 2
+tunnel = Vector2(1000, 1366)
+undersea = true
+water_level = 28.0
+seabed_depth = 14.0
+trenches = PackedVector2Array(2930, 3630)
+canyons = PackedVector4Array(545, 775, 8, 8, 775, 890, 20, 6, 890, 1000, 5, 5, 1000, 1366, 5, 5, 1366, 1485, 6, 6, 1485, 2700, 6, 6, 2700, 2920, 5, 5, 3611, 4212, 5, 5)
+auto_kerbs = true
+kerb_max_radius = 120.0
+kerb_width = 1.4
+auto_gravel = false
+barrier_distance = 2.5
+has_pit = true
+pit_side = -1
+pit_entry_s = -440.0
+pit_exit_s = 320.0
+pit_taper = 80.0
+pit_lane_width = 12.0
+garage_count = 14
+garage_width = 12.0
+garage_center_s = -120.0
+pit_building_length = 210.0
+paddock_depth = 0.0
+grid_slots = 20
+grid_spacing = 8.0
+grid_lateral = 2.6
+features = Array[ExtResource("2_feature")]([SubResource("F0"), SubResource("F1"), SubResource("F2"), SubResource("F3"), SubResource("F4"), SubResource("F5"), SubResource("F6"), SubResource("F7"), SubResource("F8"), SubResource("F9"), SubResource("F10"), SubResource("F11"), SubResource("F12"), SubResource("F13"), SubResource("F14"), SubResource("F15"), SubResource("F16"), SubResource("F17"), SubResource("F18"), SubResource("F19"), SubResource("F20"), SubResource("F21")])

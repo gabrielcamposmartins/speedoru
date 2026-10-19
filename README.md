@@ -32,7 +32,7 @@ O carro fica à direita; à esquerda, os botões grandes
 (`scripts/menu/menu_ui.gd`):
 
 - **Jogar solo:** pista (abas **Reais**: Monza, Mônaco, Suzuka ou Las Vegas; **Fantasia**: Sky
-  Aerobase), modo, voltas, adversários, dificuldade, largada, horário
+  Aerobase ou Atlantis Abyss), modo, voltas, adversários, dificuldade, largada, horário
   e ambiente → Correr. A pista se escolhe num **carrossel** (`scripts/menu/track_carousel.gd`, o
   mesmo dos ajustes da sala multiplayer): o traçado de cada pista (linha central do CSV, norte para
   cima) num anel que gira ao trocar; a da frente fica grande, com nome, extensão, largada (sentido da
@@ -336,7 +336,8 @@ difícil ou mista) e posição de largada. Tudo em `scripts/race/`:
   aviso "BANDEIRADA! fulano venceu" (`leader_flag`; online pelo evento `leader_finished`). Ao final
   vem a **tela de vitória** (`scripts/ui/podium_screen.gd`): os três primeiros carros, cópias com
   as peças, cores e skin de cada um, estacionados num pódio num estúdio próprio (mundo 3D separado),
-  com a plaquinha 1º/2º/3º em ouro, prata e bronze e o nome em cima; depois o resultado (tempo +
+  com a plaquinha 1º/2º/3º em ouro, prata e bronze e o nome em cima (as cópias são marionetes como
+  os carros online, `set_puppet`: congeladas, o VehicleBody3D regravava as rodas na origem do mundo); depois o resultado (tempo +
   penalidades), com os créditos ganhos (online chegam quando a sala fecha: "Calculando prêmio…"),
   as missões e conquistas completas e, para quem venceu online, o botão da roleta do vencedor.
 - **Bots** (`BotDriver`, filho de cada carro): seguem a linha de corrida de curvatura mínima de Monza
@@ -416,6 +417,11 @@ difícil ou mista) e posição de largada. Tudo em `scripts/race/`:
   Enroscados saindo do box são postos na faixa rápida logo à frente. Numa corrida de 3 voltas os
   toques nos boxes caíram de 7 para 0 (`tests/race_test.gd` mede toques nos boxes, ultrapassagens,
   colisões punidas, ré e voltas à pista).
+- **Colisões no box** (Jogar solo, menu da corrida e sala online; ligadas por padrão): desligadas,
+  nenhum carro — jogador e humanos online inclusive — colide com outro enquanto um dos dois está
+  nos boxes (a menos de 40 m); voltam a colidir quando os dois saem e se afastam. Os bots já se
+  atravessam entre si nos boxes sempre (`RaceManagerCore.update_pit_ghosts`, `pit_collisions`;
+  online o cliente faz o mesmo com o carro previsto). `tests/pit_collisions_test.gd`.
 - `tests/race_test.gd` roda uma corrida inteira sem janela (o jogador também pilotado por bot) e
   confere que todos terminam e fazem o pit; `tests/capture_race.gd` gera capturas do HUD.
 
@@ -427,12 +433,12 @@ e a meta de longo prazo). Catálogo e regras em `scripts/economy/shop_catalog.gd
 
 - **Moeda:** créditos. Conta nova: 10.000. Corrida: 200 / 300 / 400 créditos por volta completada
   (bots fácil / médio / difícil; mista 300), ou seja 2.000 / 3.000 / 4.000 em 10 voltas; abandono recebe
-  metade, desclassificado e treino livre não recebem. O resultado mostra quanto entrou.
+  metade (online, sair depois que os três primeiros chegaram recebe inteiro), desclassificado e treino livre não recebem. O resultado mostra quanto entrou.
 - **Ticket = um giro** numa roleta, 2.500 créditos. Sem estoque, sem pacote, sem giro de 10, sem
   desconto. Duas roletas temáticas e sem sobreposição, com **peças, decalques, as cores de luz
-  (brilho do boost e neon) e rastros de partículas**: **Neon** (asas leves, bico, sidepods; sakura,
+  (brilho do boost e neon) e auras**: **Neon** (asas leves, bico, sidepods; sakura,
   asas, cometa, coração, onda, listras, raio; boost Hiperluz, Gelo, Rosa choque, Violeta; neon
-  Aurora, Ciano, Sakura; partículas Raios, Pétalas de sakura, Arco-íris, Estrelinhas, Bolhas de
+  Aurora, Ciano, Sakura; auras Raios, Pétalas de sakura, Arco-íris, Estrelinhas, Bolhas de
   sabão e Flocos de neve) e
   **Dragão** (id `inferno`, o nome antigo, que fica nos perfis e no servidor; asas traseiras, barbatana, rodas raiadas; chamas, garras, logo S, xadrez, shuriken,
   faixas duplas; boost Chama solar, Rubi, Ouro; neon Lava, Âmbar, Carmesim, Violeta; partículas
@@ -478,8 +484,8 @@ e a meta de longo prazo). Catálogo e regras em `scripts/economy/shop_catalog.gd
   específico custa em média 240 giros (600 mil créditos).
 - **O que se coleciona:** peças de desempenho (asas, bico, sidepods, cobertura, rodas raiadas:
   trocam aderência por velocidade, nunca melhores em tudo), decalques, as cores do **brilho do
-  boost** e do **neon** (`ShopCatalog.GACHA_COLORS`: só se equipa cor ganha) e os **rastros de
-  partículas** (tipo `trail`, um equipado por vez, ou nenhum). Vêm com a conta, fora
+  boost** e do **neon** (`ShopCatalog.GACHA_COLORS`: só se equipa cor ganha) e as **auras**
+  (rastros de partículas, tipo `trail`, um equipado por vez, ou nenhum). Vêm com a conta, fora
   do sorteio: todas as peças padrão, os decalques Estrela e Disco de número e o boost Ciano. Conta
   nova não tem neon (desligado até ganhar um).
 - **Cores livres:** pintura (3 cores), capacete, macacão e rodas são de graça e com qualquer cor
@@ -594,7 +600,7 @@ e a meta de longo prazo). Catálogo e regras em `scripts/economy/shop_catalog.gd
   bots usam o de fábrica. No controle, ↑/↓ andam pelos sliders (←/→ ajustam). Fica salvo no perfil
   (`equipped.setup`) e vale na corrida. Potência, desgaste e regras não entram
   (são iguais para todos). Catálogo em `scripts/economy/car_setup.gd`.
-- **Galeria:** mesmo layout do Estúdio (abas Peças, Decalques, Boost, Neon e Partículas, grade de 2 colunas); cada item
+- **Galeria:** mesmo layout do Estúdio (abas Peças, Decalques, Boost, Neon e Aura, grade de 2 colunas); cada item
   com arte, raridade e selo ("✓", "FALTA", "GRÁTIS"). Clicar mostra **no carro** como ficaria (sem
   equipar): a câmera orbita até a peça (ou até a lateral, onde o decalque aparece) e a centraliza,
   alternando o sentido a cada clique (horário, anti-horário). O cartão de detalhes traz raridade, roleta, chance exata, quanto devolve
@@ -733,7 +739,7 @@ Garagem). O item focado ganha um contorno no acento secundário, e as listas rol
 - **Rodas no boost:** aro, pneu e faixa do pneu bem brilhantes na cor do boost, além da luz no chão.
 - **Neon embaixo do carro** (garagem → Pintura: "Neon embaixo do carro" + cor): brilho no chão
   (`Decal` emissivo), luzes sob o assoalho e tubos de neon nas laterais; fraco de dia e forte à noite.
-- **Rastro de partículas** (`scripts/car/car_particles.gd`, `CarConfig.trail`; garagem → Partículas):
+- **Aura** (rastro de partículas; `scripts/car/car_particles.gd`, `CarConfig.trail`; garagem → Aura):
   o carro solta **raios** (arcos estalando na carroceria, raios caindo no chão, faíscas e clarões
   azuis), **pétalas de sakura**, **estrelinhas** coloridas, **bolhas de sabão** (iridescentes, que
   estouram), **flocos de neve**, **fogo no chão** (uma faixa de fogo contínua atrás de cada roda
@@ -763,7 +769,7 @@ Garagem). O item focado ganha um contorno no acento secundário, e as listas rol
   próprio e piscam (~4 Hz) quando o carro freia (recuperando energia), com clarão e, à noite, luz
   vermelha no chão atrás do carro. Os LEDs do volante não são afetados.
 - **Marcas de pneu:** fitas escuras no asfalto/zebra ao frear forte, travar, patinar ou derrapar;
-  somem em ~45 s.
+  somem em ~45 s. Só os carros a até 150 m da câmera deixam marcas (e fumaça/pó dos pneus).
 - **Sombra de contato:** um `Decal` sob o carro, sempre visível (também à noite e com o sol baixo).
   O carro fica só na camada `CarAssembly.CAR_LAYER` para o decal não pintar a carroceria.
 
@@ -909,7 +915,8 @@ Tudo é aplicado na hora e salvo em `user://settings.cfg`
   75–150%), campo de visão da câmera, estilo da interface (Speedoru ou Retrô) e paleta (Retrô).
 - **Gráficos:** predefinições Baixo/Médio/Alto/Ultra (mudar qualquer item vira "Personalizado"),
   escala de renderização 3D com upscaler (bilinear, AMD FSR 1.0, FSR 2.2), MSAA, FXAA/SMAA, TAA,
-  sombras (atlas de 2048 a 16384 e filtro suave), SSAO, SSIL, glow, neblina volumétrica e nível de
+  sombras (atlas de 2048 a 16384 e filtro suave; o sol usa no máximo 8192 — com 16384 a imagem era a
+  mesma e a GPU gastava 1–4 ms a mais por quadro, `tests/shadow_atlas_probe.gd`), SSAO, SSIL, glow, neblina volumétrica e nível de
   detalhe dos modelos (LOD).
 - **Desempenho:** monitor na tela (desligado, só FPS, ou detalhado: FPS médio e mínimo, gráfico do
   tempo de quadro, CPU = tempo da lógica e da física por quadro, GPU medida, RAM do jogo, VRAM,
@@ -1005,6 +1012,11 @@ cena: fica no filho `Generated`.
 - Código: `scripts/track/` (`race_track.gd` orquestra; `track_road.gd`, `track_barriers.gd`,
   `pit_complex.gd`, `grandstands.gd`, `track_props.gd`, `track_terrain.gd`, `track_trees.gd`,
   `track_scenery.gd`, `grass_field.gd` geram cada parte).
+- **Piso sem vincos:** cada faixa do piso (asfalto, linhas, escape, boxes) é um quadrilátero por
+  amostra (2 m); numa curva fechada com subida/descida ele torce e os dois triângulos formavam um
+  vinco a cada 2 m que tirava o contato do pneu de fora (Curva do Portal da Sky Aerobase: ~2 cm,
+  roda esquerda dos bots sem contato em 60 de 367 passos). Onde torce mais de 0,7 mm,
+  `TrackRoad._strip` divide a faixa na largura (até 12 pedaços): 0 passos sem contato.
 
 ## Mônaco (circuito de rua)
 
@@ -1078,7 +1090,7 @@ monta a cena certa, e para os clientes no `race_start`).
   primitivas por quadro; agora ~2,7 milhões); objetos pequenos sem sombra (só guarda-sóis e
   floreiras). Na corrida (vale para as duas pistas): loops de som em silêncio **parados** (não
   pausados — um AudioStreamPlayer3D pausado continua recalculando posição e doppler a cada passo de
-  física) e rivais a mais de 260 m da câmera mudos; marcas de pneu/rastros montados de uma vez num
+  física), rivais a mais de 260 m da câmera mudos (e só os 2 rivais mais perto com som: ver abaixo); marcas de pneu/rastros montados de uma vez num
   ArrayMesh (sem pontos, nada); efeitos do boost só mexidos quando ligados; tráfego dos bots a
   60 Hz, intercalado; fantasmas dos boxes só para pares com alguém nos boxes; display do volante a
   30 Hz e só nas câmeras de bordo; retrovisores fora das câmeras de bordo de vez em quando (um de
@@ -1086,6 +1098,49 @@ monta a cena certa, e para os clientes no `race_start`).
   máximo **6 passos de física por quadro** (`max_physics_steps_per_frame`): com o processador no
   limite o jogo desacelera um pouco em vez de afundar em quadros cada vez mais longos (com 20
   carros caía a ~3 FPS). Corrida de 10 carros em Mônaco: de ~37 para ~66 FPS (RTX 5070).
+  Interface da corrida: a classificação só é redesenhada quando o que ela mostra muda (posições,
+  intervalos, pneus, box, página) e o minimapa desenha o traçado uma vez (só os pontos dos carros por
+  quadro); avisos, bandeira e votação vazios não redesenham — a interface caiu de 2,5–3,4 ms para
+  ~0,5 ms por quadro (`tests/perf_probe.gd -- … hud`). Por carro e por quadro: as partículas só
+  mexem no emissor quando o valor muda e só passam a velocidade herdada aos emissores ligados; a pose
+  final das mãos do piloto só é guardada nos testes (`DriverRig.capture_poses`); o composto dos pneus
+  fica em cache no código nativo (era uma chamada ao GDScript por carro a cada passo). Online, o
+  estado dos carros dos outros que só muda com o instantâneo (marcha, bandeiras, dano, pneus) é
+  escrito só quando chega um novo, não a cada passo.
+  **Processador na corrida** (`tests/cpu_probe.gd`: 14 carros correndo, imagem a 50% para a placa
+  não ser o limite; ~90% do tempo era código nativo e do motor, não GDScript):
+  - Passo de física do carro (`car.rs`): estado do corpo lido uma vez por passo; constantes das
+    rodas, massa e marchas em cache (o dano avisa com `_core_wheels_changed`); pneus e aerodinâmica
+    somados numa força e num torque em torno do centro de massa (2 chamadas em vez de 7, a mesma
+    conta do `apply_force`); arrays dos pneus lidos e escritos uma vez por passo (cópias no Rust para
+    efeitos e som); piso de cada roda só relido quando o corpo tocado muda; contato com outro carro
+    vira sinal só uma vez por carro e por passo, e só acima do que as penalidades consideram.
+  - Bots: bandeira, RaceControl e "envolvido na batida" lidos uma vez por passo para todos (sob
+    amarela eram chamadas ao GDScript por bot × carro); `RaceManagerCore` lê o tempo e o estado da
+    prova uma vez por passo, guarda a pista e confere os fantasmas dos boxes a 30 Hz.
+  - Marcas de pneu e rastros: não refazem a fita só porque pontos já apagados saíram (refaziam a cada
+    quadro por 45 s depois de cada derrapada) e montam os arrays no Rust (antes, um array por segmento).
+  - Efeitos, som e dano: câmera do quadro lida uma vez para todos; cores do CarConfig relidas a 4 Hz;
+    luzes, materiais e players só alterados quando o valor muda; dano sai cedo sem contatos; nuvens e
+    guia de traçado mandam o MultiMesh inteiro numa chamada; vácuo escrito só quando a origem muda;
+    relevo sob dirigíveis e pássaros relido a cada 8 quadros.
+  - **Som só dos 2 rivais mais perto da câmera** (`audio.rs`, `AUDIBLE_RIVALS`; quem já toca leva 5 m
+    de vantagem na escolha, entrada e saída em 0,25 s); os outros ficam mudos, batidas inclusive.
+  - Marcas de pneu, fumaça, pó e rastro do boost só até 150 m da câmera (e não muito atrás dela);
+    fumaça e pó dos pneus são `GPUParticles3D` (convertidas das CPUParticles3D pelo conversor do Godot).
+  - **Modelo de longe** (`CarFarModel`): a partir de 85 m as ~40 peças do carro viram uma malha só (uma
+    superfície por material, com LODs gerados), pela faixa de visibilidade do Godot (vale para sombras
+    e retrovisores); montada numa thread e refeita quando as peças mudam ou o carro sofre dano. Com o
+    grid a ~110 m da câmera: 3.718 → 2.461 objetos e 2.906 → 1.649 desenhos por quadro, imagem igual
+    (`tests/capture_far_model.gd`).
+  - godot-rust com `safeguards-release-disengaged` (`native/Cargo.toml`): sem conferir, a cada chamada
+    ao motor, se o objeto ainda existe.
+  Medido em Monza / Mônaco / Las Vegas: de ~70 / 76 / 74 FPS para ~94 / 97 / 89 FPS (+20–34%); passo
+  de física de ~2,1 para ~1,6 ms. Nas configurações Ultra (perf_probe, junto com o atlas da sombra e a
+  interface): Monza 104 → 127, Suzuka 94 → 117, Mônaco 194 → 262, Las Vegas 140 → 212, Sky Aerobase
+  252 → 301 FPS. Alternativas testadas e descartadas: física Jolt (−15% de física, ganho de FPS dentro
+  do ruído, muda a dirigibilidade), física e desenho em thread própria (travam: o código lê a física
+  no meio do passo e atualiza buffers da GPU na thread principal).
 - **Navios e balões** (`track_offshore.gd`): navio de cruzeiro, porta-contêineres (pilhas
   coloridas), petroleiro e balsa cruzando ao largo em rotas paralelas à costa (longe da costa de
   verdade dentro da área dos dados), com rastro de espuma; 14 balões de ar quente grandes (o modelo
@@ -1334,6 +1389,216 @@ Primeira pista da categoria **Fantasia** (`"category": "fantasy"` em `RaceSettin
   sobre a pista, cenário, carro parado, e quedas do jogador e de um bot na corrida e no treino);
   capturas em `tests/sky_aerobase_shots.gd`.
 
+## Atlantis Abyss (pista fantasia no fundo do mar)
+
+Segunda pista da categoria **Fantasia**: Atlântida submersa. `scenes/tracks/atlantis_abyss.tscn` +
+`resources/tracks/atlantis_abyss_layout.tres` (grupo "Mar" do `TrackLayout`: `undersea = true`,
+`water_level = 28`, `seabed_depth`, `trenches`, `canyons`; o túnel em `tunnel`).
+
+- **Traçado** (`python tools/build_atlantis_abyss.py [--debug pasta]`, o mesmo método por trechos da
+  Sky Aerobase: `solve`, `trace`, `elevation` e `check` de `tools/build_sky_aerobase.py`, que recebem
+  o sentido e a meia-largura). 4,73 km, anti-horário: **Reta do Anfiteatro** (boxes, grid e
+  arquibancadas, ~970 m somando o fim da volta), Curva do Templo, Avenida das Colunas, Curva do Polvo,
+  **Túnel de Cristal** (366 m, quase reto), **Grampo da Âncora**, **Subida do Aqueduto** (até 34 m,
+  6,9% no máximo) que **sai da água**, o trecho emerso (**Portão de Poseidon** e Ponte das
+  Cachoeiras, ~640 m acima da linha d'água), o **Mergulho** (−7,6%) de volta para baixo, Curva da
+  Tartaruga, Chicane dos Corais, Reta e Esses do Abismo (sobre a fossa), Curva da Baleia, Reta dos
+  Tritões e a Última Curva. Sem cruzamentos (trechos não vizinhos a 94 m ou mais). O desenho de
+  `--debug` marca em amarelo o que fica fora d'água. Os bots fazem ~74 s (volta mínima plausível
+  online: 55 s).
+- **Barreiras em toda a volta** (ninguém cai; não há `FallWatch`): mureta de pedra arredondada com
+  um **painel de vidro** em cima (`sea_glass.gdshader`: transparente, fresnel ciano, faixas de
+  reflexo, montantes a cada 8 m) e **friso de LED ciano** no alto; a colisão é a mesma das outras
+  pistas. Escape maior por fora das curvas lentas; laje de colisão sob os pisos (`DeckFloor`, como
+  na Sky: não há chão de colisão). 14 boxes (todo o grid online).
+- **Pista**: asfalto azul-ardósia, zebras ciano e brancas, faixa de lajes de pedra até a barreira e
+  um friso de LED ciano dentro de cada linha branca, com o pulso correndo (`TrackRoad`). Postes são
+  colunas de pedra com braço de bronze e lanterna de luz fria.
+- **Pedra de Atlântida** (`TrackMaterials.marble`, ligado pelo RaceTrack nesta pista): tudo o que
+  passa por `TrackMaterials.building()` (barreiras, boxes, arquibancadas, objetos, ruínas) usa
+  `sea_stone.gdshader` — o `building_common` com o cinza puxado para mármore, **sem o contorno anime**
+  (`no_outline` forçado), juntas de cantaria (blocos em fiadas desencontradas, cada um num tom),
+  musgo em duas escalas (manchas grandes e tufos finos) nas faces de cima, fios finos de alga
+  escorrendo nas paredes, colônias de coral em tons quentes com borda e pólipos, as faces de baixo
+  mais escuras e a **cáustica** da água (`caustics.gdshaderinc`: dois Voronoi animados, só abaixo
+  da linha d'água, voltada para cima, some de longe). `TrackMaterials.set_sea` troca os parâmetros
+  da água em todos os materiais de uma vez.
+- **Geração** (ramo `layout.undersea` do `RaceTrack.rebuild`; o servidor pula tudo menos pista,
+  barreiras, boxes e objetos):
+  - `SeaFloor` ("leito"): grade de alturas em blocos de 250 m — logo abaixo da laje na reta do
+    anfiteatro, `seabed_depth` abaixo da pista no resto, cânion de 80 m nas `trenches` (o abismo),
+    dunas e **cadeias de montanhas** (ruído em cristas, mais um anel de serras em volta da área da
+    pista, e montanhas avulsas pontudas à vista da pista, picos até 3 m abaixo da superfície) e, nos
+    trechos em cânion, o chão entre o tubo e a parede e a **serra atrás de cada parede** (crista e a
+    descida até longe, da grade de `SeaCanyon`), que passa do mar em volta do trecho emerso;
+    `seabed.gdshader` (areia com ondinhas, rocha nas encostas pela inclinação no vértice, algas,
+    cáustica fina, sem contorno anime; acima do mar, rocha seca e vegetação).
+  - `SeaCauseway` ("aqueduto"): laje de pedra sob a pista (até `RaceTrack.deck_edge`, alargada até a
+    base do tubo) com cornija e friso de LED; onde o leito está perto, parede cheia; no resto,
+    **arcos de aqueduto** a cada 24 m, em andares de até 24 m (dois ou três na subida e no abismo),
+    com pilastras salientes nos pilares, aduelas de pedra e tijolo alternados em volta dos arcos,
+    pedra de fecho, cornijas entre os andares, lanternas e estandartes do tridente nos pilares;
+    algas penduradas na cornija e nos arcos, corais no pé dos pilares e musgo.
+  - `SeaTube` ("tubo"): o **tubo de vidro grande em volta de toda a pista submersa** (os carros
+    correm no seco): seção em superelipse da largura da laje, 13 a 22 m de altura, nervuras a cada
+    12 m, espinha no topo com friso de LED, portais de pedra onde a pista sai da água e um anel
+    ligando ao Túnel de Cristal. `SeaTube.clearance`/`covers`/`inside`/`blocked` são usados por
+    ruínas, bichos, recifes e vulcões para ficar do lado de fora. **Por dentro é seco**: onde o tubo
+    atravessa a linha d'água (subida para o Portão e mergulho) a superfície do mar é recortada
+    (`SeaTube.surface_carve`, máscara vista de cima em `sea_carve.gdshaderinc`, usada pelo
+    `sea_surface.gdshader` — o `water.gdshader` com `CARVE` — e pelo teto), e a neve marinha e as
+    bolhas somem dentro do trecho do tubo perto da câmera (`SeaTube.corridor`, passado a cada quadro
+    pela `SeaAtmosphere`), chegando bem perto do vidro por fora.
+  - Estandartes do tridente pendurados numa nervura a cada três do tubo de vidro (lados
+    alternados, por cima da faixa entre a barreira e o vidro).
+  - `GlassTunnel` ("túnel"): o **Túnel de Cristal**, o tubo menor dentro do grande, sobre a pista,
+    com nervuras de metal a cada 8 m (luzes amarelas e friso ciano), viga no topo, estandartes e
+    portais de pedra; luz ciano dentro e refletores à noite.
+  - `SeaCanyon` ("cânion"): na maior parte da pista submersa (`layout.canyons`: trechos e a folga
+    de cada lado entre o tubo e o pé da parede — 5 a 8 m, mais só no polvo e no portal —, ~60% da
+    volta debaixo d'água) o tubo corre num **cânion de montanhas submarinas** bem junto dele:
+    paredes de rocha do leito até perto da superfície (acima do tubo), com três patamares ondulando,
+    cornija no alto e ruído de rocha — uma malha própria, fina (o leito passa escondido atrás dela),
+    que não invade o tubo de outro trecho. A **inclinação das paredes varia** ao longo do cânion
+    (`SLOPE_RANGE`: penhascos quase retos com patamares estreitos e encostas mais deitadas em
+    terraços largos). Onde a pista chega na superfície as paredes **sobem acima
+    do mar e viram a cadeia de montanhas** do trecho emerso (a 24 m da pista, picos de 34 a 112 m,
+    rocha mais saliente e quase sem patamares). Material `canyon_rock.gdshader`, com muita **variação
+    de cor**: estratos em faixas (debaixo d'água ardósia azulada, ocre, ferrugem, roxo acinzentado e
+    verde mineral; acima do mar creme, ocre, terracota, tijolo e cinza), a sequência mudando por
+    região, do tom da faixa até bem escuro pela **textura de ruído** (três eixos: manchas, médias,
+    grão), escorridos de ferrugem, veios claros de quartzo, rachaduras (textura de células), colônias
+    de líquen e esponjas em pontinhos de cores vivas, relevo (normal map do ruído), musgo e areia nos
+    patamares, incrustações de coral, cáustica e mais escuro com a profundidade; acima do mar
+    vegetação, líquen alaranjado e a faixa molhada. Nas paredes crescem (via `SeaReef.place`) corais,
+    leques colados na rocha, esponjas e anêmonas saindo dela, kelp e capim no pé, **pedras** no pé e
+    nos patamares, algas penduradas da cornija e musgo na borda, **jardins de corais elaborados** a
+    cada 17 m nos patamares (`SeaReef.garden`), prateleiras de coral de placa e chicotes-do-mar na
+    face, corais moles de cabeça para baixo na cornija e **cavernas** na face (`cave_mouth.gdshader`:
+    a boca escura com pedras em volta, pontinhos de bioluminescência e, às vezes, os olhos de uma
+    moreia); nas montanhas, arbustos e **árvores**
+    (pinheiros-mansos, ciprestes e pinheiros de `CityProps.add_trees`) na crista e na serra. **Luzes coloridas
+    submarinas** (~130): cristais acesos nos patamares (e no leito dos trechos abertos), um facho
+    aditivo (`sea_beam.gdshader`) e uma `OmniLight3D` de verdade, mais fortes no entardecer e à
+    noite. `SeaCanyon.open_spans` dá os trechos abertos (anfiteatro, templo e abismo).
+  - `CanyonRuins` (na etapa "cânion"): ruínas de Atlântida junto da pista para dar variedade —
+    **pontes de pedra atravessando o cânion por cima do tubo** (6: um arco grande que acompanha a
+    seção do tubo ou do túnel de cristal 2,5 m por fora, com os pés no fundo dos dois lados, aduelas
+    e fecho marcados, cornija, tabuleiro com mureta abaixo da superfície, estandartes e lanternas;
+    algumas com o tabuleiro desabado no meio), **fachadas de templo** esculpidas no pé das paredes
+    (colunas, entablamento e frontão entrando na rocha, porta escura, estátua ou estandartes),
+    colunas quebradas e tambores caídos nos patamares e, nos trechos abertos, **aquedutos de dois
+    andares** ao lado do tubo; tudo com corais, algas e musgo, e nada dentro do tubo.
+  - `AtlantisRuins` ("ruínas"): Templo de Poseidon por fora da Curva do Templo (escadaria, colunas,
+    frontão e a estátua), colunatas na avenida, o **Portal de Atlântida** (arco sobre a pista, 15 m
+    livres), a muralha em arcos de dois andares atrás das arquibancadas do anfiteatro e, ao longe,
+    prédios em ruínas, torres, aquedutos em ruínas (`AtlantisRuins.aqueduct`: dois andares,
+    contrafortes, o canal no alto com as lajes, pontas e vãos desabados; os arcos com plinto,
+    imposta, aduelas de tijolo, fecho e cornija) e colunas com lanternas, estandartes azuis com o tridente
+    dourado (`banner_trident.gdshader`, desenhado no shader) e estátuas, tudo fora do tubo; corais
+    no pé das colunas, musgo no alto e algas penduradas nas arcadas.
+  - `SeaVents` ("vulcões"): **10 vulcões de bolhas** logo ao lado do tubo nos trechos abertos (3 a 22 m
+    da borda dele, sem encostar no tubo, na laje nem nos arcos) — montes de rocha vulcânica irregular
+    (anéis com ruído, sulcos de lava escorrida), crostas minerais coloridas perto da boca (enxofre,
+    ferrugem, esteiras de bactérias), almofadas de lava, a cratera acesa, rachaduras de lava, halo
+    laranja (`vent_glow.gdshader`) e uma luz de verdade; **chaminés** em volta da boca soltando fumaça
+    escura e bolhas, com **vermes tubulares** no pé (tubos brancos com a pluma vermelha), a água
+    tremendo de calor sobre a boca (`vent_shimmer.gdshader`), a coluna de bolhas até a superfície
+    (`vent_bubbles.gdshader`, sem emissor; o modo `puff` faz a fumaça) e a espuma onde ela chega.
+  - `SeaRelics` ("relíquias"): o que enche o leito nos trechos abertos, dos dois lados do tubo (perto
+    na maioria): **naufrágios de galés** (casco de tábuas tombado e meio enterrado com o rombo e as
+    costelas à mostra, aríete de bronze, popa enrolada, remos, mastro com a vela do tridente ou
+    quebrado, ânforas), **praças afundadas** (lajes com a areia nas bordas, templo redondo de cúpula
+    meio desabada, fonte com estátua ou estátua no pedestal, muretas de casas, escadaria, lanternas),
+    **arcos de pedra** naturais e **pináculos** com corais no topo, campos de **ânforas** com âncora e
+    baú de moedas, **estátuas gigantes** tombadas ou meio enterradas e, junto do vidro, **poças de vida**
+    (marisco gigante com o manto colorido, estrelas-do-mar, ouriços, anêmonas). Cada peça ocupa o seu
+    lugar do leito (`SeaFloor.claim`): os recifes não nascem dentro e os bichos grandes passam por
+    cima.
+  - `PoseidonGate` ("portão"): no trecho emerso, a **cadeia de montanhas** do cânion em volta da
+    pista com **três cachoeiras grandes e largas** (`WIDE_FALLS`: cortinas de 76 a 96 m saltando do
+    alto da montanha em arco por cima da encosta, a velocidade de cada coluna calculada para passar
+    na frente da rocha; `waterfall.gdshader` modo 3, com espuma ao longo do pé e névoa subindo, modo
+    4), **dois aquedutos de pedra por cima da pista** (`AQUEDUCTS`: de montanha a montanha, o arco
+    grande sobre a ponte com os pilares na água, arcos menores até as montanhas, um andar de arcos
+    pequenos em cima com o canal de água despejando no mar dos dois lados, estandartes,
+    **trepadeiras** penduradas — nunca a menos de 14 m do asfalto —, tufos de plantas debruçados nas
+    bordas, arbustos e árvores em cima), **cipós** trançados pendendo de uma montanha à outra por
+    cima da pista, **árvores gigantes** saindo da face das montanhas e se debruçando sobre a pista
+    (em três trechos, `CANOPY_ZONES`, as copas dos dois lados se juntam e **fecham o céu**; tudo a
+    14 m ou mais do asfalto), mastros com estandartes a cada 24 m dos dois lados da ponte e
+    bandeiras grandes nas cristas, **dois rostos gigantes de Poseidon** esculpidos na face com
+    cachoeiras saindo da boca, Poseidon com o tridente no pico mais alto, ruínas nas cristas, o
+    **arco-íris** à frente da ponte (só de dia), peixes-voadores saltando e gaivotas.
+  - `SeaReef` ("recifes"): recifes em manchas sobre **pedras com musgo** (coral ramificado, de
+    mesa, cérebro com sulcos, esponjas em tubo, leques em rede e anêmonas; os de cima crescem sobre
+    as pedras; mais as peças elaboradas: prateleiras de coral de placa, coral-pilar, esponja-barril,
+    coral mole com cachos de pólipos, chicote-do-mar, marisco gigante, estrela-do-mar, ouriço e
+    vermes tubulares), florestas de kelp e capim do mar (mais nos trechos abertos, nada dentro da rocha do
+    cânion), mais o que as construções e as paredes do cânion registram (`hang`/`cluster`/`moss`/
+    `place`). Tudo em MultiMesh por blocos com `coral.gdshader` (cor por instância, balanço da
+    corrente, pólipos que brilham à noite, desenho na superfície).
+  - `SeaWorld` ("oceano"): a superfície em `water_level` — vista de cima o mar (`water.gdshader`),
+    vista de baixo o **espelho d'água** (`sea_ceiling.gdshader`): pela **janela de Snell** o que
+    está acima do mar — o céu de verdade do período com as nuvens e o sol, as montanhas, as
+    cachoeiras e os barcos — refratado (água → ar) e distorcido pelas ondas, procurado na imagem da
+    **janela do céu** (`SkyWindow`: `SubViewport` com uma câmera na superfície olhando para cima,
+    só a camada `SeaWorld.WINDOW_LAYER`, com uma cópia do ambiente de fora d'água, desenhada só com a
+    câmera debaixo d'água); fora dela a superfície continua com a **luminosidade do céu**, distorcida
+    pelas ondas (o céu da janela "dobrado" para fora dela), com o reflexo do fundo, das paredes do
+    cânion e do tubo por cima, discreto (reflexo no espaço da tela pela profundidade); o Fresnel e
+    a borda clara entre os dois;
+    **barcos e navios** perto da pista (`SeaBoats`: lanchas e veleiros bem por cima dela, ao longo,
+    e navios ao lado nos trechos abertos e fundos, indo e voltando, com esteira; as rotas não passam
+    sobre rocha, o tubo perto da superfície nem a ponte);
+    raios de sol descendo pela água (`sea_rays.gdshader`), neve marinha e bolhas em volta da câmera
+    (`sea_specks.gdshader`: posições numa caixa que o shader repete em volta da câmera, sem emissor;
+    fora do tubo) e a cáustica sobre os pisos (`sea_caustic_overlay.gdshader`).
+  - `SeaLife` ("vida marinha"): nos **trechos abertos** (sem cânion), muitos bichos — 24 cardumes de
+    peixinhos coloridos (MultiMesh, `fish.gdshader`), raias-manta, **baleias grandes** (34 a 39 m,
+    indo e voltando junto do tubo, do lado sem arquibancadas nem boxes: um grupo com filhote ao lado
+    do abismo e mais quatro nos trechos abertos), tubarões,
+    tartarugas e dois grupos de golfinhos (rotas fora do tubo, acima do leito), o polvo gigante numa
+    coluna por fora da Curva do
+    Polvo e grupos de **águas-vivas brilhantes** (`jellyfish.gdshader`, aditivas, mais fortes à
+    noite); todos andam pelo `SceneryAnimator` (Rust) e nadam no shader (`sea_creature.gdshader`: um
+    material só, cor e nado por *instance uniform*, peso da animação na cor de vértice).
+- **Saindo da água** (`SeaSplash`): quando a câmera passa da água para o ar (andando, depois de um
+  tempo debaixo d'água; cortes de câmera não contam), gotas na lente com a imagem refratada atrás
+  delas — pequenas quase paradas e grandes escorrendo com rastro — e a película d'água descendo
+  pela tela no começo (`water_lens.gdshader`, numa `CanvasLayer` embaixo do HUD, ~2,8 s), mais o som
+  da água escorrendo (`water_exit.wav`: o estouro na superfície, um tum grave, a água escorrendo e
+  pingos; bus Crowd).
+- **Linha d'água** (`SeaAtmosphere`): a altura da câmera contra `water_level` mistura (faixa de
+  ±0,8 m) o ambiente do período com o de **debaixo d'água** (`SeaWorld.UNDER`: névoa densa e azul,
+  céu e reflexos de água, luz do sol mais fraca e fria, sem névoa rasteira nem espalhamento da luz na
+  névoa); reaplica só quando muda. Só mexe no que o `Daylight` define de novo, mais `fog_sky_affect` e
+  `fog_sun_scatter`, devolvidos ao sair da pista. **Noite**: água azul-marinho, LEDs, vidro e
+  águas-vivas brilhando, sem raios de sol; **entardecer**: luz e cáustica douradas.
+- **Modelos** (`blender/build_atlantis.py`, `blender -b --factory-startup -P blender/build_atlantis.py
+  [-- --render <pasta>] [--only=nomes]`): metabolas em `assets/track/atlantis_abyss/models/` — rosto
+  de Poseidon (das cachoeiras, boca aberta), Poseidon em pé e sentado com o tridente, cabeça da
+  deusa, polvo, baleia, raia-manta, tubarão, tartaruga e golfinho (frente para −Y no Blender, +Z no
+  jogo). As estátuas vão sem cor de vértice (a pedra usa a cor de vértice como cor); nos bichos, R =
+  quanto a parte mexe (cauda, asas, nadadeiras, tentáculos).
+- **Som** (`SeaAudio`, sons de `python tools/generate_sea_sounds.py` em `assets/audio/ambient/`, bus
+  Crowd; `water_exit.wav` é da saída da água): debaixo d'água o zumbido grave e as bolhas (entram e
+  saem com a linha d'água) e cantos de
+  baleia de vez em quando; no Portão, o rugido de cada cachoeira, e o borbulhar de cada vulcão (3D,
+  só perto da câmera).
+- Teste: `tests/atlantis_abyss_test.gd` (traçado abaixo e acima da água, pisos, grid e 14 boxes,
+  boxes antes da linha, barreira em toda a volta, nada sobre a pista, cenário gerado, pista submersa
+  toda dentro do tubo ou do túnel, corais e águas-vivas fora do tubo, vulcões, barcos e baleias
+  grandes perto do tubo, cânion na maior parte da pista submersa com as paredes fora do tubo e a
+  inclinação variando, pontes, fachadas e aquedutos do cânion fora do tubo, montanhas no trecho
+  emerso com as cachoeiras largas fora da laje e os aquedutos por cima da pista, paredes perto do
+  tubo, árvores nas montanhas, luzes coloridas, bichos grandes nos trechos abertos, vulcões perto do
+  tubo com chaminés, relíquias dos trechos abertos fora do tubo, corais elaborados, cavernas,
+  estandartes no tubo e no aqueduto, cipós e árvores sobre a pista com a folga dos carros, bandeiras
+  nas cristas, barcos perto da pista, a janela do céu, troca de névoa na linha d'água e o
+  Environment de volta ao sair, gotas na tela e som saindo da água, carro parado nas curvas e
+  rampas); capturas em `tests/atlantis_abyss_shots.gd` (com janela: rode com `--offline`).
+
 ## Vitrine: balões de personagem, outdoors e murais
 
 `scripts/track/track_showcase.gd` (etapa "vitrine" da geração, nas duas pistas; o servidor pula):
@@ -1450,7 +1715,7 @@ liberada pelo nível) e paga.
 - **Salas**: corrida rápida (fila, larga quando todos marcam pronto), Custom (nome, senha, pista,
   voltas 3/5/10/15, bots e dificuldade, **corredores no grid** 2–14 — jogadores + bots; a sala
   aceita até 10 jogadores —, classificatória (voltas, tempo limite, colisão e se infração anula a
-  volta), DRS, horário, ambiente; o anfitrião
+  volta), DRS, colisões no box, horário, ambiente; o anfitrião
   larga), contra bots (do grupo). Quem está na sala Custom convida amigos online, e o convidado
   entra mesmo com senha.
 - **Ranking**: Geral, Vitórias, Ganhos, Volta mais rápida; Geral = soma de round(valor ÷ líder ×
@@ -1535,6 +1800,37 @@ batidas também (os contatos locais não viram dano). Servidor antigo (sem ack),
 bandeirada ou abandono: o carro volta a seguir o servidor como os outros. Para testar com atraso:
 `-- --net-lag=120` (ida e volta simulada) e `-- --no-prediction` (comparar com o modo antigo).
 
+**Batidas fantasmas e trancos (protocolo 8)**. O carro previsto fica à frente do servidor (os
+comandos dele ainda vão chegar lá) e os outros eram desenhados no passado (atraso + folga): juntos,
+100–200 ms, 8–16 m a 300 km/h. O carro daqui colidia com esse "fantasma" (às vezes ficava preso nele
+enquanto o servidor seguia: "travo, volto e bato") e, no servidor, quem passava "perto" batia de
+verdade no carro que estava bem mais à frente. Agora:
+- **Os outros no instante do meu carro** (`NetRaceClient._update_lead`): a pose interpolada é
+  esticada pela velocidade e pelo giro até o instante em que o servidor aplica o comando atual do
+  jogador (o instante mostrado anda um passo do servidor por passo e o esticar acompanha o relógio
+  da interpolação na hora — um ajuste nele cancela o outro; só a velocidade e o giro usados para
+  esticar são suavizados, sem quina no começo de uma freada). `-- --no-lead` desliga.
+- **Colisão entre carros é do servidor**: aqui o carro previsto não colide com os outros em
+  movimento nem com os destroços (simulados à parte em cada máquina); com um carro parado (batido,
+  rodado, no grid) colide também, porque a posição dele é a de verdade.
+- **Comandos com redundância**: cada pacote leva os 4 anteriores (`NetProtocol.INPUT_REDUNDANCY`);
+  o que se perdeu ou chegou fora de ordem entra pelo seguinte (antes o servidor repetia o último).
+- **Ritmo**: o servidor manda no instantâneo a folga dos comandos (percentil 5 da janela de 1 s) e
+  o cliente roda 1 ou 2 passos de física por segundo a mais ou a menos para mantê-la entre 2 e 4
+  (`physics_ticks_per_second` e `time_scale` juntos: o passo tem a duração do do servidor). Segurar
+  ou pular um passo no servidor movia o carro um passo inteiro (~0,7 m a 300 km/h) — agora só fora
+  dessa faixa.
+- O salto da correção grande mantém a altura do carro acima do piso (adiantado em linha reta numa
+  chicane, podia ficar dentro do chão).
+
+Medido com `tests/net_frame_probe.gd` (Monza, 10 carros, bot pilotando o carro do jogador; antes →
+depois): com 60 ms de ida e volta e 20 ms de variação, o outro carro perto aparecia a 9,0 m
+(mediana; p95 26 m) de onde estava no servidor → 0,6 m (p95 1,8 m); colisões só no cliente 79 → 0;
+batidas do jogador no servidor 20 → 0; comandos repetidos 1.270/min → 1; correções 272 → 68 (erro
+máx. 8,8 → 0,07 m); saltos visuais do meu carro 271 → 0. Com 90/45 ms: 28 → 0 batidas, 300 → 0
+colisões fantasmas, 2.409 → ~10 repetidos. A sonda mede também os saltos visuais dos outros carros
+(passo × passo anterior: 25 antes, 4–22 depois).
+
 **Servidor sem travar as salas**: a thread principal do servidor roda a física, os bots e a rede
 de todas as salas a 120 Hz, então nada pode prendê-la por muito tempo.
 - **Pistas geradas uma vez**: na subida, `RaceTrack.prewarm_server` gera a versão de servidor de
@@ -1581,7 +1877,11 @@ a câmera e as teclas.
   - **Perseguição** de qualquer carro (a câmera normal da corrida).
   - Teclas: 1–9 câmera fixa · 0 TV automática · F livre · C perseguição · ← → carro · F6 sai. No
     controle: D-pad ← → carro, ↑ alterna TV/perseguição/livre, Y próxima câmera fixa, B sai. Fim: quando todos os
-humanos terminam/abandonam (ou 150 s depois do primeiro); quem sai vira abandono. O servidor paga e
+humanos terminam/abandonam (ou 150 s depois do primeiro); quem sai vira abandono. Depois que os
+três primeiros recebem a bandeirada (`podium_done` no estado da corrida), quem ainda corre vê o
+aviso "PODE SAIR DA CORRIDA" (e uma nota no menu de pausa): sair a partir daí conta como chegada
+com as voltas que tinha (`RaceManager.leave_after_podium`: créditos inteiros, sem a metade do
+abandono; sem o pit stop obrigatório continua desclassificado) e o carro sai da pista. O servidor paga e
 registra o resultado de cada um e a sala volta ao lobby.
 
 Arquivos: `scripts/net/` (`net.gd`, `net_protocol.gd`, `progression.gd`, `ranking.gd`,
@@ -1603,13 +1903,19 @@ godot --path . -s res://tests/capture_track.gd -- <pasta>    # screenshots do ci
 godot --headless --path . -s res://tests/audio_test.gd      # mixer de som: camadas do motor, pneus, pisos, batida
 godot --path . -s res://tests/record_audio.gd -- <pasta>     # grava o som de uma largada (WAV + rpm em CSV)
 godot --headless --path . -s res://tests/damage_test.gd     # dano: dirigir sem dano, raspada, batidas, destroços, reparo
+godot --headless --path . -s res://tests/signal_repair_test.gd -- --offline  # seta dos retrovisores volta a acender depois do reparo (pit stop, queda na Sky Aerobase)
+godot --headless --path . -s res://tests/podium_test.gd -- --offline  # pódio: as cópias dos três primeiros com as quatro rodas no lugar
+godot --headless --path . -s res://tests/pit_collisions_test.gd -- --offline  # colisões no box: ligadas colidem; desligadas jogador e bot se atravessam nos boxes
+godot --headless --path . -s res://tests/leave_after_podium_test.gd -- --offline  # online: aviso quando os 3 primeiros chegam; sair depois conta como chegada (créditos inteiros)
 godot --path . -s res://tests/capture_crash.gd -- <pasta>    # screenshots de uma batida
 godot --path . -s res://tests/capture_moods.gd -- <pasta>    # todos os horários × ambientes
 godot --path . -s res://tests/capture_boost.gd -- <pasta>    # boost, marcas de pneu, sombra, fantasia
 godot --path . -s res://tests/capture_trails.gd -- <pasta> [efeito ...]   # rastros de partículas: perseguição, lado, parado e à noite
-godot --headless --path . -s res://tests/race_test.gd -- 3 9 3  # corrida de 3 voltas, 9 bots, dificuldade mista (+ monaco, suzuka, las_vegas ou sky_aerobase no fim = nessa pista)
+godot --headless --path . -s res://tests/race_test.gd -- 3 9 3  # corrida de 3 voltas, 9 bots, dificuldade mista (+ monaco, suzuka, las_vegas, sky_aerobase ou atlantis_abyss no fim = nessa pista)
 godot --headless --path . -s res://tests/sky_aerobase_test.gd # Sky Aerobase: traçado, bordas abertas com escape e vazio embaixo, cenário, quedas (jogador, bot, treino) voltando pelo box
 godot --path . -s res://tests/sky_aerobase_shots.gd -- <pasta> [horário] [prefixo]  # screenshots da Sky Aerobase (curvas, túnel, borda do abismo, motores, base aérea)
+godot --headless --path . -s res://tests/atlantis_abyss_test.gd # Atlantis Abyss: traçado abaixo/acima da água, barreiras em toda a volta, tubo cobrindo a pista submersa, cânion, montanhas, cenário, linha d'água (névoa) e carro parado nas rampas
+godot --path . -s res://tests/atlantis_abyss_shots.gd -- <pasta> [horário] [prefixo] [só,estes]  # screenshots da Atlantis Abyss (tubo, cânion com pontes e fachadas, túnel de cristal, aqueduto, montanhas, cachoeiras largas e aquedutos sobre a pista, abismo, espelho d'água, vulcões, recifes, bichos e baleias de perto, barcos)
 godot --headless --path . -s res://tests/monaco_test.gd     # Mônaco: traçado, desnível, pisos, túnel coberto, cidade, porto, carro na rampa
 godot --path . -s res://tests/monaco_shots.gd -- <pasta> [horário] [ambiente] [prefixo]  # screenshots de Mônaco (+ calçadas, navios, balões, dirigíveis e o céu visto da pista)
 godot --headless --path . -s res://tests/suzuka_test.gd     # Suzuka: traçado, desnível, cruzamento (folga, projeção nos dois níveis), nada acima do asfalto, terreno, carro na ponte e embaixo dela
@@ -1653,7 +1959,11 @@ godot --headless --path . -s res://tests/interp_test.gd -- --offline [--net-lag=
 godot --headless --path . -s res://tests/restart_jump_test.gd -- --offline [--net-lag=ms] # recomeçar acelerando: o carro não volta aos saltos para trás até a largada
 godot --path . -s res://tests/frame_probe.gd -- [monza,monaco] [segundos] [puro] [--deep=race_manager,bot_driver] # com janela: onde vai o tempo de cada quadro numa corrida com 10 carros (GDScript por função, física, render, GPU)
 godot --path . -s res://tests/online_restart_test.gd -- --offline [vezes] # corrida online com skins e bots, com janela: largada e recomeços seguidos sem o jogo travar
-godot --path . -s res://tests/perf_probe.gd -- [monza,suzuka] [grupos] [pinheiros] # FPS, CPU/GPU, desenhos e triângulos em pontos da volta; custo de cada grupo da pista
+godot --path . -s res://tests/perf_probe.gd -- [monza,suzuka] [grupos[@0.75]] [sombra_grupos[@0.75]] [sombras] [hud] [pinheiros] # FPS, CPU/GPU, desenhos e triângulos em pontos da volta; custo de cada grupo da pista (e da sombra dele), das cascatas e da interface
+godot --path . -s res://tests/shadow_atlas_probe.gd -- <pasta> [pistas] [16384,8192] # atlas da sombra do sol: GPU de cada tamanho (alternando) e capturas para comparar a imagem
+godot --path . -s res://tests/cpu_probe.gd -- [pistas] [s] [adversários] [--trace] [--experimentos] # CPU numa corrida de verdade (física, lógica, desenho por quadro; scripts cronometrados; custo de efeitos, som, dano e IK dos rivais)
+godot --path . -s res://tests/capture_far_model.gd -- <pasta> # modelo de longe dos carros: capturas com e sem, objetos e desenhos do quadro
+godot --path . -s res://tests/net_frame_probe.gd -- --offline [pista] [s] [carros] [--net-lag=ms] [--net-jitter=ms] [--no-lead] # corrida online como o jogador vê: quadros, instantâneos, trancos e saltos visuais, correções, outro carro perto (onde aparece × servidor), colisões só no cliente, batidas no servidor
 godot --headless --path . -s res://tests/start_pause_test.gd # pausa na largada congela o semáforo
 godot --headless --path . -s res://tests/drs_rule_test.gd   # DRS livre ou só a até 1 s do carro da frente
 godot --headless --path . -s res://tests/slipstream_test.gd # vácuo: força no rastro e perda de velocidade com e sem

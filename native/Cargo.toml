@@ -8,7 +8,10 @@ publish = false
 crate-type = ["cdylib"]
 
 [dependencies]
-godot = { version = "=0.5.5", features = ["api-4-7"] }
+# safeguards-release-disengaged: no build de release o godot-rust não confere a cada chamada ao motor
+# se o objeto ainda existe (uma busca no ObjectDB por chamada, que dobrava o custo de cada uma). Um
+# objeto liberado usado por engano vira comportamento indefinido em vez de pânico.
+godot = { version = "=0.5.5", features = ["api-4-7", "safeguards-release-disengaged"] }
 
 [profile.release]
 opt-level = 3

@@ -7,7 +7,7 @@ extends HBoxContainer
 ## grade de 2 colunas em que toda opção tem o mesmo tamanho (TILE).
 ## * Pinturas prontas (grátis) aplicam as 3 cores de uma vez; cada cor (carro, capacete, macacão,
 ##   rodas) é livre: seletor de qualquer cor e sugestões. Boost e neon: as cores ganhas nas roletas.
-## * Partículas: o rastro que o carro solta (bolhas, estrelas, fogo no chão, raios…), dos ganhos.
+## * Aura: o rastro que o carro solta (bolhas, estrelas, fogo no chão, raios…), dos ganhos.
 ## * Peças: as variantes ganhas (a padrão sempre), com o efeito na aerodinâmica no tooltip.
 ## * Engenharia: o comportamento do carro (aerodinâmica, freios, pneus, direção, câmbio,
 ##   suspensão, assistências), com slider, ajuste grosso/fino e explicação de cada parâmetro.
@@ -34,7 +34,7 @@ const CATEGORIES := [
 	["rim", "Cor das rodas"],
 	["boost", "Brilho do boost"],
 	["neon", "Neon embaixo do carro"],
-	["trail", "Partículas"],
+	["trail", "Aura"],
 	["signal", "Luz de ultrapassagem"],
 	["parts", "Peças"],
 ]
@@ -54,7 +54,7 @@ const CATEGORY_TIPS := {
 	"rim": "Cor das rodas.",
 	"boost": "Cor do brilho das rodas, do rastro e das partículas quando o boost está ligado. Ganhe mais cores nas roletas.",
 	"neon": "Luz de neon embaixo do carro (fica mais forte à noite). As cores saem nas roletas.",
-	"trail": "O rastro que o carro solta: bolhas, estrelinhas, fogo no chão, raios… Mais forte em velocidade; aparece para todos online. Saem nas roletas.",
+	"trail": "A aura que o carro solta: bolhas, estrelinhas, fogo no chão, raios… Mais forte em velocidade; aparece para todos online. Saem nas roletas.",
 	"parts": "Peças de desempenho que você ganhou: trocam aderência por velocidade.",
 	"signal": "A luz que pisca nos retrovisores quando você pede passagem (tecla X). A Sirene, vermelha e azul, é prêmio da conquista Interceptor.",
 }
@@ -257,7 +257,7 @@ func _build() -> void:
 				_add(t)
 		"trail":
 			var have := _profile.collection_count("trail")
-			_note.text = ("%d de %d rastros · mais forte em velocidade" % [have.x, have.y]) if have.x > 0 				else "nenhum rastro ainda · ganhe nas roletas Neon e Dragão"
+			_note.text = ("%d de %d auras · mais forte em velocidade" % [have.x, have.y]) if have.x > 0 				else "nenhuma aura ainda · ganhe nas roletas Neon e Dragão"
 			var none := OptionTile.new()
 			none.title = "Nenhum"
 			none.art_kind = "off"

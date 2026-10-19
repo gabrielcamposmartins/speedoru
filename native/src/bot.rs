@@ -69,11 +69,26 @@ type Snapshot = Rc<Vec<Snap>>;
 thread_local! {
     /// Foto dos carros: (RaceManager, quadro de física, foto).
     static CACHE: RefCell<Option<(InstanceId, u64, Snapshot)>> = const { RefCell::new(None) };
+    /// Bandeira da prova lida uma vez por passo de física e por RaceManager (antes: cada bot lia o
+    /// RaceControl, a amarela e chamava is_involved no GDScript a cada passo — sob amarela, uma vez
+    /// por carro em volta, O(N²)).
+    static FLAGS: RefCell<Option<Flags>> = const { RefCell::new(None) };
+}
+
+struct Flags {
+    manager: InstanceId,
+    frame: u64,
+    control: Option<Gd<Object>>,
+    yellow: bool,
+    involved: std::collections::HashMap<InstanceId, bool>,
+    /// Safety car: (progresso, velocidade), lido na primeira vez que alguém pede.
+    safety_car: Option<Option<(f64, f64)>>,
 }
 
 /// Solta a foto (antes de o Godot desligar: ela guarda referências a objetos dele).
 pub fn clear_cache() {
     CACHE.with(|c| *c.borrow_mut() = None);
+    FLAGS.with(|c| *c.borrow_mut() = None);
 }
 
 fn res_f(res: &Gd<Resource>, key: &str) -> f64 {
@@ -306,18 +321,61 @@ impl BotDriverCore {
         CACHE.with(|c| *c.borrow_mut() = None);
     }
 
-    fn control(&self) -> Option<Gd<Object>> {
-        self.manager.as_ref().and_then(|m| m.get("control").try_to::<Gd<Object>>().ok())
+    /// Bandeira deste passo (lida uma vez por passo para todos os bots da mesma prova).
+    fn with_flags<R>(&self, f: impl FnOnce(&mut Flags) -> R) -> Option<R> {
+        let manager = self.manager.as_ref()?;
+        let frame = Engine::singleton().get_physics_frames();
+        let id = manager.instance_id();
+        let stale = FLAGS.with(|c| c.borrow().as_ref().is_none_or(|fl| fl.manager != id || fl.frame != frame));
+        if stale {
+            let control = manager.get("control").try_to::<Gd<Object>>().ok();
+            let yellow = control.as_ref().map(|c| c.get("yellow").try_to::<bool>().unwrap_or(false)).unwrap_or(false);
+            FLAGS.with(|c| {
+                *c.borrow_mut() = Some(Flags {
+                    manager: id,
+                    frame,
+                    control,
+                    yellow,
+                    involved: std::collections::HashMap::new(),
+                    safety_car: None,
+                })
+            });
+        }
+        FLAGS.with(|c| c.borrow_mut().as_mut().map(f))
     }
 
-    fn yellow(&self, control: &Option<Gd<Object>>) -> bool {
-        control.as_ref().map(|c| c.get("yellow").try_to::<bool>().unwrap_or(false)).unwrap_or(false)
+    fn control(&self) -> Option<Gd<Object>> {
+        self.with_flags(|fl| fl.control.clone()).flatten()
+    }
+
+    fn yellow(&self, _control: &Option<Gd<Object>>) -> bool {
+        self.with_flags(|fl| fl.yellow).unwrap_or(false)
     }
 
     fn is_involved(&mut self, control: &Option<Gd<Object>>, e: &Gd<RefCounted>) -> bool {
         let Some(mut c) = control.clone() else { return false };
-        let _guard = self.base_mut();
-        c.call("is_involved", &[e.to_variant()]).try_to::<bool>().unwrap_or(false)
+        let id = e.instance_id();
+        if let Some(Some(v)) = self.with_flags(|fl| fl.involved.get(&id).copied()) {
+            return v;
+        }
+        let v = {
+            let _guard = self.base_mut();
+            c.call("is_involved", &[e.to_variant()]).try_to::<bool>().unwrap_or(false)
+        };
+        self.with_flags(|fl| fl.involved.insert(id, v));
+        v
+    }
+
+    /// Progresso e velocidade do safety car (lidos uma vez por passo).
+    fn safety_car(&self, control: &Option<Gd<Object>>) -> Option<(f64, f64)> {
+        if let Some(Some(cached)) = self.with_flags(|fl| fl.safety_car) {
+            return cached;
+        }
+        let sc = control.as_ref().and_then(|c| c.get("safety_car").try_to::<Gd<Object>>().ok()).map(|sc| {
+            (sc.get("progress").try_to::<f64>().unwrap_or(0.0), sc.get("speed").try_to::<f64>().unwrap_or(0.0))
+        });
+        self.with_flags(|fl| fl.safety_car = Some(sc));
+        sc
     }
 
     fn me(&self) -> Me {
@@ -404,13 +462,22 @@ impl BotDriverCore {
             return;
         }
         let control = self.control();
-        // Roda arrancada: batida forte (bandeira amarela; o RaceControl o leva ao box)
+        // Roda arrancada: batida forte (bandeira amarela; o RaceControl o leva ao box). Só enquanto
+        // ainda não está na lista (o report_crash ignoraria; era uma chamada por passo até o box)
         if self.released && self.mode != PIT_STOP && control.is_some() {
             let broken = car.bind().wheel_broken.iter_shared().any(|v| v.try_to::<bool>().unwrap_or(false));
-            if broken {
+            if broken && !self.is_involved(&control, &entry) {
                 let mut c = control.clone().unwrap();
-                let _guard = self.base_mut();
-                c.call("report_crash", &[entry.to_variant()]);
+                {
+                    let _guard = self.base_mut();
+                    c.call("report_crash", &[entry.to_variant()]);
+                }
+                let id = entry.instance_id();
+                self.with_flags(|fl| {
+                    fl.involved.remove(&id);
+                    // A amarela pode ter começado agora
+                    fl.yellow = fl.control.as_ref().map(|c| c.get("yellow").try_to::<bool>().unwrap_or(false)).unwrap_or(false);
+                });
             }
         }
         let me = self.me();
@@ -436,7 +503,8 @@ impl BotDriverCore {
             self.start_lateral = me.lateral;
         }
         let yellow = self.yellow(&control);
-        let crashed = self.is_involved(&control, &entry);
+        // Só importa sob amarela
+        let crashed = yellow && self.is_involved(&control, &entry);
         // Limitador só nos boxes (sob amarela o bot acompanha o safety car pela velocidade)
         car.bind_mut().limiter_on = self.mode != RACE && self.mode != PIT_STOP;
         let mut target_lateral = self.planned_lateral(s, me.progress);
@@ -448,13 +516,9 @@ impl BotDriverCore {
         if yellow && !crashed && self.mode == RACE {
             // Sob amarela: no máximo um pouco acima do safety car (o pelotão se junta atrás dele)
             speed_target = speed_target.min(self.sc_speed * 1.15);
-            if let Some(sc) = control
-                .as_ref()
-                .and_then(|c| c.get("safety_car").try_to::<Gd<Object>>().ok())
-            {
-                let ds_sc = sc.get("progress").try_to::<f64>().unwrap_or(0.0) - me.progress;
+            if let Some((sc_progress, sc_v)) = self.safety_car(&control) {
+                let ds_sc = sc_progress - me.progress;
                 if ds_sc > -1.0 && ds_sc < 160.0 {
-                    let sc_v = sc.get("speed").try_to::<f64>().unwrap_or(0.0);
                     speed_target = speed_target.min((sc_v + (ds_sc - 30.0) * 0.5).max(2.0));
                 }
             }

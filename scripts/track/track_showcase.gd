@@ -111,6 +111,9 @@ static func build(track: RaceTrack, parent: Node3D) -> void:
 	node.name = "Showcase"
 	parent.add_child(node)
 	var runs := straights(track)
+	# No fundo do mar não há balões nem outdoors (as estátuas e os estandartes são das ruínas)
+	if track.layout.undersea:
+		return
 	node._character_balloons(track, runs)
 	# No céu não há chão para os outdoors nem casas para os murais (os telões são da SkyBase)
 	if image_count() == 0 or track.layout.sky:

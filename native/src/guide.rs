@@ -56,10 +56,14 @@ impl IMultiMeshInstance3D for RacingLineGuideCore {
         let (Some(car), Some(line)) = (self.car.clone(), self.line.clone()) else { return };
         let Some(mut mm) = self.base().get_multimesh() else { return };
         let visible = self.mode > 0 && !self.suppressed;
-        self.base_mut().set_visible(visible);
+        if self.base().is_visible() != visible {
+            self.base_mut().set_visible(visible);
+        }
         if !visible {
             return;
         }
+        // O MultiMesh inteiro (transform + cor: 16 floats por seta) vai numa chamada só
+        let mut buf: Vec<f32> = Vec::with_capacity(COUNT as usize * 16);
         let body = car.clone().upcast::<VehicleBody3D>();
         let line = line.bind();
         let path_gd = line.path.clone().expect("linha sem pista");
@@ -96,8 +100,25 @@ impl IMultiMeshInstance3D for RacingLineGuideCore {
             col.a *= fade as f32;
             // Cor em HDR (acima de 1) para atravessar o tonemap sem ficar pálida
             let col = Color::from_rgba(col.r * GLOW, col.g * GLOW, col.b * GLOW, col.a);
-            mm.set_instance_transform(k, xf);
-            mm.set_instance_color(k, col);
+            let b = &xf.basis.rows;
+            buf.extend_from_slice(&[
+                b[0].x, b[0].y, b[0].z, xf.origin.x, b[1].x, b[1].y, b[1].z, xf.origin.y, b[2].x, b[2].y, b[2].z,
+                xf.origin.z, col.r, col.g, col.b, col.a,
+            ]);
+        }
+        if mm.get_instance_count() as usize * 16 == buf.len() && mm.is_using_colors() && !mm.is_using_custom_data() {
+            mm.set_buffer(&PackedFloat32Array::from(&buf[..]));
+        } else {
+            for (k, chunk) in buf.chunks(16).enumerate() {
+                let rows = [
+                    Vector3::new(chunk[0], chunk[1], chunk[2]),
+                    Vector3::new(chunk[4], chunk[5], chunk[6]),
+                    Vector3::new(chunk[8], chunk[9], chunk[10]),
+                ];
+                let xf = Transform3D::new(Basis::from_rows(rows[0], rows[1], rows[2]), Vector3::new(chunk[3], chunk[7], chunk[11]));
+                mm.set_instance_transform(k as i32, xf);
+                mm.set_instance_color(k as i32, Color::from_rgba(chunk[12], chunk[13], chunk[14], chunk[15]));
+            }
         }
     }
 }
@@ -123,6 +144,9 @@ impl RacingLineGuideCore {
         let Some(mut q) = PhysicsRayQueryParameters3D::create(p + Vector3::UP * 4.0, p + Vector3::DOWN * 4.0) else {
             return p;
         };
+        // Só o cenário (camada 1): um carro passando no ponto não estraga o cache (antes o raio que
+        // batia num carro não era guardado e se repetia a cada quadro)
+        q.set_collision_mask(1);
         let mut exclude = Array::<Rid>::new();
         exclude.push(body.get_rid());
         q.set_exclude(&exclude);

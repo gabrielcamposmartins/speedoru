@@ -40,6 +40,9 @@ var _driver_part: Node3D
 var _wheel_node: Node3D
 ## Poses finais (depois do IK) das mãos e cotovelos, no espaço global. Os SkeletonModifier3D
 ## só valem durante a atualização do esqueleto; fora dela get_bone_global_pose() volta ao FK.
+## Só são guardadas com capture_poses (testes e capturas): o jogo não as lê, e eram 4 buscas de
+## osso por nome por carro a cada quadro.
+static var capture_poses := false
 var hand_poses: Array[Transform3D] = [Transform3D(), Transform3D()]
 var elbow_positions: Array[Vector3] = [Vector3.ZERO, Vector3.ZERO]
 
@@ -67,7 +70,7 @@ func get_target(index: int) -> Node3D:
 
 
 func _on_skeleton_updated() -> void:
-	if ik == null or not is_instance_valid(ik):
+	if not capture_poses or ik == null or not is_instance_valid(ik):
 		return
 	var skeleton := ik.get_skeleton()
 	# A peça do piloto acabou de ser trocada (montagem do carro): o esqueleto velho já saiu da árvore

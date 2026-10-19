@@ -6,8 +6,8 @@
 use std::f64::consts::{PI, TAU};
 
 use godot::classes::{
-    CpuParticles3D, Engine, Gradient, IVehicleBody3D, Input, Node3D, PhysicsDirectBodyState3D, Resource,
-    VehicleBody3D, VehicleWheel3D,
+    Engine, GpuParticles3D, Gradient, GradientTexture1D, IVehicleBody3D, Input, Node3D, ParticleProcessMaterial,
+    PhysicsDirectBodyState3D, Resource, VehicleBody3D, VehicleWheel3D,
 };
 use godot::prelude::*;
 
@@ -31,7 +31,36 @@ const GEAR_NEUTRAL: i64 = 0;
 const LOW_SPEED_SLIP: f64 = 3.0;
 const LIMITER_KMH: f64 = 80.0;
 const COMPOUND_WEAR: [f64; 5] = [1.55, 1.0, 0.68, 1.2, 1.4];
+/// A cada quantos passos as constantes das rodas são relidas mesmo sem aviso.
+const WHEEL_REFRESH: i64 = 60;
+/// Contato com outro carro abaixo disso (N·s) não interessa às penalidades (RaceManagerCore).
+const CONTACT_SIGNAL_MIN: f64 = 2600.0;
+/// Fumaça e pó das rodas só perto da câmera (m).
+const FX_RANGE: f32 = 150.0;
 const SIGNAL_BLINKS: f64 = 4.0;
+
+/// Os 4 primeiros valores de um array exportado (o resto com `fill`), numa leitura só.
+fn read4<T: godot::meta::PackedElement + Copy>(
+    arr: &godot::builtin::PackedArray<T>,
+    fill: T,
+) -> [T; 4] {
+    let mut out = [fill; 4];
+    for (o, v) in out.iter_mut().zip(arr.as_slice().iter()) {
+        *o = *v;
+    }
+    out
+}
+
+/// Escreve os `n` primeiros valores num array exportado de uma vez.
+fn write4<T: godot::meta::PackedElement + Copy>(
+    arr: &mut godot::builtin::PackedArray<T>,
+    values: &[T; 4],
+    n: usize,
+) {
+    let slice = arr.as_mut_slice();
+    let m = n.min(slice.len());
+    slice[..m].copy_from_slice(&values[..m]);
+}
 const SIGNAL_PERIOD: f64 = 0.5;
 
 /// Nomes das ações do jogador (criados uma vez).
@@ -381,8 +410,8 @@ pub struct F1CarCore {
     drive_request: [f64; 4],
     brake_request: [f64; 4],
     prev_up_speed: f64,
-    smoke: Vec<Gd<CpuParticles3D>>,
-    dust: Vec<Gd<CpuParticles3D>>,
+    smoke: Vec<Gd<GpuParticles3D>>,
+    dust: Vec<Gd<GpuParticles3D>>,
     shift_timer: f64,
     reverse_timer: f64,
     drs_amount: f64,
@@ -393,6 +422,41 @@ pub struct F1CarCore {
     steering_wheel_rest: Transform3D,
     damage: Option<Gd<CarDamageCore>>,
     config: Option<Gd<Resource>>,
+    /// Aderência e desgaste do composto, lidos do CarConfig só quando ele muda (antes: uma chamada
+    /// ao GDScript por carro a cada passo de física).
+    compound_cache: Option<(f64, f64)>,
+    /// Estado do corpo lido uma vez por passo (transform, velocidades) e o volante de agora: antes cada
+    /// parte do passo pedia de novo ao motor (velocidade 4×, transform 4×, volante 3×).
+    st_gt: Transform3D,
+    st_lv: Vector3,
+    st_av: Vector3,
+    st_steer: f64,
+    /// Constantes das rodas [raio, repouso, curso, rigidez], massa, centro de massa (local) e relações
+    /// de marcha: relidas quando o CarConfig ou o dano mudam as rodas (_core_wheels_changed) e a cada
+    /// WHEEL_REFRESH passos.
+    wheel_consts: [[f64; 4]; 4],
+    wheel_consts_ok: bool,
+    wheel_consts_age: i64,
+    st_mass: f64,
+    st_com: Vector3,
+    ratios: Vec<f32>,
+    /// Forças do passo somadas (pneus + aerodinâmica): aplicadas de uma vez como força resultante e
+    /// torque em torno do centro de massa — o mesmo que o motor faz em cada apply_force.
+    acc_force: Vector3,
+    acc_torque: Vector3,
+    /// Piso de cada roda: o último corpo tocado e o piso dele (o metadado só é lido quando muda).
+    surf_cache: [(Option<InstanceId>, i32); 4],
+    /// Cópias no Rust do estado dos pneus (os arrays exportados custam 3 chamadas ao motor por leitura).
+    pub(crate) rs_state: [i32; 4],
+    pub(crate) rs_slip: [f32; 4],
+    pub(crate) rs_surface: [i32; 4],
+    pub(crate) rs_usage: [f32; 4],
+    /// O que já está aplicado nas peças animadas [aba do DRS, volante] e nas partículas (bits).
+    parts_applied: Option<(f64, f64)>,
+    fx_mask: Option<u32>,
+    /// Carro que dá o vácuo, como já escrito em slipstream_source (o RaceNative só escreve quando muda).
+    pub(crate) slip_src: Option<InstanceId>,
+    editor: Option<bool>,
     leds_shown: bool,
     #[init(val = Actions::new())]
     actions: Actions,
@@ -402,21 +466,33 @@ pub struct F1CarCore {
 #[godot_api]
 impl IVehicleBody3D for F1CarCore {
     fn physics_process(&mut self, delta: f64) {
-        if Engine::singleton().is_editor_hint() {
+        if *self.editor.get_or_insert_with(|| Engine::singleton().is_editor_hint()) {
             return;
         }
         self.update_signal(delta);
+        let gt = self.base().get_global_transform();
         let lv = self.base().get_linear_velocity();
-        let bz = self.base().get_global_basis().col_c();
+        let bz = gt.basis.col_c();
         if self.puppet {
             self.forward_speed = lv.dot(bz) as f64;
             self.speed_kmh = self.forward_speed.abs() * 3.6;
             let target = if self.drs_open { 1.0 } else { 0.0 };
             self.drs_amount = move_toward(self.drs_amount, target, delta * 5.0);
             self.animate_puppet_wheels(delta);
-            self.animate_parts();
+            let steering = self.base().get_steering() as f64;
+            self.animate_parts(steering);
             return;
         }
+        self.st_gt = gt;
+        self.st_lv = lv;
+        self.st_av = self.base().get_angular_velocity();
+        self.st_steer = self.base().get_steering() as f64;
+        if !self.wheel_consts_ok || self.wheel_consts_age >= WHEEL_REFRESH {
+            self.refresh_wheel_consts();
+        }
+        self.wheel_consts_age += 1;
+        self.acc_force = Vector3::ZERO;
+        self.acc_torque = Vector3::ZERO;
         if self.player_controlled {
             self.read_player_input();
         }
@@ -428,8 +504,13 @@ impl IVehicleBody3D for F1CarCore {
         self.update_drs(delta);
         self.apply_aero();
         self.update_tires(delta);
+        let (force, torque) = (self.acc_force, self.acc_torque);
+        let mut b = self.base_mut();
+        b.apply_central_force(force);
+        b.apply_torque(torque);
+        drop(b);
         self.update_handling();
-        self.animate_parts();
+        self.animate_parts(self.st_steer);
     }
 
     fn integrate_forces(&mut self, state: Option<Gd<PhysicsDirectBodyState3D>>) {
@@ -437,8 +518,12 @@ impl IVehicleBody3D for F1CarCore {
         // Contatos do corpo (batidas, raspadas) para o sistema de dano
         let count = state.get_contact_count();
         if count > 0 && !self.net_predicted {
-            if let Some(damage) = self.damage.clone().filter(|d| d.is_instance_valid()) {
+            if let Some(mut damage) = self.damage.clone().filter(|d| d.is_instance_valid()) {
                 let mass = self.base().get_mass() as f64;
+                // Só o contato mais forte com cada carro, e só acima do que as penalidades consideram
+                // (antes: um sinal por ponto de contato a cada passo, até 8, enquanto dois carros raspam)
+                let mut strongest: Vec<(Gd<F1CarCore>, f64)> = Vec::new();
+                let mut d = damage.bind_mut();
                 for i in 0..count {
                     let pos = state.get_contact_local_position(i);
                     let rel = state.get_contact_local_velocity_at_position(i)
@@ -447,13 +532,20 @@ impl IVehicleBody3D for F1CarCore {
                     let slide = (rel - normal * rel.dot(normal)).length();
                     let collider = state.get_contact_collider_object(i);
                     let impulse = state.get_contact_impulse(i);
-                    let mut d = damage.clone();
-                    d.bind_mut().add_contact(pos, impulse, normal, collider.clone(), slide as f64);
+                    d.add_contact(pos, impulse, normal, collider.clone(), slide as f64);
                     if let Some(other) = collider.and_then(|c| c.try_cast::<F1CarCore>().ok()) {
                         let closing = rel.dot(normal).abs() as f64;
                         let strength = (impulse.length() as f64).max(closing * mass * 0.5);
-                        let other_var = other.to_variant();
-                        self.base_mut().emit_signal("car_contact", &[other_var, strength.to_variant()]);
+                        match strongest.iter_mut().find(|(o, _)| *o == other) {
+                            Some(e) => e.1 = e.1.max(strength),
+                            None => strongest.push((other, strength)),
+                        }
+                    }
+                }
+                drop(d);
+                for (other, strength) in strongest {
+                    if strength >= CONTACT_SIGNAL_MIN {
+                        self.base_mut().emit_signal("car_contact", &[other.to_variant(), strength.to_variant()]);
                     }
                 }
             }
@@ -513,7 +605,7 @@ impl F1CarCore {
 
     /// Partículas de fumaça e poeira de cada roda (criadas pelo GDScript).
     #[func]
-    fn _core_set_fx(&mut self, smoke: Array<Gd<CpuParticles3D>>, dust: Array<Gd<CpuParticles3D>>) {
+    fn _core_set_fx(&mut self, smoke: Array<Gd<GpuParticles3D>>, dust: Array<Gd<GpuParticles3D>>) {
         self.smoke = smoke.iter_shared().collect();
         self.dust = dust.iter_shared().collect();
     }
@@ -541,6 +633,20 @@ impl F1CarCore {
     #[func]
     fn _core_set_config(&mut self, config: Option<Gd<Resource>>) {
         self.config = config;
+        self.compound_cache = None;
+    }
+
+    /// O CarConfig mudou (composto, peças…): relê o composto e as rodas no próximo passo.
+    #[func]
+    fn _core_config_changed(&mut self) {
+        self.compound_cache = None;
+        self.wheel_consts_ok = false;
+    }
+
+    /// Raio ou suspensão de alguma roda mudou (roda quebrada, reparo): relê no próximo passo.
+    #[func]
+    fn _core_wheels_changed(&mut self) {
+        self.wheel_consts_ok = false;
     }
 
     /// Zera os efeitos do dano (o F1Car.repair remonta as peças).
@@ -648,7 +754,27 @@ impl F1CarCore {
     }
 
     fn wheel_radius(&self) -> f64 {
+        if self.wheel_consts_ok && !self.wheels.is_empty() {
+            return self.wheel_consts[0][0];
+        }
         self.wheels.first().map(|w| w.get_radius() as f64).unwrap_or(0.36)
+    }
+
+    /// Relê as constantes das rodas, a massa, o centro de massa e as relações de marcha.
+    fn refresh_wheel_consts(&mut self) {
+        for (i, w) in self.wheels.iter().enumerate().take(4) {
+            self.wheel_consts[i] = [
+                w.get_radius() as f64,
+                w.get_suspension_rest_length() as f64,
+                w.get_suspension_travel() as f64,
+                w.get_suspension_stiffness() as f64,
+            ];
+        }
+        self.st_mass = self.base().get_mass() as f64;
+        self.st_com = self.base().get_center_of_mass();
+        self.ratios = self.gear_ratios.to_vec();
+        self.wheel_consts_ok = true;
+        self.wheel_consts_age = 0;
     }
 
     fn ratio(&self, g: i64) -> f64 {
@@ -658,11 +784,26 @@ impl F1CarCore {
         if g < 1 {
             return 0.0;
         }
-        let r = self.gear_ratios.as_slice();
+        let r = &self.ratios;
         if r.is_empty() {
             return 0.0;
         }
         r[((g - 1).clamp(0, r.len() as i64 - 1)) as usize] as f64
+    }
+
+    /// Piso sob a roda i (o metadado do corpo só é lido quando o corpo tocado muda).
+    fn surface_of(&mut self, i: usize, contact: Option<Gd<Node3D>>) -> i32 {
+        let id = contact.as_ref().map(|b| b.instance_id());
+        if let Some(c) = self.surf_cache.get(i) {
+            if c.0 == id && id.is_some() {
+                return c.1;
+            }
+        }
+        let surf = surface::of_body(contact);
+        if i < 4 {
+            self.surf_cache[i] = (id, surf);
+        }
+        surf
     }
 
     fn rpm_for_gear(&self, g: i64, radius: f64) -> f64 {
@@ -677,7 +818,7 @@ impl F1CarCore {
     }
 
     fn state_at(&self, i: usize) -> i32 {
-        self.tire_state.as_slice().get(i).copied().unwrap_or(AIR)
+        self.rs_state.get(i).copied().unwrap_or(AIR)
     }
 
     fn rear_spinning(&self) -> bool {
@@ -686,21 +827,6 @@ impl F1CarCore {
 
     fn broken(&self, i: usize) -> bool {
         self.wheel_broken.get(i).and_then(|v| v.try_to::<bool>().ok()).unwrap_or(false)
-    }
-
-    fn set_tire(&mut self, i: usize, fz: f64, usage: f64, slip_deg: f64, state: i32) {
-        if let Some(x) = self.tire_load.as_mut_slice().get_mut(i) {
-            *x = fz as f32;
-        }
-        if let Some(x) = self.tire_usage.as_mut_slice().get_mut(i) {
-            *x = usage as f32;
-        }
-        if let Some(x) = self.tire_slip_deg.as_mut_slice().get_mut(i) {
-            *x = slip_deg as f32;
-        }
-        if let Some(x) = self.tire_state.as_mut_slice().get_mut(i) {
-            *x = state;
-        }
     }
 
     fn update_signal(&mut self, delta: f64) {
@@ -934,23 +1060,32 @@ impl F1CarCore {
         }
     }
 
-    /// Modelo de pneu: calcula e aplica as forças de contato de cada roda.
+    /// Modelo de pneu: calcula as forças de contato de cada roda (somadas no total do passo).
     fn update_tires(&mut self, delta: f64) {
-        let gt = self.base().get_global_transform();
+        let gt = self.st_gt;
         let body = gt.basis;
         let up = body.col_b();
-        let com = gt * self.base().get_center_of_mass();
-        let lv = self.base().get_linear_velocity();
-        let av = self.base().get_angular_velocity();
-        let mass = self.base().get_mass() as f64;
-        let steering = self.base().get_steering() as f64;
-        let (compound, compound_wear) = match self.config.as_mut() {
-            Some(cfg) => {
-                let grip = cfg.call("compound_grip", &[]).try_to::<f64>().unwrap_or(1.0);
-                let tc = cfg.get("tyre_compound").try_to::<i64>().unwrap_or(1);
-                (grip, COMPOUND_WEAR.get(tc as usize).copied().unwrap_or(1.0))
+        let com = gt * self.st_com;
+        let lv = self.st_lv;
+        let av = self.st_av;
+        let mass = self.st_mass;
+        let steering = self.st_steer;
+        let (compound, compound_wear) = match self.compound_cache {
+            Some(c) => c,
+            None => {
+                let c = match self.config.as_mut() {
+                    Some(cfg) => {
+                        let grip = cfg.call("compound_grip", &[]).try_to::<f64>().unwrap_or(1.0);
+                        let tc = cfg.get("tyre_compound").try_to::<i64>().unwrap_or(1);
+                        (grip, COMPOUND_WEAR.get(tc as usize).copied().unwrap_or(1.0))
+                    }
+                    None => (1.0, 1.0),
+                };
+                if self.config.is_some() {
+                    self.compound_cache = Some(c);
+                }
+                c
             }
-            None => (1.0, 1.0),
         };
         let peak = self.peak_slip_angle_deg.to_radians();
         // B da Magic Formula escolhido para o pico cair exatamente em peak_slip_angle.
@@ -963,25 +1098,38 @@ impl F1CarCore {
         self.prev_up_speed = up_speed;
         let support =
             (mass * (9.8 * (up.y as f64).max(0.0) + clamp(self._vertical_accel, -20.0, 20.0)) + self._downforce).max(0.0);
-        // A compressão de cada mola define como essa força se divide entre as rodas.
+        // Arrays por roda lidos uma vez e escritos uma vez no fim (cada leitura de um array exportado
+        // são 3 chamadas ao motor; eram ~120 por passo)
         let n = self.wheels.len().min(4);
-        let wheels: Vec<Gd<VehicleWheel3D>> = self.wheels.clone();
+        let wheels = std::mem::take(&mut self.wheels);
+        let mounts = read4(&self._mounts, Vector3::ZERO);
+        let toe = read4(&self.wheel_toe, 0.0f32);
+        let wgrip = read4(&self.wheel_grip, 1.0f32);
+        let mut wear = read4(&self.tire_wear, 0.0f32);
+        let mut surfs = read4(&self.tire_surface, 0i32);
+        let mut broken = [false; 4];
+        for (i, b) in broken.iter_mut().enumerate().take(n) {
+            *b = self.broken(i);
+        }
+        let mut load = [0.0f32; 4];
+        let mut usage_a = [0.0f32; 4];
+        let mut slip_a = [0.0f32; 4];
+        let mut state_a = [AIR; 4];
+        // A compressão de cada mola define como essa força se divide entre as rodas.
         let mut contact = [false; 4];
+        let mut cpoint = [Vector3::ZERO; 4];
         let mut springs = [0.0f64; 4];
         let mut spring_sum = 0.0;
-        let mounts = self._mounts.clone();
         for i in 0..n {
             let wheel = &wheels[i];
             contact[i] = wheel.is_in_contact();
             if contact[i] {
-                let mount = gt * mounts.as_slice()[i];
-                let length = (mount - wheel.get_contact_point()).dot(up) as f64 - wheel.get_radius() as f64;
-                let compression = clamp(
-                    wheel.get_suspension_rest_length() as f64 - length,
-                    0.0,
-                    wheel.get_suspension_travel() as f64,
-                );
-                springs[i] = wheel.get_suspension_stiffness() as f64 * compression;
+                cpoint[i] = wheel.get_contact_point();
+                let [radius, rest, travel, stiffness] = self.wheel_consts[i];
+                let mount = gt * mounts[i];
+                let length = (mount - cpoint[i]).dot(up) as f64 - radius;
+                let compression = clamp(rest - length, 0.0, travel);
+                springs[i] = stiffness * compression;
                 spring_sum += springs[i];
             }
         }
@@ -990,20 +1138,18 @@ impl F1CarCore {
         let body_z = body.col_c();
         for i in 0..n {
             let wheel = &wheels[i];
-            if !contact[i] || self.broken(i) {
-                self.set_tire(i, 0.0, 0.0, 0.0, AIR);
+            if !contact[i] || broken[i] {
                 self.max_force[i] = 0.0;
                 self.alpha[i] = 0.0;
                 continue;
             }
-            let contact_point = wheel.get_contact_point();
+            let contact_point = cpoint[i];
             let normal = wheel.get_contact_normal();
             let fz = if spring_sum > 0.0 { support * springs[i] / spring_sum } else { 0.0 };
 
             // Referencial do pneu sobre o chão
             let mut heading = body_z;
-            let toe = self.wheel_toe.as_slice().get(i).copied().unwrap_or(0.0) as f64;
-            let wheel_angle = toe + if self.steers[i] { steering } else { 0.0 };
+            let wheel_angle = toe[i] as f64 + if self.steers[i] { steering } else { 0.0 };
             if wheel_angle != 0.0 {
                 heading = body * Vector3::new(wheel_angle.sin() as f32, 0.0, wheel_angle.cos() as f32);
             }
@@ -1020,18 +1166,14 @@ impl F1CarCore {
             self.alpha[i] = lerp(self.alpha[i], target_alpha, relax);
 
             // Piso: grama e brita têm menos aderência e freiam o carro
-            let surf = surface::of_body(wheel.get_contact_body());
-            if let Some(x) = self.tire_surface.as_mut_slice().get_mut(i) {
-                *x = surf;
-            }
+            let surf = self.surface_of(i, wheel.get_contact_body());
+            surfs[i] = surf;
             let base_mu = if self.steers[i] { self.front_grip } else { self.rear_grip };
-            let wear = self.tire_wear.as_slice().get(i).copied().unwrap_or(0.0) as f64;
-            let wear_grip = 1.0 - self.worn_grip_loss * wear.powf(1.6);
-            let wgrip = self.wheel_grip.as_slice().get(i).copied().unwrap_or(1.0) as f64;
+            let wear_grip = 1.0 - self.worn_grip_loss * (wear[i] as f64).powf(1.6);
             let mu = base_mu
                 * compound
                 * surface::at(&tables.grip, surf)
-                * wgrip
+                * wgrip[i] as f64
                 * wear_grip
                 * (1.0 - self.load_sensitivity * (fz / self.nominal_load - 1.0)).max(0.5);
             let max_force = mu * fz;
@@ -1068,9 +1210,7 @@ impl F1CarCore {
             let slide_speed = vy.abs() + if state == LOCK || state == SPIN { vx.abs() } else { 0.0 };
             let effort = Vector2::new(fx as f32, fy as f32).length() as f64 / max_force.max(1.0);
             let wear_power = (slide_speed * 0.6 + effort * effort * vx.abs() * 0.012) * fz / self.nominal_load;
-            if let Some(x) = self.tire_wear.as_mut_slice().get_mut(i) {
-                *x = (*x as f64 + wear_power * compound_wear * self.tyre_wear_rate * 0.0009 * delta).min(1.0) as f32;
-            }
+            wear[i] = (wear[i] as f64 + wear_power * compound_wear * self.tyre_wear_rate * 0.0009 * delta).min(1.0) as f32;
             let mut force = fwd * fx as f32 + side * fy as f32;
             let drag = surface::at(&tables.drag, surf) * fz;
             if drag > 0.0 {
@@ -1083,19 +1223,33 @@ impl F1CarCore {
                 let r = godot::global::randf_range(-1.0, 1.0);
                 force += normal * (r * rumble * mass * 0.25 * (vx.abs() / 30.0).min(1.0)) as f32;
             }
-            self.base_mut().apply_force_ex(force).position(contact_point - origin).done();
+            self.add_force(force, contact_point - origin);
             let mut usage = Vector2::new(fx as f32, fy as f32).length() as f64 / max_force.max(1.0);
             if state != GRIP {
                 usage = usage.max(1.05);
             }
-            self.set_tire(i, fz, usage, self.alpha[i].to_degrees(), state);
+            load[i] = fz as f32;
+            usage_a[i] = usage as f32;
+            slip_a[i] = self.alpha[i].to_degrees() as f32;
+            state_a[i] = state;
         }
+        self.wheels = wheels;
+        write4(&mut self.tire_load, &load, n);
+        write4(&mut self.tire_usage, &usage_a, n);
+        write4(&mut self.tire_slip_deg, &slip_a, n);
+        write4(&mut self.tire_state, &state_a, n);
+        write4(&mut self.tire_surface, &surfs, n);
+        write4(&mut self.tire_wear, &wear, n);
+        self.rs_state[..n].copy_from_slice(&state_a[..n]);
+        self.rs_slip[..n].copy_from_slice(&slip_a[..n]);
+        self.rs_surface[..n].copy_from_slice(&surfs[..n]);
+        self.rs_usage[..n].copy_from_slice(&usage_a[..n]);
         self.update_smoke(lv.length() as f64);
     }
 
     fn update_steering(&mut self, delta: f64) {
-        let vel = self.base().get_linear_velocity();
-        let basis = self.base().get_global_basis();
+        let vel = self.st_lv;
+        let basis = self.st_gt.basis;
         let speed = vel.length();
         self.body_slip_angle = 0.0;
         if speed > 5.0 {
@@ -1106,10 +1260,12 @@ impl F1CarCore {
         // Permite contraesterçar quando a traseira escapa, mesmo em alta velocidade.
         limit = clamp(limit.max(self.body_slip_angle.abs() + 0.05), 0.0, self.max_steer_angle);
         let target = self.steer_input * limit;
-        let steering = self.base().get_steering() as f64;
+        let steering = self.st_steer;
         let rate = self.steer_rate * if target.abs() < steering.abs() { 1.6 } else { 1.0 };
         let new_steering = move_toward(steering, target, rate * delta);
         self.base_mut().set_steering(new_steering as f32);
+        // O que o motor guarda é f32: o resto do passo usa o mesmo valor
+        self.st_steer = new_steering as f32 as f64;
     }
 
     fn update_handling(&mut self) {
@@ -1121,7 +1277,7 @@ impl F1CarCore {
         let mut rear: f64 = 0.0;
         let mut rear_spin = false;
         for i in 0..self.wheels.len().min(4) {
-            let slip = (self.tire_slip_deg.as_slice()[i] as f64).abs();
+            let slip = (self.rs_slip[i] as f64).abs();
             if self.steers[i] {
                 front = front.max(slip);
             } else {
@@ -1156,27 +1312,40 @@ impl F1CarCore {
         let drag_a =
             (self.effective_drag_area * (1.0 - self.drs_drag_reduction * self.drs_amount) + self.damage_drag).max(0.3);
         let downforce = 0.5 * AIR_DENSITY * df_area * v2;
-        let basis = self.base().get_global_basis();
+        let basis = self.st_gt.basis;
         let down = -basis.col_b();
         let front_point = basis * Vector3::new(0.0, 0.25, 1.8);
         let rear_point = basis * Vector3::new(0.0, 0.25, -1.8);
         let front_df = downforce * self.effective_balance * self.damage_front_downforce;
         let rear_df = downforce * (1.0 - self.effective_balance) * self.damage_rear_downforce;
         self._downforce = front_df + rear_df;
-        self.base_mut().apply_force_ex(down * front_df as f32).position(front_point).done();
-        self.base_mut().apply_force_ex(down * rear_df as f32).position(rear_point).done();
+        self.add_force(down * front_df as f32, front_point);
+        self.add_force(down * rear_df as f32, rear_point);
 
-        let vel = self.base().get_linear_velocity();
+        let vel = self.st_lv;
         let speed = vel.length() as f64;
         if speed > 0.1 {
-            let mass = self.base().get_mass() as f64;
+            let mass = self.st_mass;
             let drag = 0.5 * AIR_DENSITY * drag_a * speed * speed * (1.0 - clamp(self.slipstream, 0.0, 1.0))
                 + self.rolling_resistance * mass * 9.8;
-            self.base_mut().apply_central_force(-vel / speed as f32 * drag as f32);
+            self.acc_force += -vel / speed as f32 * drag as f32;
         }
     }
 
-    fn animate_parts(&mut self) {
+    /// Soma uma força aplicada em `position` (relativa à origem do corpo, em coordenadas globais) no
+    /// total do passo: força + torque em torno do centro de massa, como o apply_force do motor.
+    fn add_force(&mut self, force: Vector3, position: Vector3) {
+        let com = self.st_gt.basis * self.st_com;
+        self.acc_force += force;
+        self.acc_torque += (position - com).cross(force);
+    }
+
+    fn animate_parts(&mut self, steering: f64) {
+        let now = (self.drs_amount, steering);
+        if self.parts_applied.is_some_and(|(d, s)| (d - now.0).abs() < 1e-5 && (s - now.1).abs() < 1e-5) {
+            return;
+        }
+        self.parts_applied = Some(now);
         if let Some(mut flap) = self.drs_flap.clone().filter(|f| f.is_instance_valid()) {
             let open = Basis::from_axis_angle(
                 Vector3::RIGHT,
@@ -1185,7 +1354,6 @@ impl F1CarCore {
             flap.set_transform(Transform3D::new(self.drs_flap_rest.basis * open, self.drs_flap_rest.origin));
         }
         if let Some(mut wheel) = self.steering_wheel.clone().filter(|w| w.is_instance_valid()) {
-            let steering = self.base().get_steering() as f64;
             let turn = Basis::from_axis_angle(Vector3::BACK, (-steering * self.steering_wheel_ratio) as f32);
             wheel.set_transform(Transform3D::new(
                 self.steering_wheel_rest.basis * turn,
@@ -1195,40 +1363,64 @@ impl F1CarCore {
     }
 
     fn update_smoke(&mut self, speed: f64) {
+        // Longe da câmera: nem fumaça nem pó (partículas na CPU, 8 por carro)
+        let near = crate::fx::near_camera(&self.base().clone().upcast(), self.st_gt.origin, FX_RANGE);
+        let mut mask = 0u32;
+        let mut tints = [None; 4];
         for i in 0..self.dust.len().min(4) {
-            let surf = self.tire_surface.as_slice().get(i).copied().unwrap_or(0);
+            let surf = self.rs_surface[i];
             let loose = surf == surface::GRAVEL || surf == surface::GRASS;
-            let emitting = loose && self.state_at(i) != AIR && speed > 4.0;
-            let mut dust = self.dust[i].clone();
-            if !dust.is_instance_valid() {
-                continue;
-            }
-            dust.set_emitting(emitting);
-            if emitting {
-                let tint = if surf == surface::GRAVEL {
+            if near && loose && self.state_at(i) != AIR && speed > 4.0 {
+                mask |= 1 << i;
+                tints[i] = Some(if surf == surface::GRAVEL {
                     Color::from_rgba(0.85, 0.74, 0.55, 0.55)
                 } else {
                     Color::from_rgba(0.45, 0.62, 0.3, 0.35)
-                };
-                if dust.get_color() != tint {
-                    let mut fade = Gradient::new_gd();
-                    fade.set_color(0, tint);
-                    fade.set_color(1, Color::from_rgba(tint.r, tint.g, tint.b, 0.0));
-                    dust.set_color(tint);
-                    dust.set_color_ramp(&fade);
-                }
+                });
             }
         }
         for i in 0..self.smoke.len().min(4) {
             let state = self.state_at(i);
-            let slip = self.tire_slip_deg.as_slice().get(i).copied().unwrap_or(0.0) as f64;
+            let slip = self.rs_slip[i] as f64;
             let sliding = state == SPIN
                 || state == LOCK
                 || (state == SLIDE && slip.abs() > self.peak_slip_angle_deg * 1.8);
-            let emitting = (sliding && speed > 3.0) || (state == SPIN && self.throttle_input > 0.5);
-            let mut smoke = self.smoke[i].clone();
-            if smoke.is_instance_valid() {
-                smoke.set_emitting(emitting);
+            if near && ((sliding && speed > 3.0) || (state == SPIN && self.throttle_input > 0.5)) {
+                mask |= 1 << (4 + i);
+            }
+        }
+        let changed = self.fx_mask != Some(mask);
+        self.fx_mask = Some(mask);
+        for i in 0..self.dust.len().min(4) {
+            let mut dust = self.dust[i].clone();
+            if !dust.is_instance_valid() {
+                continue;
+            }
+            let emitting = mask & (1 << i) != 0;
+            if changed {
+                dust.set_emitting(emitting);
+            }
+            if let Some(tint) = tints[i] {
+                // Cor do piso no material das partículas (cor × rampa, como nas da CPU)
+                if let Some(mut pm) = dust.get_process_material().and_then(|m| m.try_cast::<ParticleProcessMaterial>().ok()) {
+                    if pm.get_color() != tint {
+                        let mut fade = Gradient::new_gd();
+                        fade.set_color(0, tint);
+                        fade.set_color(1, Color::from_rgba(tint.r, tint.g, tint.b, 0.0));
+                        let mut ramp = GradientTexture1D::new_gd();
+                        ramp.set_gradient(&fade);
+                        pm.set_color(tint);
+                        pm.set_color_ramp(&ramp);
+                    }
+                }
+            }
+        }
+        if changed {
+            for i in 0..self.smoke.len().min(4) {
+                let mut smoke = self.smoke[i].clone();
+                if smoke.is_instance_valid() {
+                    smoke.set_emitting(mask & (1 << (4 + i)) != 0);
+                }
             }
         }
     }

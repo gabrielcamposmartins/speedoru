@@ -123,6 +123,8 @@ func _setup() -> void:
 	for i in wheels.size():
 		wheels[i].wheel_radius = _wheel_defaults[i][0]
 		wheels[i].suspension_stiffness = _wheel_defaults[i][1]
+	# O modelo de pneu guarda raio e suspensão em cache: relê no próximo passo
+	car._core_wheels_changed()
 	for piece_name: String in PIECES:
 		var info: Array = PIECES[piece_name]
 		var part := car.assembly.get_part_node(info[0])
@@ -453,6 +455,7 @@ func _detach(piece_name: String, outward: Vector3, severity: float) -> void:
 		var w := car.get_wheels()[p.wheel]
 		w.wheel_radius = 0.12
 		w.suspension_stiffness = 20.0
+		car._core_wheels_changed()
 	part_detached.emit(piece_name)
 
 

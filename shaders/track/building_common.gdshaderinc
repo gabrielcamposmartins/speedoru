@@ -73,10 +73,21 @@ void fragment() {
 	c *= 1.0 - ground_dirt * (1.0 - smoothstep(0.0, 1.4, world_pos.y)) * wall;
 
 	if (panel_size > 0.0) {
+#ifdef SEA_STONE
+		// Cantaria (pedra de Atlântida): blocos mais largos que altos em fiadas desencontradas, cada
+		// um num tom, juntas mais fundas
+		vec2 bu = uv / vec2(panel_size * 1.7, panel_size * 0.85);
+		bu.x += 0.5 * mod(floor(bu.y), 2.0);
+		vec2 g = abs(fract(bu) - 0.5);
+		float aa = fwidth(bu.x) * 1.5;
+		float seam = smoothstep(0.5 - 0.025 - aa, 0.5 - 0.006, max(g.x, g.y));
+		c *= (0.9 + 0.2 * fract(sin(dot(floor(bu), vec2(12.9898, 78.233))) * 43758.5453)) * (1.0 - 0.32 * seam * near);
+#else
 		vec2 g = abs(fract(uv / panel_size) - 0.5);
 		float aa = fwidth(uv.x / panel_size) * 1.5;
 		float seam = smoothstep(0.5 - 0.012 - aa, 0.5 - 0.004, max(g.x, g.y));
 		c *= 1.0 - 0.22 * seam * near;
+#endif
 	}
 	ALBEDO = c;
 	NORMAL_MAP = texture(normal_tex, uv * normal_scale + vec2(0.57, 0.23)).rgb;
@@ -89,4 +100,10 @@ void fragment() {
 	ROUGHNESS = no_outline ? 0.0 : roughness_value;
 	RIM = rim_amount;
 	RIM_TINT = 0.6;
+#ifdef SEA_STONE
+	// Pedra de Atlântida (sea_stone_common.gdshaderinc): mármore, musgo, coral e cáustica
+	vec3 sea_n = normalize((INV_VIEW_MATRIX * vec4(NORMAL, 0.0)).xyz);
+	ALBEDO = sea_stone_albedo(ALBEDO, world_pos, sea_n);
+	EMISSION = sea_caustic_light(world_pos, sea_n, dist, TIME) * ALBEDO;
+#endif
 }

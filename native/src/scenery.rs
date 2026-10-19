@@ -61,8 +61,17 @@ pub struct SceneryAnimatorCore {
     terrain: Option<Gd<Object>>,
     /// Subida extra atual (m) de cada nó, suavizada.
     lift: HashMap<InstanceId, f64>,
+    /// Altura do relevo usada por cada nó (lida a cada GROUND_EVERY quadros: eram duas chamadas ao
+    /// GDScript por nó a cada quadro) e o quadro em que foi lida.
+    ground: HashMap<InstanceId, (u64, f64)>,
+    frames: u64,
+    /// Buffer das nuvens reaproveitado (o MultiMesh inteiro vai numa chamada só).
+    cloud_buf: Vec<f32>,
     base: Base<Node3D>,
 }
+
+/// A cada quantos quadros a altura do relevo sob um dirigível ou bando é relida.
+const GROUND_EVERY: u64 = 8;
 
 fn flock_pos(center: Vector3, radii: Vector2, a: f64) -> Vector3 {
     center
@@ -77,6 +86,7 @@ fn flock_pos(center: Vector3, radii: Vector2, a: f64) -> Vector3 {
 impl INode3D for SceneryAnimatorCore {
     fn process(&mut self, delta: f64) {
         self.time += delta;
+        self.frames += 1;
         let time = self.time;
         for (node, speed) in self.rotors.iter_mut() {
             node.rotate_object_local(Vector3::BACK, (*speed * delta) as f32);
@@ -125,8 +135,10 @@ impl INode3D for SceneryAnimatorCore {
             node.set_global_transform(Transform3D::new(looking_at(-dir), pos));
         }
         let drift = Vector3::new(self.cloud_wind.x, 0.0, self.cloud_wind.y) * delta as f32;
+        let mut buf = std::mem::take(&mut self.cloud_buf);
         for c in self.clouds.iter_mut() {
-            for (i, t) in c.list.iter_mut().enumerate() {
+            buf.clear();
+            for t in c.list.iter_mut() {
                 t.origin += drift;
                 let mut rel = Vector2::new(t.origin.x - c.center.x, t.origin.z - c.center.y);
                 if rel.length() as f64 > c.radius {
@@ -134,9 +146,23 @@ impl INode3D for SceneryAnimatorCore {
                     rel = -rel.normalized() * (c.radius * 0.98) as f32;
                     t.origin = Vector3::new(c.center.x + rel.x, t.origin.y, c.center.y + rel.y);
                 }
-                c.mm.set_instance_transform(i as i32, *t);
+                // Formato do buffer do MultiMesh (TRANSFORM_3D, sem cor nem dado extra): 3 linhas da
+                // base, cada uma seguida da coordenada da origem
+                let b = &t.basis.rows;
+                buf.extend_from_slice(&[
+                    b[0].x, b[0].y, b[0].z, t.origin.x, b[1].x, b[1].y, b[1].z, t.origin.y, b[2].x, b[2].y, b[2].z,
+                    t.origin.z,
+                ]);
+            }
+            if c.mm.get_instance_count() as usize * 12 == buf.len() {
+                c.mm.set_buffer(&PackedFloat32Array::from(&buf[..]));
+            } else {
+                for (i, t) in c.list.iter().enumerate() {
+                    c.mm.set_instance_transform(i as i32, *t);
+                }
             }
         }
+        self.cloud_buf = buf;
     }
 }
 
@@ -191,10 +217,21 @@ impl SceneryAnimatorCore {
     /// Quanto subir para ficar `margin` m acima do terreno (olhando 80 m à frente), suavizado.
     fn clearance(&mut self, node: &Gd<Node3D>, pos: Vector3, dir: Vector3, margin: f64, delta: f64) -> f64 {
         let Some(mut terrain) = self.terrain.clone() else { return 0.0 };
-        let mut h = |x: f32, z: f32| terrain.call("height_at", &[x.to_variant(), z.to_variant()]).try_to::<f64>().unwrap_or(0.0);
-        let ground = h(pos.x, pos.z).max(h(pos.x + dir.x * 80.0, pos.z + dir.z * 80.0));
-        let need = (ground + margin - pos.y as f64).max(0.0);
         let id = node.instance_id();
+        // Relevo relido a cada GROUND_EVERY quadros (escalonado por nó)
+        let stagger = id.to_i64() as u64 % GROUND_EVERY;
+        let ground = match self.ground.get(&id) {
+            Some((frame, g)) if self.frames.saturating_sub(*frame) < GROUND_EVERY && self.frames % GROUND_EVERY != stagger => *g,
+            _ => {
+                let mut h = |x: f32, z: f32| {
+                    terrain.call("height_at", &[x.to_variant(), z.to_variant()]).try_to::<f64>().unwrap_or(0.0)
+                };
+                let g = h(pos.x, pos.z).max(h(pos.x + dir.x * 80.0, pos.z + dir.z * 80.0));
+                self.ground.insert(id, (self.frames, g));
+                g
+            }
+        };
+        let need = (ground + margin - pos.y as f64).max(0.0);
         let current = self.lift.get(&id).copied().unwrap_or(need);
         let current = move_toward(current, need, delta * if need > current { 6.0 } else { 2.0 });
         self.lift.insert(id, current);

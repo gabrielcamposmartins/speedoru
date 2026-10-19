@@ -7,8 +7,9 @@ extends SceneTree
 ##   godot --headless --path . -s res://tests/track_carousel_test.gd
 
 ## Extensão oficial (m): a linha central do CSV tem de ficar perto.
-## Sky Aerobase (fantasia): a do traçado gerado por tools/build_sky_aerobase.py.
-const OFFICIAL := {"monza": 5793.0, "monaco": 3337.0, "suzuka": 5807.0, "las_vegas": 6201.0, "sky_aerobase": 3810.0}
+## Sky Aerobase e Atlantis Abyss (fantasia): a do traçado gerado por tools/build_<pista>.py.
+const OFFICIAL := {"monza": 5793.0, "monaco": 3337.0, "suzuka": 5807.0, "las_vegas": 6201.0, "sky_aerobase": 3810.0,
+	"atlantis_abyss": 4732.0}
 
 var failures := 0
 

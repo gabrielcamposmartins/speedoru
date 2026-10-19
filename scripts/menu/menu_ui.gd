@@ -237,7 +237,7 @@ func _build_home() -> void:
 	box.add_theme_constant_override("separation", 14)
 	_body.add_child(box)
 	var entries := [
-		["JOGAR SOLO", "Corrida contra bots em pistas reais ou na Sky Aerobase, no céu · pit obrigatório", func() -> void: show_screen("solo"), false],
+		["JOGAR SOLO", "Corrida contra bots em pistas reais, no céu ou no fundo do mar · pit obrigatório", func() -> void: show_screen("solo"), false],
 		["MULTIPLAYER", _multiplayer_subtitle(), func() -> void: show_screen("multiplayer"), false],
 		["GARAGEM", "Estúdio, galeria e loja", func() -> void: show_screen("garage"), false],
 		["CONFIGURAÇÕES", "Controles, tela, gráficos, desempenho e áudio", func() -> void: menu.open_settings(), false],
@@ -525,7 +525,8 @@ func _build_solo() -> void:
 		["Adversários", ["3", "5", "9", "13"], maxi([3, 5, 9, 13].find(RaceSettings.opponents), 0), func(i: int) -> void: RaceSettings.opponents = [3, 5, 9, 13][i]],
 		["Dificuldade dos bots", ["Fácil", "Médio", "Difícil", "Mista"], RaceSettings.difficulty, func(i: int) -> void: RaceSettings.difficulty = i],
 		["Largada", ["Pole position", "Meio do grid", "Última fila"], RaceSettings.grid, func(i: int) -> void: RaceSettings.grid = i as RaceSettings.Grid],
-		["DRS", ["Livre", "Só a até 1 s do carro da frente"], RaceSettings.drs_rule, func(i: int) -> void: RaceSettings.drs_rule = i],
+		["DRS", ["Livre", "Só a até 1 s do carro da frente"], RaceSettings.drs_rule, func(i: int) -> void: RaceSettings.drs_rule = i,
+			["Colisões no box", RaceSettings.pit_collisions, func(on: bool) -> void: RaceSettings.pit_collisions = on]],
 	]
 	var more_rows := [
 		["Classificatória", RaceSettings.QUALI_LAP_NAMES, RaceSettings.quali_laps,

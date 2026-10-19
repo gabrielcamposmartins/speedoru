@@ -66,7 +66,8 @@ static var _warming := {}
 ## Esta instância é a que gera a pista para o cache (não espera por ela mesma).
 var _for_cache := false
 const SERVER_SKIP := ["arquibancadas", "atrações", "árvores", "folhas", "pinheiros", "cenário", "grama", "prédios", "túnel", "porto",
-	"jardins", "entorno", "navios", "detalhes", "vitrine", "marcos", "neon", "plataforma", "mar e nuvens", "base aérea"]
+	"jardins", "entorno", "navios", "detalhes", "vitrine", "marcos", "neon", "plataforma", "mar e nuvens", "base aérea",
+	"leito", "aqueduto", "tubo", "cânion", "ruínas", "vulcões", "relíquias", "portão", "recifes", "oceano", "vida marinha"]
 
 var terrain: TrackTerrain
 ## Circuito de rua: dados da cidade (layout.city); nulo nos circuitos de campo.
@@ -134,6 +135,7 @@ func rebuild(staged := false) -> void:
 	leaves = null
 	city = TrackCity.load_city(layout.city) if layout.city != "" else null
 	TrackMaterials.metal = layout.sky
+	TrackMaterials.marble = layout.undersea and not layout.sky
 	_compute_profile()
 	# [nome no log, texto na tela de carregamento, peso (≈ ms), etapa]
 	var steps := [
@@ -174,6 +176,29 @@ func rebuild(staged := false) -> void:
 		steps.append_array([
 			["mar e nuvens", "Mar e nuvens", 200, func(): SkyWorld.build(self, _root)],
 			["base aérea", "Base aérea", 300, func(): SkyBase.build(self, _root)],
+		])
+	elif layout.undersea:
+		# Fundo do mar (Atlantis Abyss): leito com montanhas, laje e arcos de aqueduto sob a pista, o
+		# tubo de vidro em volta dela (os carros correm no seco) e o túnel de cristal, as paredes do
+		# cânion (montanhas no trecho emerso) com corais e luzes coloridas, ruínas de Atlântida,
+		# vulcões de bolhas, naufrágios e praças afundadas nos trechos abertos, o Portão de Poseidon
+		# (cachoeiras, cipós e árvores sobre a pista), a vida marinha, corais, algas e musgo
+		# (no leito e nas construções) e a água (superfície espelhada com o céu, o sol e barcos, luz,
+		# bolhas e a troca de ambiente na linha d'água); nada de campo
+		steps.append(["leito", "Leito do mar e montanhas", 600, func(): SeaFloor.build(self, _root)])
+		steps.append(["aqueduto", "Aqueduto e pilares", 300, func(): SeaCauseway.build(self, _root)])
+		steps.append(["tubo", "Tubo de vidro", 400, func(): SeaTube.build(self, _root)])
+		if has_tunnel():
+			steps.append(["túnel", "Túnel de cristal", 80, func(): GlassTunnel.build(self, layout.tunnel.x, layout.tunnel.y, _root)])
+		steps.append(["cânion", "Cânion, montanhas e luzes", 500, func(): SeaCanyon.build(self, _root)])
+		steps.append_array([
+			["ruínas", "Templos, colunas e estátuas", 300, func(): AtlantisRuins.build(self, _root)],
+			["vulcões", "Vulcões de bolhas", 60, func(): SeaVents.build(self, _root)],
+			["relíquias", "Naufrágios, praças e relíquias", 250, func(): SeaRelics.build(self, _root)],
+			["portão", "Portão de Poseidon e cachoeiras", 200, func(): PoseidonGate.build(self, _root)],
+			["vida marinha", "Peixes, raias e baleias", 300, func(): SeaLife.build(self, _root)],
+			["recifes", "Corais, algas e musgo", 400, func(): SeaReef.build(self, _root)],
+			["oceano", "Água, luz, barcos e bolhas", 150, func(): SeaWorld.build(self, _root)],
 		])
 	else:
 		steps.append_array([
@@ -495,6 +520,8 @@ func apply_mood(time_of_day: int, biome: int) -> void:
 		TrackCity.set_night(night)
 	if layout and layout.sky and _root:
 		SkyWorld.apply_mood(self, time_of_day)
+	if layout and layout.undersea and _root:
+		SeaWorld.apply_mood(self, time_of_day)
 
 
 func _apply_current_mood() -> void:

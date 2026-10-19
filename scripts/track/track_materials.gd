@@ -9,6 +9,13 @@ static var _textures := {}
 ## boxes, arquibancadas, estruturas, túnel) viram placas de metal escuro com parafusos. O RaceTrack
 ## liga/desliga ao gerar cada pista.
 static var metal := false
+## Pista no fundo do mar (Atlantis Abyss): as construções viram pedra de Atlântida (mármore com
+## musgo, coral e a cáustica da água, sea_stone.gdshader). O RaceTrack liga/desliga ao gerar.
+static var marble := false
+## Materiais com a cáustica da água (pedra, leito, pista): o SeaWorld troca os parâmetros conforme
+## o período do dia (set_sea) em todos de uma vez.
+static var _sea: Array[ShaderMaterial] = []
+static var _sea_params := {}
 
 
 static func _cached(key: String, maker: Callable) -> Material:
@@ -84,6 +91,8 @@ const TEXTURE_DIR := "res://assets/track/textures/"
 static func building(key: String, two_sided := false, params := {}) -> Material:
 	if metal:
 		return metal_plate(key, two_sided, params.get("no_outline", false))
+	if marble:
+		return sea_stone(key, two_sided, params)
 	return _cached("building_" + key, func() -> Material:
 		var mat := ShaderMaterial.new()
 		mat.shader = load("res://shaders/track/building_two_sided.gdshader" if two_sided else "res://shaders/track/building.gdshader")
@@ -93,6 +102,43 @@ static func building(key: String, two_sided := false, params := {}) -> Material:
 		for k in params:
 			mat.set_shader_parameter(k, params[k])
 		return mat)
+
+
+## Pedra de Atlântida (shaders/track/sea_stone*.gdshader): as texturas e `params` do building() mais
+## o mármore, o musgo, o coral e a cáustica. A cor de vértice cinza vira mármore; cores fortes ficam.
+static func sea_stone(key: String, two_sided := false, params := {}) -> Material:
+	return _cached("sea_stone_%s_%s" % [key, two_sided], func() -> Material:
+		var mat := ShaderMaterial.new()
+		mat.shader = load("res://shaders/track/sea_stone_two_sided.gdshader" if two_sided else "res://shaders/track/sea_stone.gdshader")
+		mat.set_shader_parameter("detail_tex", load(TEXTURE_DIR + "material_detail.png"))
+		mat.set_shader_parameter("grime_tex", load(TEXTURE_DIR + "grime.png"))
+		mat.set_shader_parameter("normal_tex", load(TEXTURE_DIR + "deform_normal.png"))
+		mat.set_shader_parameter("ground_dirt", 0.0)
+		for k in params:
+			mat.set_shader_parameter(k, params[k])
+		# Sem o contorno anime nas construções do fundo do mar (pedra, ruínas, falésias, estátuas)
+		mat.set_shader_parameter("no_outline", true)
+		register_sea(mat)
+		return mat)
+
+
+## Inclui um material com a cáustica (caustics.gdshaderinc) nos ajustes do SeaWorld, já com os
+## valores atuais.
+static func register_sea(mat: ShaderMaterial) -> void:
+	if mat in _sea:
+		return
+	_sea.append(mat)
+	for k in _sea_params:
+		mat.set_shader_parameter(k, _sea_params[k])
+
+
+## Troca um parâmetro da água (caustic_strength, caustic_color, water_level...) em todos os materiais
+## registrados (e nos que forem criados depois).
+static func set_sea(param: String, value: Variant) -> void:
+	_sea_params[param] = value
+	for mat in _sea:
+		if mat:
+			mat.set_shader_parameter(param, value)
 
 
 ## Placas de metal escuro com parafusos (shaders/track/metal_plate*.gdshader). A cor de vértice
@@ -150,6 +196,19 @@ static func glass(no_outline := false) -> Material:
 		mat.shader = load("res://shaders/track/glass.gdshader")
 		mat.set_shader_parameter("grime_tex", load(TEXTURE_DIR + "grime.png"))
 		mat.set_shader_parameter("no_outline", no_outline)
+		return mat)
+
+
+## Vidro transparente da pista no fundo do mar (barreiras, túnel de cristal, tubo): sea_glass.gdshader.
+## panel_length: comprimento de cada painel ao longo de UV.x (bordas mais visíveis).
+## `params` ajusta o shader (base_alpha, rim_alpha, glow...).
+static func sea_glass(panel_length := 8.0, params := {}) -> Material:
+	return _cached("sea_glass_%.1f_%s" % [panel_length, str(params)], func() -> Material:
+		var mat := ShaderMaterial.new()
+		mat.shader = load("res://shaders/track/sea_glass.gdshader")
+		mat.set_shader_parameter("panel_length", panel_length)
+		for k in params:
+			mat.set_shader_parameter(k, params[k])
 		return mat)
 
 

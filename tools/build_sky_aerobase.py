@@ -69,14 +69,16 @@ def heading_after(segs, upto):
     return h
 
 
-def solve(track):
-    """Fecha o circuito: ângulo da última curva e comprimentos das duas retas livres."""
+def solve(track, direction=None):
+    """Fecha o circuito: ângulo da última curva e comprimentos das duas retas livres.
+    (Também usado por outros geradores de pista por trechos, com o próprio sentido.)"""
+    direction = DIRECTION if direction is None else direction
     segs = [list(s) for s in track]
     free_c = [i for i, s in enumerate(segs) if s[0] == "C?"]
     free_s = [i for i, s in enumerate(segs) if s[0] == "S?"]
     assert len(free_c) == 1 and len(free_s) == 2
     known = sum(s[1] for s in segs if s[0] == "C")
-    segs[free_c[0]][1] = 360.0 * DIRECTION - known
+    segs[free_c[0]][1] = 360.0 * direction - known
     # Posição final com as retas livres em zero; depois resolve L1*d1 + L2*d2 = -fim
     for i in free_s:
         segs[i][1] = 0.0
@@ -92,8 +94,9 @@ def solve(track):
     return segs
 
 
-def trace(segs, step=1.0):
+def trace(segs, step=1.0, default_half=None):
     """Pontos a cada `step` m, com altura alvo e meia-largura por ponto e o s do fim de cada trecho."""
+    default_half = HALF if default_half is None else default_half
     p = np.zeros(2)
     h = 0.0
     pts, half, ends = [], [], []
@@ -102,7 +105,7 @@ def trace(segs, step=1.0):
         kind = seg[0].rstrip("?")
         if kind == "S":
             length = seg[1]
-            w = seg[4] if len(seg) > 4 else HALF
+            w = seg[4] if len(seg) > 4 else default_half
             d = np.array([math.cos(math.radians(h)), math.sin(math.radians(h))])
             n = max(int(round(abs(length) / step)), 1)
             for k in range(n):
@@ -113,7 +116,7 @@ def trace(segs, step=1.0):
             ends.append((s, seg[2], seg[3]))
         else:
             ang, r = seg[1], seg[2]
-            w = seg[5] if len(seg) > 5 else HALF
+            w = seg[5] if len(seg) > 5 else default_half
             length = abs(math.radians(ang)) * r
             n = max(int(round(length / step)), 1)
             sign = 1.0 if ang > 0 else -1.0

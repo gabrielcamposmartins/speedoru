@@ -162,8 +162,11 @@ func _spawn_car(e: RaceEntry, at: Transform3D) -> void:
 	car.collision_mask = 0
 	car.freeze_mode = RigidBody3D.FREEZE_MODE_STATIC
 	car.freeze = true
+	car.transform = _root3d.global_transform.affine_inverse() * at
 	_root3d.add_child(car)
-	car.global_transform = at
+	# Como os carros dos outros online: sem isso o VehicleBody3D regrava as rodas a partir dos raios
+	# da suspensão de antes e elas ficam na origem do mundo (pódio sem rodas)
+	car.set_puppet(true)
 	car.reset_physics_interpolation()
 
 

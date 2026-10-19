@@ -43,17 +43,25 @@ impl RaceNative {
         for (k, me) in states.iter().enumerate() {
             let (best, src) = source_for(&states, k);
             let mut car = me.car.clone();
-            let slip = {
+            let (slip, written) = {
                 let mut c = car.bind_mut();
                 c.slipstream = move_toward(c.slipstream, best, delta * RATE);
-                c.slipstream
+                (c.slipstream, c.slip_src)
             };
+            // A propriedade do GDScript só é escrita quando muda (era em quase todo carro a cada passo)
             match src {
                 Some(o) => {
-                    car.set("slipstream_source", &states[o].car.to_variant());
+                    let id = states[o].car.instance_id();
+                    if written != Some(id) {
+                        car.set("slipstream_source", &states[o].car.to_variant());
+                        car.bind_mut().slip_src = Some(id);
+                    }
                 }
                 None if slip <= 0.0 => {
-                    car.set("slipstream_source", &Variant::nil());
+                    if written.is_some() {
+                        car.set("slipstream_source", &Variant::nil());
+                        car.bind_mut().slip_src = None;
+                    }
                 }
                 None => {}
             }

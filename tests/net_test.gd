@@ -195,7 +195,9 @@ func _run() -> void:
 		_check(states["A"].any(func(s: Dictionary) -> bool: return s.get("event", "") == "lights"), "evento das luzes chegou")
 		var start_pos: Vector3 = snaps["A"][-1]["cars"][my_idx]["pos"] if not snaps["A"].is_empty() else Vector3.ZERO
 		# Acelera 4 s (entradas a 60/s, como o jogo)
-		var counts := [0, 0, 0, 0, 0, 0, 0, 0]
+		var counts := []
+		counts.resize(NetRaceClient.ACTIONS.size())
+		counts.fill(0)
 		var b_idx := -1
 		for d2 in roster:
 			if d2["id"] == b.account["id"]:
@@ -207,7 +209,9 @@ func _run() -> void:
 			d.append_array(PackedFloat32Array(counts))
 			a.inp.rpc_id(1, d)
 			await create_timer(1.0 / 60.0).timeout
-		for snap: Dictionary in snaps["A"].slice(-60):
+		# Todos os instantâneos desde que o boost começou a ser apertado (~2 s): a bateria acaba rápido,
+		# e só os últimos podiam já não ter boost
+		for snap: Dictionary in snaps["A"].slice(-75):
 			boost_a += int(int(snap["cars"][my_idx]["flags"]) & NetSnapshot.F_BOOST != 0)
 			boost_b += int(int(snap["cars"][b_idx]["flags"]) & NetSnapshot.F_BOOST != 0)
 		_check(boost_a > 0 and boost_b == 0, "boost só no carro de quem apertou (A %d, B %d instantâneos com boost)" % [boost_a, boost_b])

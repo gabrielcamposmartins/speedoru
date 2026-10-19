@@ -8,7 +8,13 @@ extends SceneTree
 ## * tranco dos carros: passo de física em que o carro andou diferente da própria velocidade em
 ##   mais de 25% (carros dos outros, interpolados, e o do jogador, predito), e as correções da
 ##   predição;
-## * a linha de física do servidor (ServerStats) e os passos atrasados do servidor.
+## * salto visual: passo em que o carro andou diferente do passo anterior em mais de 25% (o que se
+##   vê como tranco, independente da velocidade que o carro informa);
+## * a linha de física do servidor (ServerStats) e os passos atrasados do servidor;
+## * colisões só daqui: passos em que o meu carro encosta em outro carro na física do cliente;
+## * distância do outro carro: para cada carro a menos de 30 m do meu, onde ele aparece aqui e
+##   onde ele está de verdade no servidor no instante em que está o meu carro (o tempo do servidor
+##   em que o comando atual do meu carro é aplicado). É o que faz "passar perto" virar batida.
 ## Com --server-trace o servidor sobe pelo tests/server_trace.gd (scripts cronometrados: mostra o que
 ## gastou o tempo nos passos lentos).
 ##   godot --path . -s res://tests/net_frame_probe.gd -- --offline [pista] [segundos] [carros] [--server-trace]
@@ -43,6 +49,86 @@ class Meter extends Node:
 	var own_jerks := 0
 	var snap_gaps := PackedFloat32Array()
 	var _last_snap := 0
+	var nc: NetRaceClient
+	## Outros carros perto do meu: [tempo do servidor do meu carro, índice, posição mostrada aqui]
+	var _samples: Array = []
+	var gap_errors := PackedFloat32Array()
+	var local_contacts := 0
+	## Batidas do meu carro no servidor (evento "hit") e, nos trancos dos outros, a mudança de
+	## velocidade do carro naquele passo (m/s: batida/freada forte ou o próprio esticar).
+	var my_hits := 0
+	var jerk_dv := PackedFloat32Array()
+	var _last_vel := {}
+	var _last_step := {}
+	var remote_jumps := 0
+	var own_jumps := 0
+	## Diagnóstico: correções por segundo com o meu carro lento (preso?) — despeja o estado.
+	var _diag_t := 0.0
+	var _diag_c0 := 0
+	var diag_dumps := 0
+
+	func _diagnose() -> void:
+		if nc == null or nc.prediction == null or diag_dumps >= 6:
+			return
+		var me := manager.player_entry
+		var t := Time.get_ticks_msec() / 1000.0
+		if t - _diag_t < 1.0:
+			return
+		var c := nc.prediction.corrections - _diag_c0
+		_diag_t = t
+		_diag_c0 = nc.prediction.corrections
+		var srv: Variant = nc._snaps[-1]["cars"].get(me.index)
+		var srv_kmh: float = (srv["vel"] as Vector3).length() * 3.6 if srv != null else 0.0
+		if (c < 15 or me.car.speed_kmh > 30.0) and absf(srv_kmh - me.car.speed_kmh) < 60.0:
+			return
+		diag_dumps += 1
+		var s: Dictionary = nc._snaps[-1]
+		var mine: Variant = s["cars"].get(me.index)
+		var lines := ["DIAG %.1f s: %d correções/s, %.0f km/h, erro %.2f m, hold %s, freeze %s, entradas acel %.2f freio %.2f ré %.2f dir %.2f, marcha %d" % [
+			manager.race_time, c, me.car.speed_kmh, nc.prediction.last_error, me.car.hold, me.car.freeze, me.car.throttle_input,
+			me.car.brake_input, me.car.reverse_input, me.car.steer_input, me.car.gear]]
+		if mine != null:
+			lines.append("  servidor: pos %s vel %.1f km/h | aqui: pos %s" % [mine["pos"], (mine["vel"] as Vector3).length() * 3.6, me.car.global_position])
+		var pr := manager.track.path.project(me.car.global_position)
+		lines.append("  na pista s %.0f lateral %.1f | encostado em: %s | destroços a menos de 10 m: %d | snaps %d" % [pr.x, pr.y,
+			me.car.get_colliding_bodies().map(func(b: Node) -> String: return str(b.name)),
+			manager.get_parent().get_children().filter(func(n: Node) -> bool: return n is RigidBody3D and str(n.name).begins_with("Debris") 				and (n as Node3D).global_position.distance_to(me.car.global_position) < 10.0).size(), nc.prediction.snaps])
+		for w in me.car.get_wheels():
+			lines.append("  roda %s contato %s em %s" % [w.name, w.is_in_contact(), w.get_contact_body().name if w.is_in_contact() and w.get_contact_body() else "-"])
+		for e in manager.roster:
+			if e != me and e.car and e.car.global_position.distance_to(me.car.global_position) < 15.0:
+				lines.append("  perto: %s a %.1f m, %.0f km/h, camada %d" % [e.code, e.car.global_position.distance_to(me.car.global_position), e.car.linear_velocity.length() * 3.6, e.car.collision_layer])
+		for l in lines:
+			print(l)
+
+	func on_state(d: Dictionary) -> void:
+		if str(d.get("event", "")) == "hit" and manager.player_entry and int(d.get("idx", -1)) == manager.player_entry.index:
+			my_hits += 1
+
+	## Erro da posição mostrada de cada amostra que os instantâneos já cobrem.
+	func _score_samples() -> void:
+		var snaps: Array[Dictionary] = nc._snaps
+		if snaps.size() < 2:
+			return
+		var newest: float = snaps[-1]["t"]
+		var keep: Array = []
+		for smp: Array in _samples:
+			var t: float = smp[0]
+			if t > newest:
+				keep.append(smp)
+				continue
+			for k in snaps.size() - 1:
+				var a: Dictionary = snaps[k]
+				var b: Dictionary = snaps[k + 1]
+				if a["t"] <= t and t <= b["t"]:
+					var ca: Variant = a["cars"].get(smp[1])
+					var cb: Variant = b["cars"].get(smp[1])
+					if ca != null and cb != null:
+						var w := clampf((t - a["t"]) / maxf(b["t"] - a["t"], 0.001), 0.0, 1.0)
+						var truth: Vector3 = (ca["pos"] as Vector3).lerp(cb["pos"], w)
+						gap_errors.append((smp[2] as Vector3).distance_to(truth))
+					break
+		_samples = keep
 
 	func _ready() -> void:
 		process_physics_priority = 1000
@@ -57,6 +143,8 @@ class Meter extends Node:
 				print("buraco de %.0f ms nos instantâneos (%.1f s de jogo, corrida em %.1f s)" % [gap, Time.get_ticks_msec() / 1000.0,
 					manager.race_time])
 		_last_snap = now
+		if nc:
+			_score_samples.call_deferred()
 
 	func _process(delta: float) -> void:
 		frames.append(delta * 1000.0)
@@ -75,6 +163,12 @@ class Meter extends Node:
 				var expect := v * delta
 				var dev := (step - expect).length() / expect.length()
 				var mine := e == manager.player_entry
+				if _last_step.has(e.index) and ((step - (_last_step[e.index] as Vector3)).length() > 0.25 * step.length()):
+					if mine:
+						own_jumps += 1
+					else:
+						remote_jumps += 1
+				_last_step[e.index] = step
 				if mine:
 					own_steps += 1
 					if dev > 0.25:
@@ -83,7 +177,25 @@ class Meter extends Node:
 					remote_steps += 1
 					if dev > 0.25:
 						remote_jerks += 1
+						jerk_dv.append((v - (_last_vel.get(e.index, v) as Vector3)).length())
 			_last[e.index] = p
+			_last_vel[e.index] = v
+		var me := manager.player_entry
+		if nc and nc.prediction and me and not nc._snaps.is_empty() and nc._snaps[-1].has("ack"):
+			var last: Dictionary = nc._snaps[-1]
+			# Meu carro agora = depois do comando _seq − 1; no relógio dos instantâneos (posições do passo
+			# anterior ao tempo deles) isso é t + (_seq − ack) passos do servidor
+			var t_own: float = float(last["t"]) + float(nc._seq - int(last["ack"])) / float(nc.get("_base_hz") if nc.get("_base_hz") != null else Engine.physics_ticks_per_second)
+			for e in manager.roster:
+				if e == me or e.car == null or not e.car.visible:
+					continue
+				if e.car.global_position.distance_to(me.car.global_position) < 30.0:
+					_samples.append([t_own, e.index, e.car.global_position])
+			for body in me.car.get_colliding_bodies():
+				if body is F1Car:
+					local_contacts += 1
+					break
+			_diagnose()
 
 
 class Bridge extends Node:
@@ -164,6 +276,15 @@ func _clean() -> void:
 			DirAccess.remove_absolute(abs_dir)
 	for f in ["user://test_netframe_account.cfg", "user://test_netframe_profile.cfg"]:
 		DirAccess.remove_absolute(ProjectSettings.globalize_path(f))
+
+
+## Mediana, percentil 95 e maior valor (m) de uma lista de distâncias.
+static func _dist(a: PackedFloat32Array) -> String:
+	if a.is_empty():
+		return "sem amostras"
+	var v := Array(a)
+	v.sort()
+	return "%d amostras, mediana %.2f m, p95 %.2f m, máx %.2f m" % [v.size(), v[v.size() / 2], v[mini(int(v.size() * 0.95), v.size() - 1)], v[-1]]
 
 
 static func _stats(a: PackedFloat32Array, over: Array) -> String:
@@ -258,9 +379,11 @@ func _run() -> void:
 	meter.manager = manager
 	manager.add_child(meter)
 	net.race_snapshot.connect(meter.on_snap)
+	net.race_state.connect(meter.on_state)
 	await _wait_for(func() -> bool: return manager.state == RaceManager.State.RACING, 120.0)
 	bot.released = true
 	var nc: NetRaceClient = manager.net_client
+	meter.nc = nc
 	await create_timer(3.0).timeout
 	print("pista %s, %d carros, %.0f s; janela %s, vsync %s, max_fps %d" % [track_id, manager.roster.size(), seconds,
 		root.get_viewport().get_visible_rect().size, DisplayServer.window_get_vsync_mode(), Engine.max_fps])
@@ -268,7 +391,9 @@ func _run() -> void:
 	var chunk := 10.0
 	var e0 := nc.extrapolated_steps
 	var s0 := nc.interp_steps
-	var tot := {"f25": 0, "f50": 0, "worst": 0.0, "g50": 0, "gworst": 0.0, "own": 0, "remote": 0, "corr": 0, "back": 0}
+	var tot := {"f25": 0, "f50": 0, "worst": 0.0, "g50": 0, "gworst": 0.0, "own": 0, "remote": 0, "corr": 0, "back": 0, "contacts": 0,
+		"rjump": 0, "ojump": 0, "hits": 0}
+	var all_gaps := PackedFloat32Array()
 	while t < seconds:
 		meter.frames.clear()
 		meter.snap_gaps.clear()
@@ -276,6 +401,13 @@ func _run() -> void:
 		meter.remote_jerks = 0
 		meter.own_steps = 0
 		meter.own_jerks = 0
+		meter.gap_errors.clear()
+		meter.local_contacts = 0
+		meter.my_hits = 0
+		meter.jerk_dv.clear()
+		meter.remote_jumps = 0
+		meter.own_jumps = 0
+		var sn0: int = nc.prediction.snaps if nc.prediction else 0
 		var c0: int = nc.prediction.corrections if nc.prediction else 0
 		var b0: int = nc.prediction.pullbacks if nc.prediction else 0
 		var x0 := nc.extrapolated_steps
@@ -295,18 +427,29 @@ func _run() -> void:
 		tot["own"] += meter.own_jerks
 		tot["remote"] += meter.remote_jerks
 		tot["corr"] += c1 - c0
+		tot["contacts"] += meter.local_contacts
+		all_gaps.append_array(meter.gap_errors)
 		print("[%3.0f s] quadros %s | instantâneos %s | folga %.0f ms, esticado %.1f%% | tranco outros %.2f%% (%d), meu %.2f%% (%d), correções %d (para trás %d), erro máx %.2f m | volta %d, %.0f km/h" % [
 			t, _stats(meter.frames, [25, 50]), _stats(meter.snap_gaps, [50, 100]), nc.interp_delay * 1000.0,
 			100.0 * (nc.extrapolated_steps - x0) / maxf(nc.interp_steps - i0, 1),
 			100.0 * meter.remote_jerks / maxf(meter.remote_steps, 1), meter.remote_jerks,
 			100.0 * meter.own_jerks / maxf(meter.own_steps, 1), meter.own_jerks, c1 - c0, b1 - b0,
 			nc.prediction.max_error if nc.prediction else 0.0, pe.laps_completed(), pe.car.speed_kmh])
+		tot["rjump"] += meter.remote_jumps
+		tot["ojump"] += meter.own_jumps
+		tot["hits"] += meter.my_hits
+		print("        outro carro perto: %s | colisões só daqui %d | batidas minhas no servidor %d, saltos %d | salto visual outros %d, meu %d" % [
+			_dist(meter.gap_errors), meter.local_contacts, meter.my_hits, (nc.prediction.snaps if nc.prediction else 0) - sn0,
+			meter.remote_jumps, meter.own_jumps])
 	for l in slow_frames:
 		print("quadro longo: ", l)
 	print("esticado no total: %.1f%%" % (100.0 * (nc.extrapolated_steps - e0) / maxf(nc.interp_steps - s0, 1)))
 	print("TOTAL: quadros > 25 ms %d, > 50 ms %d, pior %.0f | instantâneos > 50 ms %d, pior %.0f | tranco meu %d, outros %d | correções %d (para trás %d), erro máx %.2f m" % [
 		tot["f25"], tot["f50"], tot["worst"], tot["g50"], tot["gworst"], tot["own"], tot["remote"], tot["corr"], tot["back"],
 		nc.prediction.max_error if nc.prediction else 0.0])
+	print("TOTAL outro carro perto (onde aparece × onde está no servidor no tempo do meu carro): %s | colisões só daqui (passos) %d" % [
+		_dist(all_gaps), tot["contacts"]])
+	print("TOTAL salto visual: outros %d, meu %d | batidas do meu carro no servidor %d" % [tot["rjump"], tot["ojump"], tot["hits"]])
 	var lines: Array = host.log_lines if host else Array(FileAccess.get_file_as_string(log_path).split(char(10)))
 	for l: String in lines:
 		if l.contains("física no último minuto") or l.contains("ERROR") or l.contains("server_trace"):

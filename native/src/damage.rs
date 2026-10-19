@@ -58,6 +58,8 @@ pub struct CarDamageCore {
     prev_position: Vector3,
     time: f64,
     loose: Vec<Loose>,
+    /// Já procurou o nó "Audio" (o servidor não tem: procurava a cada passo).
+    audio_looked: bool,
     base: Base<Node>,
 }
 
@@ -73,6 +75,12 @@ impl INode for CarDamageCore {
     fn physics_process(&mut self, delta: f64) {
         let Some(car) = self.car.clone() else { return };
         let body = car.clone().upcast::<VehicleBody3D>();
+        // Sem contatos e sem raspada: só guarda velocidade e posição para o próximo passo
+        if self.contacts.is_empty() && self.scrape_level == 0.0 {
+            self.prev_velocity = body.get_linear_velocity();
+            self.prev_position = body.get_global_position();
+            return;
+        }
         let mut scrape: f64 = 0.0;
         let xf = body.get_global_transform();
         let inv = xf.affine_inverse();
@@ -125,7 +133,8 @@ impl INode for CarDamageCore {
             );
         }
         self.scrape_level = move_toward(self.scrape_level, scrape, delta * 6.0);
-        if self.audio.is_none() {
+        if self.audio.is_none() && !self.audio_looked {
+            self.audio_looked = true;
             self.audio = body.get_node_or_null("Audio").and_then(|a| a.try_cast::<CarAudioCore>().ok());
         }
         if let Some(mut audio) = self.audio.clone() {

@@ -30,6 +30,19 @@ const HAZARD_WIDTH := 0.9
 const DECK_FLOOR_TOP := 0.08
 const DECK_FLOOR_THICK := 1.0
 const LINE_WIDTH := 0.25
+## Pista no fundo do mar: asfalto azul-ardósia escuro, zebras ciano e brancas, faixa de lajes de
+## pedra até a barreira e um friso de LED ciano logo dentro de cada linha branca (com o pulso
+## correndo, sky_glow.gdshader).
+const SEA_ASPHALT := Color(0.1, 0.12, 0.15)
+const SEA_PIT_ASPHALT := Color(0.15, 0.17, 0.2)
+const SEA_KERB := Color(0.1, 0.78, 0.92)
+const SEA_VERGE := Color(0.62, 0.62, 0.6)
+const SEA_LED := Color(0.25, 0.95, 1.0)
+const SEA_LED_WIDTH := 0.16
+const SEA_LED_INSET := 0.2
+
+## Cores das listras das zebras (a pista do fundo do mar troca o vermelho por ciano).
+static var _kerb_colors := [KERB_RED, KERB_WHITE]
 
 
 static func build(track: RaceTrack, parent: Node3D) -> void:
@@ -40,8 +53,11 @@ static func build(track: RaceTrack, parent: Node3D) -> void:
 	var gravel := MeshBuilder.new()
 	var runoff := MeshBuilder.new()
 	var paint := MeshBuilder.new()
-	var asphalt := SKY_ASPHALT if track.layout.sky else ASPHALT
-	var pit_asphalt := SKY_PIT_ASPHALT if track.layout.sky else PIT_ASPHALT
+	var sea := track.layout.undersea
+	var leds := MeshBuilder.new()
+	var asphalt := SKY_ASPHALT if track.layout.sky else (SEA_ASPHALT if sea else ASPHALT)
+	var pit_asphalt := SKY_PIT_ASPHALT if track.layout.sky else (SEA_PIT_ASPHALT if sea else PIT_ASPHALT)
+	_kerb_colors = [SEA_KERB, KERB_WHITE] if sea else [KERB_RED, KERB_WHITE]
 	for i in n:
 		var j := (i + 1) % n
 		var hl_i := p.width_left[i]
@@ -52,6 +68,10 @@ static func build(track: RaceTrack, parent: Node3D) -> void:
 		_strip(road, p, i, j, -hr_i, -hr_j, -hr_i + LINE_WIDTH, -hr_j + LINE_WIDTH, ROAD_Y, LINE)
 		_strip(road, p, i, j, -hr_i + LINE_WIDTH, -hr_j + LINE_WIDTH, hl_i - LINE_WIDTH, hl_j - LINE_WIDTH, ROAD_Y, asphalt)
 		_strip(road, p, i, j, hl_i - LINE_WIDTH, hl_j - LINE_WIDTH, hl_i, hl_j, ROAD_Y, LINE)
+		if sea:
+			_led_strip(leds, p, i, j, hl_i - LINE_WIDTH - SEA_LED_INSET, hl_j - LINE_WIDTH - SEA_LED_INSET)
+			_led_strip(leds, p, i, j, -hr_i + LINE_WIDTH + SEA_LED_INSET + SEA_LED_WIDTH,
+				-hr_j + LINE_WIDTH + SEA_LED_INSET + SEA_LED_WIDTH)
 		for side in [1, -1]:
 			var k := RaceTrack._si(side)
 			var e_i := p.half_width(i, side)
@@ -60,14 +80,14 @@ static func build(track: RaceTrack, parent: Node3D) -> void:
 			var kw_j := track.layout.kerb_width * smoothstep(0.0, 1.0, track.kerb[k][j])
 			if kw_i > 0.05 or kw_j > 0.05:
 				_kerb(kerbs, p, i, j, side, e_i, e_j, kw_i, kw_j)
-			if track.city or track.layout.sky:
+			if track.city or track.layout.sky or sea:
 				# Do fim da zebra (ou da faixa dos boxes, onde ela afunila) até a barreira
 				var pit_side: bool = side == track.layout.pit_side
 				var in_i := maxf(kw_i, track.pit_width[i] if pit_side else 0.0)
 				var in_j := maxf(kw_j, track.pit_width[j] if pit_side else 0.0)
 				var b_i := track.barrier[k][i]
 				var b_j := track.barrier[k][j]
-				var verge := DECK_PLATE if track.layout.sky else VERGE
+				var verge := DECK_PLATE if track.layout.sky else (SEA_VERGE if sea else VERGE)
 				if track.layout.sky and track.open_edge(i, side) and track.open_edge(j, side):
 					# Borda aberta: área de escape até a faixa de aviso, e depois dela o vazio
 					var h_i := maxf(b_i - HAZARD_WIDTH, in_i)
@@ -100,10 +120,23 @@ static func build(track: RaceTrack, parent: Node3D) -> void:
 	_add_surface(parent, "Kerbs", kerbs, TrackMaterials.surface("kerb"), TrackSurface.Type.KERB)
 	_add_surface(parent, "Gravel", gravel, TrackMaterials.surface("gravel"), TrackSurface.Type.GRAVEL)
 	# Pista no céu: a faixa entre a pista e a barreira (e a área de escape) é chão de placas de metal
-	var runoff_mat := TrackMaterials.metal_plate("runoff", false, true) if track.layout.sky else TrackMaterials.surface("asphalt")
-	_add_surface(parent, "Runoff", runoff, runoff_mat, TrackSurface.Type.RUNOFF)
+	var runoff_mat := TrackMaterials.surface("asphalt")
 	if track.layout.sky:
+		runoff_mat = TrackMaterials.metal_plate("runoff", false, true)
+	elif sea:
+		# Fundo do mar: lajes de pedra (juntas a cada 1,5 m)
+		runoff_mat = TrackMaterials.sea_stone("runoff", false, {"no_outline": true, "panel_size": 1.5,
+			"grime_strength": 0.3, "moss_amount": 0.25, "coral_amount": 0.03})
+	_add_surface(parent, "Runoff", runoff, runoff_mat, TrackSurface.Type.RUNOFF)
+	# Pista no céu e no fundo do mar: não há chão de colisão embaixo dos pisos
+	if track.layout.sky or sea:
 		_deck_floor(track, parent)
+	if not leds.is_empty():
+		var led_mi := MeshInstance3D.new()
+		led_mi.name = "EdgeLights"
+		led_mi.mesh = leds.commit(null, SkyDeck.glow(0.45, 1.5, 3.2))
+		led_mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		parent.add_child(led_mi)
 	var mi := MeshInstance3D.new()
 	mi.name = "Paint"
 	mi.mesh = paint.commit(null, TrackMaterials.surface("paint"))
@@ -155,17 +188,33 @@ static func _add_surface(parent: Node3D, node_name: String, mb: MeshBuilder, mat
 	parent.add_child(body)
 
 
-## Faixa entre dois deslocamentos laterais (com sinal) de i até j.
+## Torção máxima (m) de cada pedaço de faixa: acima disso a faixa é dividida na largura.
+const MAX_TWIST := 0.0007
+
+
+## Faixa entre dois deslocamentos laterais (com sinal) de i até j. Numa curva fechada com subida
+## ou descida o quadrilátero torce (as duas bordas são retas horizontais em alturas diferentes e
+## não paralelas) e os dois triângulos formam um vinco que tira a aderência de um pneu (Curva do
+## Portal da Sky Aerobase): onde torce, a faixa vira vários pedaços estreitos.
 static func _strip(mb: MeshBuilder, p: TrackPath, i: int, j: int, a_i: float, a_j: float, b_i: float, b_j: float,
 		y: float, color: Color) -> void:
 	var up := Vector3.UP * y
-	mb.quad(p.points[i] + p.lefts[i] * a_i + up, p.points[i] + p.lefts[i] * b_i + up,
-		p.points[j] + p.lefts[j] * b_j + up, p.points[j] + p.lefts[j] * a_j + up, color)
+	var a0 := p.points[i] + p.lefts[i] * a_i + up
+	var b0 := p.points[i] + p.lefts[i] * b_i + up
+	var b1 := p.points[j] + p.lefts[j] * b_j + up
+	var a1 := p.points[j] + p.lefts[j] * a_j + up
+	var normal := (b0 - a0).cross(b1 - a0)
+	var twist := absf((a1 - a0).dot(normal.normalized())) if normal.length_squared() > 1e-8 else 0.0
+	var pieces := clampi(ceili(twist / MAX_TWIST), 1, 12)
+	for k in pieces:
+		var t0 := float(k) / pieces
+		var t1 := float(k + 1) / pieces
+		mb.quad(a0.lerp(b0, t0), a0.lerp(b0, t1), a1.lerp(b1, t1), a1.lerp(b1, t0), color)
 
 
 ## Zebra elevada: sobe na borda da pista, plana e desce no fim. Listras de ~2 m.
 static func _kerb(mb: MeshBuilder, p: TrackPath, i: int, j: int, side: int, e_i: float, e_j: float, w_i: float, w_j: float) -> void:
-	var color := KERB_RED if i % 2 == 0 else KERB_WHITE
+	var color: Color = _kerb_colors[i % 2]
 	# Perfil (fração da largura, altura)
 	var profile := [Vector2(0.0, ROAD_Y), Vector2(0.18, KERB_Y), Vector2(0.85, KERB_Y), Vector2(1.0, ROAD_Y + 0.005)]
 	for k in profile.size() - 1:
@@ -176,6 +225,17 @@ static func _kerb(mb: MeshBuilder, p: TrackPath, i: int, j: int, side: int, e_i:
 		var pa_j := p.points[j] + p.lefts[j] * side * (e_j + w_j * a.x) + Vector3.UP * a.y
 		var pb_j := p.points[j] + p.lefts[j] * side * (e_j + w_j * b.x) + Vector3.UP * b.y
 		mb.quad(pa_i, pb_i, pb_j, pa_j, color)
+
+
+## Friso de LED (fundo do mar) de i até j, entre os deslocamentos laterais a - SEA_LED_WIDTH e a;
+## UV.x = s (o pulso do sky_glow corre ao longo da pista).
+static func _led_strip(mb: MeshBuilder, p: TrackPath, i: int, j: int, a_i: float, a_j: float) -> void:
+	var up := Vector3.UP * PAINT_Y
+	var s_i := p.s_at(i)
+	var s_j := s_i + p.spacing
+	mb.quad(p.points[i] + p.lefts[i] * (a_i - SEA_LED_WIDTH) + up, p.points[i] + p.lefts[i] * a_i + up,
+		p.points[j] + p.lefts[j] * a_j + up, p.points[j] + p.lefts[j] * (a_j - SEA_LED_WIDTH) + up,
+		SEA_LED, Vector3.UP, Vector2(s_i, 0), Vector2(s_i, 1), Vector2(s_j, 1), Vector2(s_j, 0))
 
 
 ## Retângulo pintado no chão: centro em (s, lateral), tamanho (comprimento, largura).

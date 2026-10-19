@@ -61,8 +61,8 @@ const LIMITER_KMH := 80.0
 ## Carro cujo rastro dá o vácuo (para o efeito visual).
 var slipstream_source: F1Car
 
-var _smoke: Array[CPUParticles3D] = []
-var _dust: Array[CPUParticles3D] = []
+var _smoke: Array[GPUParticles3D] = []
+var _dust: Array[GPUParticles3D] = []
 var _drs_flap: Node3D
 var _drs_flap_rest := Transform3D.IDENTITY
 var _steering_wheel: Node3D
@@ -84,6 +84,7 @@ func _ready() -> void:
 
 
 func _on_config_changed() -> void:
+	_core_config_changed()
 	if not is_node_ready() or config == null:
 		return
 	assembly.sync(config, get_wheels())
@@ -119,6 +120,9 @@ const SIREN_COLORS := [Color(1.0, 0.08, 0.1), Color(0.1, 0.35, 1.0)]
 const SIREN_RATE := 8.0
 var _signal_leds: Array[MeshInstance3D] = []
 var _signal_style := ""
+## Retrovisores em que os LEDs foram montados: o reparo (pit stop, queda da pista) remonta as peças e
+## os LEDs somem junto com o vidro antigo.
+var _signal_mirrors_id := 0
 var _siren: SirenBlinker
 var _signal_sound: SignalSound
 var _signal_lit := false
@@ -127,7 +131,9 @@ var _signal_lit := false
 ## Chamado pelo F1CarCore quando o pisca acende ou apaga (e a cada quadro pela prévia da garagem).
 func _show_signal_leds(on: bool) -> void:
 	var style := config.pass_light if config else ""
-	if on and (_signal_leds.is_empty() or style != _signal_style):
+	var mirrors := assembly.get_part_node("mirrors") if assembly else null
+	var mirrors_id := mirrors.get_instance_id() if mirrors else 0
+	if on and (_signal_leds.is_empty() or style != _signal_style or mirrors_id != _signal_mirrors_id):
 		_build_signal_leds()
 	for led in _signal_leds:
 		if is_instance_valid(led):
@@ -227,9 +233,12 @@ func _build_signal_leds() -> void:
 	var mirrors := assembly.get_part_node("mirrors")
 	if mirrors == null:
 		return
-	for led in _signal_leds:
-		if is_instance_valid(led):
-			led.queue_free()
+	_signal_mirrors_id = mirrors.get_instance_id()
+	# (Variant: depois de um reparo os LEDs antigos já foram liberados junto com o vidro)
+	for k in _signal_leds.size():
+		var old: Variant = _signal_leds[k]
+		if is_instance_valid(old):
+			(old as Node).queue_free()
 	# Lista nova (a sirene antiga, que só sai no fim do quadro, guarda a dela)
 	_signal_leds = []
 	if _siren:
@@ -408,8 +417,9 @@ func _create_tire_smoke() -> void:
 		smoke.scale_amount_curve = grow
 		smoke.color_ramp = fade
 		smoke.position = Vector3(_mounts[i].x, 0.15, _mounts[i].z)
-		add_child(smoke)
-		_smoke.append(smoke)
+		var gpu := _to_gpu(smoke)
+		add_child(gpu)
+		_smoke.append(gpu)
 
 
 ## Poeira marrom/verde quando a roda passa pela brita ou grama.
@@ -445,5 +455,21 @@ func _create_dust() -> void:
 		dust.damping_max = 2.5
 		dust.scale_amount_curve = grow
 		dust.position = Vector3(_mounts[i].x, 0.1, _mounts[i].z)
-		add_child(dust)
-		_dust.append(dust)
+		var gpu := _to_gpu(dust)
+		add_child(gpu)
+		_dust.append(gpu)
+
+
+## A mesma partícula na GPU (o conversor do Godot copia os parâmetros, como o "Converter para
+## GPUParticles3D" do editor): eram 8 emissores por carro simulados no processador.
+static func _to_gpu(cpu: CPUParticles3D) -> GPUParticles3D:
+	var gpu := GPUParticles3D.new()
+	gpu.convert_from_particles(cpu)
+	gpu.name = cpu.name
+	gpu.cast_shadow = cpu.cast_shadow
+	gpu.position = cpu.position
+	gpu.emitting = false
+	# Soltas no mundo (local_coords desligado): a caixa de visibilidade cobre o rastro que fica para trás
+	gpu.visibility_aabb = AABB(Vector3(-30, -6, -30), Vector3(60, 24, 60))
+	cpu.free()
+	return gpu
