@@ -15,7 +15,9 @@ extends RefCounted
 ## 8: piso sem vincos (TrackRoad divide as faixas que torcem: a colisão da pista mudou e a previsão
 ## de um cliente antigo erraria nesses trechos), colisões no box, aviso de saída depois do pódio e a
 ## pista Atlantis Abyss (um cliente antigo não a conhece).
-const VERSION := 8
+## 9: Chicane do Tridente na Atlantis Abyss (o traçado e a colisão mudaram: um cliente antigo
+## correria na pista de antes).
+const VERSION := 9
 ## O servidor aceita o carro (skins, peças e engenharia) que o jogador traz do aparelho, sem
 ## conferir se a conta tem os itens.
 ## PENDENTE (produção): desligar e validar no servidor que a conta tem as skins e peças.
@@ -87,8 +89,8 @@ const BTN_REVERSE := 4
 const MIN_PLAUSIBLE_LAP := 78.0
 ## O mesmo por pista (Mônaco é bem mais curta; Suzuka tem o comprimento de Monza, mas bem mais curvas;
 ## Las Vegas é um pouco mais longa que Monza, com retas enormes; a Sky Aerobase é curta e travada,
-## com grampo e chicane: os bots mais rápidos fazem ~64 s; a Atlantis Abyss tem 4,7 km com retas
-## rápidas e um grampo: os bots fazem ~74 s).
+## com grampo e chicane: os bots mais rápidos fazem ~64 s; a Atlantis Abyss tem 4,8 km com retas
+## rápidas, um grampo e duas chicanes: os bots fazem ~78 s).
 const MIN_LAP_BY_TRACK := {"monza": MIN_PLAUSIBLE_LAP, "monaco": 55.0, "suzuka": 85.0, "las_vegas": 80.0, "sky_aerobase": 50.0,
 	"atlantis_abyss": 55.0}
 

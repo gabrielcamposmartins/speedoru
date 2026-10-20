@@ -1,8 +1,12 @@
 // Bichos do mar da Atlantis Abyss (baleia, raias, tubarões, golfinhos, tartarugas, polvo; modelos de
-// blender/build_atlantis.py): toon com dorso e ventre de cores próprias, manchas opcionais e o nado no
-// vértice, pesado pela cor de vértice R (0 no corpo, 1 na cauda, nas asas, nas nadadeiras ou nas
-// pontas dos tentáculos). Um material só para todos: a cor e o nado de cada bicho vêm dos
-// instance uniforms (SeaLife). Frente do modelo = +Z.
+// blender/atlantis_creatures.py): toon com as cores de cada um e o nado no vértice. A cor de vértice
+// (cor = mix(mix(dorso, ventre, G), destaque, A) × (1 − 0,85·B)):
+//   R = peso do nado (0 no corpo, 1 na cauda, nas asas, nas nadadeiras, nas pontas dos tentáculos);
+//   G = máscara do ventre (0 = cor do dorso, 1 = cor do ventre);
+//   B = escurecimento (olhos, guelras, boca, sulcos, bordas das placas, reentrâncias);
+//   A = máscara da cor de destaque (manchas da raia, casco da tartaruga, ventosas do polvo...).
+// Um material só para todos: as cores e o nado de cada bicho vêm dos instance uniforms (SeaLife).
+// Frente do modelo = +Z.
 //   mode 0: onda lateral (peixe, tubarão)    1: onda vertical (baleia, golfinho)
 //        2: asas batendo (raia)               3: nadadeiras remando (tartaruga)
 //        4: tentáculos ondulando (polvo)
@@ -11,6 +15,7 @@ render_mode diffuse_toon, specular_disabled;
 
 instance uniform vec3 top_color : source_color = vec3(0.2, 0.28, 0.4);
 instance uniform vec3 belly_color : source_color = vec3(0.85, 0.88, 0.9);
+instance uniform vec3 accent_color : source_color = vec3(0.9, 0.9, 0.9);
 instance uniform float spots = 0.0;
 instance uniform float mode = 0.0;
 instance uniform float amp = 0.3;
@@ -20,7 +25,7 @@ instance uniform float phase = 0.0;
 global uniform float night;
 
 varying vec3 local_pos;
-varying float up;
+varying vec3 masks;
 
 void vertex() {
 	float w = COLOR.r;
@@ -43,7 +48,7 @@ void vertex() {
 	}
 	VERTEX = v;
 	local_pos = v;
-	up = NORMAL.y;
+	masks = vec3(COLOR.g, COLOR.b, COLOR.a);
 }
 
 float creature_hash(vec2 p) {
@@ -59,12 +64,15 @@ float creature_noise(vec2 p) {
 }
 
 void fragment() {
-	float back = smoothstep(-0.35, 0.35, up);
-	vec3 col = mix(belly_color, top_color, back);
+	// Dorso e ventre, destaque e escurecimento pelas máscaras pintadas no modelo (valores
+	// intermediários de propósito: a borda do capote do golfinho, a oclusão nas reentrâncias)
+	vec3 col = mix(mix(top_color, belly_color, masks.x), accent_color, masks.z);
+	// Manchas opcionais (claras, no dorso)
 	if (spots > 0.0) {
 		float s = smoothstep(0.72, 0.78, creature_noise(local_pos.xz * 1.6 + local_pos.y * 0.7));
-		col = mix(col, belly_color * 1.05, s * spots * back);
+		col = mix(col, belly_color * 1.05, s * spots * (1.0 - masks.x));
 	}
+	col *= 1.0 - 0.85 * masks.y;
 	ALBEDO = col;
 	ROUGHNESS = 0.6;
 	RIM = 0.35;

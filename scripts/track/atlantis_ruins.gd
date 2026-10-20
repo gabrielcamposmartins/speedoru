@@ -4,6 +4,8 @@ extends RefCounted
 ##  * o Templo de Poseidon por fora da Curva do Templo (escadaria, colunas, frontão e a estátua);
 ##  * colunatas dos dois lados da Avenida das Colunas (algumas quebradas, tambores caídos);
 ##  * o Portal de Atlântida, um arco gigante sobre a pista e o tubo de vidro;
+##  * o Tridente do abismo: um tridente gigante de bronze e ouro fincado no fundo da fossa, por fora da
+##    Chicane do Tridente (à esquerda de quem freia para ela), com as pontas logo abaixo da superfície;
 ##  * a muralha em arcos atrás das arquibancadas do anfiteatro (dois andares, como um coliseu);
 ##  * prédios em ruínas, torres e aquedutos (aqueduct: dois andares, contrafortes, o canal no alto,
 ##    pontas e vãos desabados) ao longe, sobre o leito (SeaFloor.ground), com lanternas quentes,
@@ -18,12 +20,18 @@ const STONE_DARK := Color(0.66, 0.65, 0.62)
 ## Tijolo das aduelas dos arcos (alternado com a pedra clara).
 const BRICK := Color(0.68, 0.4, 0.3)
 const LANTERN := Color(1.0, 0.78, 0.42)
+## Bronze das lanternas (cor forte: a pedra de Atlântida a mantém).
+const LANTERN_BRONZE := Color(0.62, 0.43, 0.2)
 const BUCKET := 300.0
 const VISIBILITY := 1100.0
 const PORTAL_S := 690.0
 const PORTAL_CLEAR := 15.0
 const AVENUE := Vector2(560.0, 760.0)
 const TEMPLE_S := 487.0
+## Caneluras do fuste das colunas.
+const FLUTES := 12
+## Tridente gigante: s (no miolo da Chicane do Tridente), lado (+1 esquerda) e distância além do tubo.
+const TRIDENT := Vector3(3455.0, 1.0, 26.0)
 ## Estátuas (.glb gerados por blender/build_atlantis.py); as que não existirem são puladas.
 const MODELS := "res://assets/track/atlantis_abyss/models/"
 
@@ -46,11 +54,14 @@ static func build(track: RaceTrack, parent: Node3D) -> void:
 	_temple(track, near, banners, lanterns, statues)
 	_avenue(track, near, banners, rng)
 	_portal(track, near, banners, lanterns)
-	_amphitheater_wall(track, near, banners, lanterns)
+	_amphitheater_wall(track, near, banners, lanterns, statues)
 	_commit(root, "Landmarks", near, lanterns, banners, true)
+	_giant_trident(track, root)
 	# Ao longe: por blocos espaciais
 	var far := {}
-	_background(track, far, rng, statues)
+	var spots := {}
+	_background(track, far, rng, statues, spots)
+	root.set_meta("background", spots)
 	for key: Vector2i in far:
 		var parts: Array = far[key]
 		_commit(root, "Ruins_%d_%d" % [key.x, key.y], parts[0], parts[1], parts[2], false)
@@ -81,30 +92,134 @@ static func _commit(root: Node3D, node_name: String, mb: MeshBuilder, lanterns: 
 		root.add_child(bmi)
 
 
+## O tridente gigante do abismo (TRIDENT), de bronze com pátina e as pontas de ouro
+## (sea_bronze.gdshader): a haste com anéis saindo do fundo da fossa, a empunhadura, a travessa curva
+## virada para a pista e as três pontas farpadas, a do meio mais alta, até 3 m da superfície; algas
+## penduradas da travessa e musgo nas juntas. Ocupa o leito até o topo (os bichos não passam por ele).
+static func _giant_trident(track: RaceTrack, root: Node3D) -> void:
+	var p := track.path
+	if TRIDENT.x > p.length:
+		return
+	var i := p.index_at(TRIDENT.x)
+	var side := int(TRIDENT.y)
+	var base := p.frame_at(TRIDENT.x, side * (SeaTube.clearance(track, i, side) + TRIDENT.z), 0.0).origin
+	base.y = SeaFloor.ground(track, base.x, base.z) - 3.0
+	var top := track.layout.water_level - 3.0
+	if top - base.y < 30.0:
+		return
+	var mb := MeshBuilder.new()
+	var bronze := SeaTube.METAL
+	var gold := SeaTube.GOLD
+	# (a travessa ao longo da pista: de quem chega o tridente aparece de frente)
+	var along := p.tangents[i]
+	along.y = 0.0
+	along = along.normalized()
+	var fork := top - 16.0
+	var shaft := Vector3(base.x, base.y, base.z)
+	mb.cylinder(Transform3D(Basis(), shaft), 1.6, 1.3, fork - base.y, bronze, 14)
+	# Anéis a cada 12 m e a empunhadura (anéis juntos) logo abaixo da travessa
+	var y := base.y + 10.0
+	while y < fork - 4.0:
+		mb.cylinder(Transform3D(Basis(), Vector3(shaft.x, y, shaft.z)), 1.95, 1.95, 0.9, gold if int(y) % 3 == 0 else bronze, 14)
+		y += 12.0
+	for k in 5:
+		mb.cylinder(Transform3D(Basis(), Vector3(shaft.x, fork - 9.0 + k * 1.4, shaft.z)), 1.75, 1.75, 0.6, bronze * 0.85, 14)
+	# Travessa curva (as pontas dos lados um pouco mais altas)
+	var half := 8.5
+	var prev := Vector3(shaft.x, fork, shaft.z) - along * half + Vector3.UP * 1.6
+	for k in range(1, 9):
+		var u := float(k) / 8.0
+		var q := Vector3(shaft.x, fork, shaft.z) + along * lerpf(-half, half, u) + Vector3.UP * (1.6 * pow(2.0 * u - 1.0, 2.0))
+		var dir := (q - prev).normalized()
+		var x := dir.cross(Vector3.UP).normalized()
+		mb.box(Transform3D(Basis(x, dir.cross(x).normalized(), dir), (prev + q) * 0.5), Vector3(1.9, 1.9, prev.distance_to(q) + 0.1), gold)
+		prev = q
+	mb.blob(Vector3(shaft.x, fork, shaft.z), Vector3(2.4, 1.6, 2.4), gold, 12, 6)
+	# Três pontas farpadas
+	for k in 3:
+		var off := float(k - 1) * half
+		var root_at := Vector3(shaft.x, fork + (1.6 if k != 1 else 0.0), shaft.z) + along * off
+		var tip_y := top - (0.0 if k == 1 else 3.0)
+		var length := tip_y - root_at.y - 4.0
+		mb.cylinder(Transform3D(Basis(), root_at), 0.95, 0.75, length, gold, 10)
+		var head := root_at + Vector3.UP * length
+		mb.cylinder(Transform3D(Basis(), head), 1.3, 0.0, 4.0, gold, 10)
+		# Farpas: duas lâminas abrindo para baixo nos lados da ponta (no plano do tridente)
+		var n := along.cross(Vector3.UP).normalized()
+		for s: float in [-1.0, 1.0]:
+			mb.box(Transform3D(Basis().rotated(n, s * 0.55), head + along * s * 0.9 + Vector3.UP * 0.4), Vector3(0.45, 2.2, 0.35), gold)
+	# Algas da travessa e musgo nas juntas (o SeaReef só aceita o que está debaixo d'água)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 3455
+	for k in 9:
+		var at := Vector3(shaft.x, fork - 0.9, shaft.z) + along * rng.randf_range(-half, half)
+		SeaReef.hang(at, rng.randf_range(2.0, 6.0), rng)
+	SeaReef.moss(Vector3(shaft.x, fork + 1.4, shaft.z), 1.6, rng)
+	for k in 4:
+		SeaReef.moss(Vector3(shaft.x, base.y + 10.0 + k * 12.0 + 0.9, shaft.z) + Vector3(1.8, 0.0, 0.0).rotated(Vector3.UP, rng.randf() * TAU),
+			0.9, rng)
+	var mi := MeshInstance3D.new()
+	mi.name = "GiantTrident"
+	mi.mesh = mb.commit(null, TrackMaterials.sea_bronze("giant_trident", {"patina_amount": 0.5, "groove_spacing": 2.4}))
+	mi.visibility_range_end = VISIBILITY
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	root.add_child(mi)
+	root.set_meta("trident", Vector3(shaft.x, fork, shaft.z))
+	SeaFloor.claim(shaft, half + 3.0, top + 1.0)
+
+
 # ---------------------------------------------------------------------------
 # Peças
 # ---------------------------------------------------------------------------
-## Coluna clássica com base, fuste com êntase e capitel; `broken` corta o fuste (topo irregular).
-static func column(mb: MeshBuilder, base: Vector3, height: float, radius: float, broken := 0.0, color := STONE) -> void:
-	var prof := PackedVector2Array()
+## Coluna jônica: base moldurada, fuste com êntase e caneluras (FLUTES sulcos, facetas lisas: o toon
+## mostra as listras de luz e sombra), equino, as duas volutas enroladas e o ábaco; `broken` corta o
+## fuste com o topo quebrado irregular; `top_moss` = musgo no alto (às vezes).
+static func column(mb: MeshBuilder, base: Vector3, height: float, radius: float, broken := 0.0, color := STONE,
+		top_moss := true) -> void:
 	var shaft := height * (1.0 - broken) if broken > 0.0 else height - radius * 1.4
-	prof.append(Vector2(radius * 1.35, 0.0))
-	prof.append(Vector2(radius * 1.35, radius * 0.35))
-	prof.append(Vector2(radius * 1.15, radius * 0.55))
-	for k in 7:
-		var t := k / 6.0
-		prof.append(Vector2(radius * (1.0 - 0.14 * t + 0.05 * sin(t * PI)), radius * 0.55 + t * (shaft - radius * 0.55)))
-	if broken <= 0.0:
-		prof.append(Vector2(radius * 1.25, shaft + radius * 0.5))
-		prof.append(Vector2(radius * 1.2, shaft + radius * 0.75))
-		prof.append(Vector2(0.0, shaft + radius * 0.75))
-		mb.box(Transform3D(Basis(), base + Vector3.UP * (shaft + radius * 1.05)), Vector3(radius * 2.9, radius * 0.6, radius * 2.9), color)
+	# Base (toro e escócia) até o pé do fuste
+	mb.lathe(Transform3D(Basis(), base), PackedVector2Array([Vector2(radius * 1.35, 0.0), Vector2(radius * 1.35, radius * 0.35),
+		Vector2(radius * 1.15, radius * 0.55), Vector2(radius * 1.0, radius * 0.6), Vector2(0.0, radius * 0.6)]), color, 14)
+	# Fuste canelado: anéis com o raio da êntase, a aresta e o fundo de cada canelura alternando
+	const RINGS := 5
+	var sides := FLUTES * 2
+	var turn := _rng.randf() * TAU
+	var rings: Array[PackedVector3Array] = []
+	for k in RINGS + 1:
+		var t := float(k) / RINGS
+		var y := radius * 0.6 + t * (shaft - radius * 0.6)
+		var r := radius * (1.0 - 0.14 * t + 0.05 * sin(t * PI))
+		var ring := PackedVector3Array()
+		for j in sides:
+			var a := TAU * j / sides + turn
+			var rr := r * (1.0 if j % 2 == 0 else 0.9)
+			# (topo da coluna quebrada: a borda irregular)
+			var yy := y - (_rng.randf_range(0.0, radius * 0.9) if broken > 0.0 and k == RINGS else 0.0)
+			ring.append(base + Vector3(cos(a) * rr, yy, sin(a) * rr))
+		rings.append(ring)
+	for k in RINGS:
+		for j in sides:
+			var j1 := (j + 1) % sides
+			var out := Vector3(cos(TAU * (j + 0.5) / sides + turn), 0.0, sin(TAU * (j + 0.5) / sides + turn))
+			mb.quad(rings[k][j], rings[k][j1], rings[k + 1][j1], rings[k + 1][j], color, out)
+	if broken > 0.0:
+		var c := base + Vector3.UP * (shaft - radius * 0.5)
+		for j in sides:
+			mb.tri(rings[RINGS][j], rings[RINGS][(j + 1) % sides], c, color * 0.92, Vector3.UP)
 	else:
-		prof.append(Vector2(0.0, shaft))
-	mb.lathe(Transform3D(Basis(), base), prof, color, 14)
+		# Equino, as volutas (dois rolos de lado a lado sob o ábaco) e o ábaco
+		mb.lathe(Transform3D(Basis(), base), PackedVector2Array([Vector2(radius * 0.9, shaft), Vector2(radius * 1.25, shaft + radius * 0.5),
+			Vector2(radius * 1.2, shaft + radius * 0.75), Vector2(0.0, shaft + radius * 0.75)]), color, 14)
+		var roll := Basis(Vector3.RIGHT, PI * 0.5).rotated(Vector3.UP, turn)
+		var across := Vector3(cos(turn), 0.0, -sin(turn))
+		for side: float in [-1.0, 1.0]:
+			var at := base + across * side * radius * 1.3 + Vector3.UP * (shaft + radius * 0.55) - roll.y * radius * 1.25
+			mb.cylinder(Transform3D(roll, at), radius * 0.36, radius * 0.36, radius * 2.5, color * 0.95, 10)
+		mb.box(Transform3D(Basis(Vector3.UP, -turn), base + Vector3.UP * (shaft + radius * 1.05)), Vector3(radius * 2.9, radius * 0.6, radius * 2.9),
+			color)
 	# Corais no pé e musgo no alto (só debaixo d'água: o SeaReef ignora o resto)
 	SeaReef.cluster(base, radius * 2.6, _rng, _rng.randi_range(2, 4))
-	if broken <= 0.0 and _rng.randf() < 0.6:
+	if broken <= 0.0 and _rng.randf() < 0.6 and top_moss:
 		SeaReef.moss(base + Vector3.UP * (shaft + radius * 1.35), radius * 1.2, _rng)
 	elif broken > 0.0:
 		SeaReef.moss(base + Vector3.UP * shaft, radius * 1.1, _rng)
@@ -312,9 +427,14 @@ static func banner_material() -> ShaderMaterial:
 
 
 ## Lanterna (globo quente) num suporte.
+## Lanterna: a haste, o anel de bronze embaixo, o globo aceso e a tampa de bronze em cúpula com o
+## botão no alto.
 static func lantern(mb: MeshBuilder, lamps: MeshBuilder, at: Vector3) -> void:
 	mb.cylinder(Transform3D(Basis(), at + Vector3.DOWN * 0.9), 0.08, 0.08, 0.5, STONE_DARK, 6, false)
+	mb.cylinder(Transform3D(Basis(), at + Vector3.DOWN * 0.46), 0.2, 0.26, 0.12, LANTERN_BRONZE, 10)
 	lamps.blob(at, Vector3(0.38, 0.42, 0.38), LANTERN, 8, 5)
+	mb.lathe(Transform3D(Basis(), at + Vector3.UP * 0.3), PackedVector2Array([Vector2(0.44, 0.0), Vector2(0.4, 0.1), Vector2(0.24, 0.26),
+		Vector2(0.06, 0.34), Vector2(0.09, 0.42), Vector2(0.0, 0.48)]), LANTERN_BRONZE, 10)
 
 
 # ---------------------------------------------------------------------------
@@ -373,7 +493,36 @@ static func _temple(track: RaceTrack, mb: MeshBuilder, banners: MeshBuilder, lam
 	mb.tri(lb, rb, apex_b, STONE, -to_track)
 	mb.quad(l, apex, apex_b, lb, STONE_DARK, (basis.y - basis.x).normalized())
 	mb.quad(apex, r, rb, apex_b, STONE_DARK, (basis.y + basis.x).normalized())
-	# Tridente dourado no frontão e estandartes nas colunas da frente
+	# Frontão: a moldura saliente nos três lados, o tímpano recuado e escuro, o tridente dourado em
+	# relevo no meio, os acrotérios (palmetas) no alto e nas pontas e o friso de tríglifos embaixo
+	var out := to_track * 0.6
+	for pair: Array in [[l, apex], [apex, r], [l, r]]:
+		var a: Vector3 = pair[0]
+		var b: Vector3 = pair[1]
+		var along := (b - a).normalized()
+		var up := along.cross(to_track).normalized()
+		if up.y < 0.0:
+			up = -up
+		mb.box(Transform3D(Basis(along, up, along.cross(up)).orthonormalized(), (a + b) * 0.5 + out + up * 0.35),
+			Vector3(a.distance_to(b) + 1.4, 0.8, 1.6), STONE)
+	mb.tri(l + out * 0.2 + basis.x * 1.6 + Vector3.UP * 0.9, r + out * 0.2 - basis.x * 1.6 + Vector3.UP * 0.9,
+		apex + out * 0.2 + Vector3.DOWN * 0.9, STONE_DARK, to_track)
+	var gold := Color(1.0, 0.78, 0.3)
+	var tri_at := base + basis * Vector3(0, top + 2.0 + 1.0, front + 0.75)
+	mb.box(Transform3D(basis, tri_at + Vector3.UP * 1.9), Vector3(0.45, 3.8, 0.3), gold)
+	mb.box(Transform3D(basis, tri_at + Vector3.UP * 3.2), Vector3(3.2, 0.4, 0.3), gold)
+	for tx: float in [-1.4, 0.0, 1.4]:
+		var tip := tri_at + basis.x * tx + Vector3.UP * (4.5 if tx == 0.0 else 4.1)
+		mb.box(Transform3D(basis, tip + Vector3.DOWN * 0.55), Vector3(0.35, 1.3, 0.3), gold)
+		mb.box(Transform3D(basis.rotated(to_track, PI * 0.25), tip + Vector3.UP * 0.2), Vector3(0.6, 0.6, 0.3), gold)
+	for at: Vector3 in [apex + Vector3.UP * 0.9, l + Vector3.UP * 0.9, r + Vector3.UP * 0.9]:
+		mb.box(Transform3D(basis.rotated(to_track, PI * 0.25), at + out), Vector3(1.6, 1.6, 0.5), STONE)
+		mb.box(Transform3D(basis, at + out + Vector3.UP * 1.1), Vector3(0.5, 1.6, 0.5), gold)
+	for t in 16:
+		var tx := -width * 0.5 + 1.4 + t * (width - 2.8) / 15.0
+		mb.box(Transform3D(basis, base + basis * Vector3(tx, top + 1.0, front + 0.15)), Vector3(0.9, 1.6, 0.3),
+			STONE_DARK if t % 2 == 0 else STONE)
+	# Estandartes nas colunas da frente
 	add_banner(banners, base + basis * Vector3(-width * 0.5 + 6.0, floor_y + col_h - 1.0, depth * 0.5 - 0.6), basis.x, to_track, 2.4, 7.0)
 	add_banner(banners, base + basis * Vector3(width * 0.5 - 6.0, floor_y + col_h - 1.0, depth * 0.5 - 0.6), basis.x, to_track, 2.4, 7.0)
 	# Lanternas na escadaria
@@ -428,8 +577,9 @@ static func _avenue(track: RaceTrack, mb: MeshBuilder, banners: MeshBuilder, rng
 			prev_ok = ok
 
 
-## Portal de Atlântida: dois pilares maciços atrás das barreiras e um arco sobre a pista (vão livre
-## de PORTAL_CLEAR m), com estandartes e lanternas.
+## Portal de Atlântida: dois pilares maciços atrás das barreiras (com a base em degrau, pilastras e o
+## capitel), um arco sobre a pista (vão livre de PORTAL_CLEAR m) de aduelas alternando pedra e tijolo,
+## a pedra de fecho com o tridente dourado em relevo, a cornija no alto, estandartes e lanternas.
 static func _portal(track: RaceTrack, mb: MeshBuilder, banners: MeshBuilder, lamps: MeshBuilder) -> void:
 	var p := track.path
 	var i := p.index_at(PORTAL_S)
@@ -449,6 +599,13 @@ static func _portal(track: RaceTrack, mb: MeshBuilder, banners: MeshBuilder, lam
 		var h := f.origin.y + top + 4.0 - ground
 		mb.box(Transform3D(basis, Vector3(c.x, ground + h * 0.5, c.z)), Vector3(pillar.x, h, pillar.z), STONE)
 		mb.box(Transform3D(basis, Vector3(c.x, f.origin.y + top + 4.6, c.z)), Vector3(pillar.x + 1.2, 1.2, pillar.z + 1.2), STONE_DARK)
+		# Base em degrau e pilastras nas faces da frente e de trás, com o capitel
+		mb.box(Transform3D(basis, Vector3(c.x, f.origin.y + 1.0, c.z)), Vector3(pillar.x + 1.4, 2.0, pillar.z + 1.4), STONE_DARK)
+		for fz: float in [-1.0, 1.0]:
+			var face := Vector3(c.x, 0.0, c.z) + z * fz * (pillar.z * 0.5 + 0.2)
+			var ph := f.origin.y + top + 3.4
+			mb.box(Transform3D(basis, Vector3(face.x, (f.origin.y + 2.0 + ph) * 0.5, face.z)), Vector3(2.2, ph - f.origin.y - 2.0, 0.5), STONE)
+			mb.box(Transform3D(basis, Vector3(face.x, ph + 0.3, face.z) + z * fz * 0.15), Vector3(3.0, 0.6, 0.8), STONE_DARK)
 		add_banner(banners, c - x * side * (pillar.x * 0.5 + 0.08) + Vector3.UP * (top - 1.0), z, -x * side, 2.6, 9.0)
 		lantern(mb, lamps, c - x * side * (pillar.x * 0.5 + 0.6) + z * 2.2 + Vector3.UP * 5.0)
 	# Arco: anel de pedra entre os pilares
@@ -464,13 +621,27 @@ static func _portal(track: RaceTrack, mb: MeshBuilder, banners: MeshBuilder, lam
 		var p1 := mid + x * (cos(a1) * r_in) + Vector3.UP * (spring + sin(a1) * r_in * 0.42)
 		var seg := p1 - p0
 		var b := Basis(seg.normalized(), seg.normalized().cross(z).normalized() * -1.0, z).orthonormalized()
-		mb.box(Transform3D(b, (p0 + p1) * 0.5 + b.y * 1.6), Vector3(seg.length() + 0.3, 3.2, pillar.z - 0.6), STONE)
-	# Pedra de fecho com o tridente (estandarte no meio, virado para quem chega)
+		# (aduelas alternando pedra clara e tijolo, como nos aquedutos)
+		mb.box(Transform3D(b, (p0 + p1) * 0.5 + b.y * 1.6), Vector3(seg.length() + 0.3, 3.2, pillar.z - 0.6), STONE if k % 2 == 0 else BRICK)
+	# Pedra de fecho saliente com o tridente dourado em relevo nas duas faces, cornija por cima
+	var key := mid + Vector3.UP * (spring + r_in * 0.42 + 1.6)
+	mb.box(Transform3D(basis, key), Vector3(2.6, 4.4, pillar.z + 0.4), STONE)
+	var gold := Color(1.0, 0.78, 0.3)
+	for fz: float in [-1.0, 1.0]:
+		var face := key + z * fz * (pillar.z * 0.5 + 0.3)
+		mb.box(Transform3D(basis, face + Vector3.DOWN * 0.4), Vector3(0.22, 2.6, 0.2), gold)
+		mb.box(Transform3D(basis, face + Vector3.UP * 0.55), Vector3(1.5, 0.22, 0.2), gold)
+		for tx: float in [-0.65, 0.0, 0.65]:
+			mb.box(Transform3D(basis, face + x * tx + Vector3.UP * (1.05 if tx == 0.0 else 0.95)), Vector3(0.18, 0.8 if tx == 0.0 else 0.6, 0.2), gold)
+			mb.box(Transform3D(basis.rotated(z, PI * 0.25), face + x * tx + Vector3.UP * (1.55 if tx == 0.0 else 1.35)), Vector3(0.32, 0.32, 0.2), gold)
+	mb.box(Transform3D(basis, mid + Vector3.UP * (spring + r_in * 0.42 + 4.1)), Vector3(span + pillar.x * 2.0 + 2.0, 0.9, pillar.z + 1.0), STONE_DARK)
+	# Estandarte do tridente no meio, virado para quem chega
 	add_banner(banners, mid + Vector3.UP * (spring + r_in * 0.42 - 0.2) - z * 2.9, x, -z, 3.0, 5.0)
 
 
-## Muralha do anfiteatro: atrás das arquibancadas do lado de dentro da reta, dois andares de arcos.
-static func _amphitheater_wall(track: RaceTrack, mb: MeshBuilder, banners: MeshBuilder, lamps: MeshBuilder) -> void:
+## Muralha do anfiteatro: atrás das arquibancadas do lado de dentro da reta, dois andares de arcos, com
+## estátuas (Poseidon e a deusa, alternando) em pedestais no alto, uma a cada dois trechos.
+static func _amphitheater_wall(track: RaceTrack, mb: MeshBuilder, banners: MeshBuilder, lamps: MeshBuilder, statues: Array) -> void:
 	var p := track.path
 	for f in track.layout.features:
 		if f == null or f.kind != TrackFeature.Kind.GRANDSTAND or not (f.s_start < 100.0 and f.s_start > -400.0):
@@ -498,6 +669,14 @@ static func _amphitheater_wall(track: RaceTrack, mb: MeshBuilder, banners: MeshB
 					var c := (a + b) * 0.5 + Vector3.UP * (lift + 20.0) - p.lefts[ia] * side * 1.0
 					add_banner(banners, c, b - a, -p.lefts[ia] * side, 2.6, 8.0)
 					lantern(mb, lamps, c + (b - a).normalized() * 6.0 - p.lefts[ia] * side * 0.8 + Vector3.DOWN * 9.0)
+				else:
+					# Estátua no alto, num pedestal sobre a cornija, virada para a pista
+					var ped := (a + b) * 0.5 + Vector3.UP * (lift + 21.0)
+					mb.box(Transform3D(Basis(), ped + Vector3.UP * 0.6), Vector3(2.4, 1.2, 2.4), STONE_DARK)
+					var face := -p.lefts[ia] * side
+					var model: String = "poseidon_standing" if (k / 2) % 2 == 0 else "goddess_head"
+					var sc := 0.42 if model == "poseidon_standing" else 0.55
+					statues.append([model, Transform3D(Basis.looking_at(-face).scaled(Vector3.ONE * sc), ped + Vector3.UP * 1.2)])
 
 
 # ---------------------------------------------------------------------------
@@ -533,7 +712,7 @@ static func _free_spot(track: RaceTrack, rng: RandomNumberGenerator, reach: floa
 	return Vector3.INF
 
 
-static func _background(track: RaceTrack, out: Dictionary, rng: RandomNumberGenerator, statues: Array) -> void:
+static func _background(track: RaceTrack, out: Dictionary, rng: RandomNumberGenerator, statues: Array, spots: Dictionary) -> void:
 	# Prédios em ruínas (blocos com arcos), torres, grupos de colunas e aquedutos
 	for n in 70:
 		var pos := _free_spot(track, rng, 520.0, 40.0)
@@ -546,12 +725,16 @@ static func _background(track: RaceTrack, out: Dictionary, rng: RandomNumberGene
 			0:
 				_ruined_building(parts[0], parts[1], parts[2], pos, basis, rng)
 				SeaFloor.claim(pos, 24.0, pos.y + 26.0)
+				spots.get_or_add("building", []).append(pos)
 			1:
 				_tower(parts[0], parts[1], pos, rng)
 				SeaFloor.claim(pos, 11.0, pos.y + 40.0)
+				spots.get_or_add("tower", []).append(pos)
 			2:
 				for c in rng.randi_range(4, 9):
 					var at := pos + basis * Vector3(rng.randf_range(-14, 14), 0.0, rng.randf_range(-14, 14))
+					# (cada coluna no chão do seu lugar, um pouco enterrada: nas dunas elas flutuavam)
+					at.y = SeaFloor.ground(track, at.x, at.z) - 0.3
 					column(parts[0], at, rng.randf_range(9.0, 16.0), rng.randf_range(0.7, 1.1), rng.randf_range(0.2, 0.8) if rng.randf() < 0.5 else 0.0)
 				SeaFloor.claim(pos, 18.0, pos.y + 17.0)
 			3:
@@ -584,6 +767,28 @@ static func _ruined_building(mb: MeshBuilder, lamps: MeshBuilder, banners: MeshB
 		var b: Vector3 = pos + basis * (corners[(k + 1) % 4] * 0.5) + Vector3.UP * 1.6
 		var top := h * (0.55 if k == 2 else 1.0)
 		arcade(mb, a, b, 0.0, top, maxi(int(a.distance_to(b) / 7.0), 2), top * 0.3, 1.4)
+	# Pedaços do telhado caído dentro, blocos soltos no chão em volta e, às vezes, a escadaria e um
+	# frontão quebrado na frente
+	for k in rng.randi_range(3, 6):
+		var at := pos + basis * Vector3(rng.randf_range(-w, w) * 0.4, 0.0, rng.randf_range(-d, d) * 0.4)
+		var tilt := Basis(Vector3(rng.randf() - 0.5, 0.0, rng.randf() - 0.5).normalized(), rng.randf_range(0.2, 0.7))
+		mb.box(Transform3D(basis * tilt, at + Vector3.UP * 2.2), Vector3(rng.randf_range(3.0, 6.0), 0.8, rng.randf_range(2.0, 4.0)), STONE)
+	for k in rng.randi_range(4, 8):
+		var a := rng.randf() * TAU
+		var at := pos + Vector3(cos(a) * (w * 0.6 + rng.randf_range(1.0, 5.0)), 0.0, sin(a) * (d * 0.6 + rng.randf_range(1.0, 5.0)))
+		var sz := rng.randf_range(0.8, 1.8)
+		mb.box(Transform3D(Basis(Vector3.UP, rng.randf() * TAU) * Basis(Vector3.RIGHT, rng.randf_range(-0.3, 0.3)), at + Vector3.UP * sz * 0.4),
+			Vector3(sz * 1.6, sz, sz), STONE_DARK if k % 2 == 0 else STONE)
+	if rng.randf() < 0.55:
+		var front := pos + basis * Vector3(0, 0, d * 0.5)
+		for k in 3:
+			mb.box(Transform3D(basis, front + basis * Vector3(0, 0.3 + k * 0.6, 1.6 - k * 0.8)), Vector3(w * 0.5 - k * 1.2, 0.6, 1.6), STONE_DARK)
+		# Frontão quebrado: metade do triângulo sobre a parede da frente
+		var apex := pos + basis * Vector3(0, h + 1.6 + w * 0.12, d * 0.5)
+		var l := pos + basis * Vector3(-w * 0.5, h + 1.6, d * 0.5)
+		var m := pos + basis * Vector3(0, h + 1.6, d * 0.5)
+		mb.tri(l, m, apex, STONE, basis.z)
+		mb.tri(l, apex, m, STONE_DARK, -basis.z)
 	if rng.randf() < 0.6:
 		var c := pos + basis * Vector3(0, 0, d * 0.5 + 0.8) + Vector3.UP * (h - 0.5)
 		add_banner(banners, c, basis.x, basis.z, 2.4, 6.5)
@@ -591,15 +796,37 @@ static func _ruined_building(mb: MeshBuilder, lamps: MeshBuilder, banners: MeshB
 		lantern(mb, lamps, pos + basis * Vector3(w * 0.5 + 0.9, 0, d * 0.5 + 0.9) + Vector3.UP * (h * 0.5))
 
 
+## Torre redonda em ruínas: base em talude, o corpo com faixas de pedra (cornijas) a cada andar,
+## janelas em arco escuras em volta, as ameias com algumas faltando, blocos caídos no pé e a lanterna.
 static func _tower(mb: MeshBuilder, lamps: MeshBuilder, pos: Vector3, rng: RandomNumberGenerator) -> void:
 	var r := rng.randf_range(5.0, 9.0)
 	var h := rng.randf_range(22.0, 38.0)
 	mb.cylinder(Transform3D(Basis(), pos + Vector3.DOWN * 2.0), r * 1.15, r, h * 0.3, STONE_DARK, 16)
 	mb.cylinder(Transform3D(Basis(), pos + Vector3.UP * (h * 0.3 - 2.0)), r, r * 0.9, h * 0.7, STONE, 16)
-	# Ameias
+	# Cornijas a cada andar e as janelas em arco (a abertura escura rente à parede, com o arco por cima)
+	var floors := int(h / 8.0)
+	for f in range(1, floors):
+		var y := h * 0.3 - 2.0 + f * (h * 0.7) / floors
+		var rr := lerpf(r, r * 0.9, float(f) / floors)
+		mb.cylinder(Transform3D(Basis(), pos + Vector3.UP * (y - 0.3)), rr + 0.45, rr + 0.45, 0.6, STONE_DARK, 16)
+		for k in 4:
+			var a := TAU * (k + 0.5 * (f % 2)) / 4.0
+			var out := Vector3(cos(a), 0.0, sin(a))
+			var at := pos + out * (rr + 0.05) + Vector3.UP * (y + 2.6)
+			var b := Basis.looking_at(out)
+			mb.box(Transform3D(b, at), Vector3(1.4, 2.6, 0.2), Color(0.05, 0.1, 0.14))
+			mb.box(Transform3D(b, at + Vector3.UP * 1.55 + out * 0.1), Vector3(2.0, 0.4, 0.4), STONE_DARK)
+	# Ameias (algumas faltando) e blocos caídos no pé
 	for k in 10:
+		if rng.randf() < 0.25:
+			continue
 		var a := TAU * k / 10.0
 		mb.box(Transform3D(Basis(Vector3.UP, -a), pos + Vector3(cos(a) * r * 0.85, h - 1.2, sin(a) * r * 0.85)), Vector3(1.4, 2.0, 1.0), STONE)
+	for k in rng.randi_range(3, 6):
+		var a := rng.randf() * TAU
+		var at := pos + Vector3(cos(a), 0.0, sin(a)) * (r * 1.3 + rng.randf_range(0.5, 4.0))
+		mb.box(Transform3D(Basis(Vector3.UP, rng.randf() * TAU) * Basis(Vector3.FORWARD, rng.randf_range(-0.4, 0.4)), at + Vector3.UP * 0.5),
+			Vector3(1.4, 1.0, 1.0), STONE)
 	lantern(mb, lamps, pos + Vector3(r * 0.95, h * 0.62, 0.0))
 
 

@@ -109,7 +109,10 @@ void fragment() {
 	col = mix(col, vein_color * (0.8 + 0.3 * fine), vein * 0.5 * mix(0.4, 1.0, near));
 	// Pontinhos (líquen e esponjas) em colônias: cor viva por célula
 	vec2 cid = floor(sp * 2.2);
-	float hsh = fract(sin(dot(cid, vec2(12.9898, 78.233))) * 43758.5453);
+	// (hash sem seno: longe da origem o fract(sin(...)) saía em faixas retas)
+	vec3 h3 = fract(vec3(cid.xyx) * 0.1031);
+	h3 += dot(h3, h3.yzx + 33.33);
+	float hsh = fract((h3.x + h3.y) * h3.z);
 	float speck = (1.0 - smoothstep(0.14, 0.3, length(fract(sp * 2.2) - 0.5 - (vec2(hsh, fract(hsh * 7.3)) - 0.5) * 0.4)))
 		* step(0.42, hsh) * near;
 	float colony = smoothstep(0.55, 0.7, tri(noise_tex, wpos + vec3(5.0, 91.0, 47.0), b, 0.035));
@@ -142,6 +145,8 @@ void fragment() {
 	NORMAL_MAP = texture(normal_tex, uv * 0.11).rgb;
 	NORMAL_MAP_DEPTH = normal_strength * mix(0.35, 1.0, near);
 	ROUGHNESS = 0.0;
+	// (sem reflexo do céu: com rugosidade 0 ele virava um espelho)
+	SPECULAR = 0.0;
 	if (wet) {
 		EMISSION = sea_caustic_light(wpos, n, dist, TIME) * col * 0.6 * mix(1.0, 0.4, smoothstep(12.0, 45.0, depth));
 	}

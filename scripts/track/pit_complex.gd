@@ -2,7 +2,9 @@ class_name PitComplex
 extends RefCounted
 ## Prédio dos boxes (garagens por equipe com número, pneus e bancadas; escritórios nas pontas;
 ## andar envidraçado, marquise e faixa de anúncios no topo), cabines das equipes no muro,
-## paddock com motorhomes. Os módulos seguem a curvatura da pista (um por garagem).
+## paddock com motorhomes. Os módulos seguem a curvatura da pista (um por garagem). Na pista no
+## fundo do mar (layout.undersea) o andar de cima vira uma colunata de Atlântida (colunas de mármore
+## com base e capitel, a sala na sombra atrás e o friso dourado em cima) no lugar do vidro.
 
 const DEPTH := 20.0
 const GROUND_H := 5.5
@@ -13,6 +15,8 @@ const GREY := Color(0.62, 0.64, 0.7)
 const FLOOR := Color(0.78, 0.79, 0.82)
 const GLASS := Color(0.45, 0.68, 0.9)
 const TYRE := Color(0.1, 0.1, 0.12)
+const GOLD := Color(1.0, 0.78, 0.3)
+const SHADE := Color(0.06, 0.15, 0.2)
 
 
 static func build(track: RaceTrack, parent: Node3D) -> void:
@@ -58,7 +62,7 @@ static func build(track: RaceTrack, parent: Node3D) -> void:
 			_garage_label(root, xf, module_w, g, team)
 		else:
 			_office(structure, glass, collision, xf, module_w)
-		_upper_floor(structure, glass, ads, xf, module_w, m)
+		_upper_floor(structure, glass, ads, xf, module_w, m, lay.undersea)
 		# Bandeirolas sob a marquise e mastro com a bandeira da equipe no telhado
 		canopy_points.append(xf * Vector3(-CANOPY + 0.2, GROUND_H + UPPER_H - 0.1, -module_w * 0.5))
 		if is_garage and g % 2 == 0:
@@ -160,12 +164,25 @@ static func _office(mb: MeshBuilder, glass: MeshBuilder, col: MeshBuilder, xf: T
 		xf * Vector3(0.28, 4.3, w * 0.45), xf * Vector3(0.28, 4.3, -w * 0.45), GLASS, -xf.basis.x)
 
 
-static func _upper_floor(mb: MeshBuilder, glass: MeshBuilder, ads: MeshBuilder, xf: Transform3D, w: float, m: int) -> void:
+static func _upper_floor(mb: MeshBuilder, glass: MeshBuilder, ads: MeshBuilder, xf: Transform3D, w: float, m: int,
+		undersea := false) -> void:
 	var top := GROUND_H + UPPER_H
-	# Volume do andar de cima com fachada de vidro recuada
-	mb.box(_at(xf, DEPTH * 0.5 + 0.8, GROUND_H + UPPER_H * 0.5, 0), Vector3(DEPTH - 1.6, UPPER_H, w), WHITE)
-	glass.quad(xf * Vector3(0.78, GROUND_H + 0.3, -w * 0.5), xf * Vector3(0.78, GROUND_H + 0.3, w * 0.5),
-		xf * Vector3(0.78, top - 0.3, w * 0.5), xf * Vector3(0.78, top - 0.3, -w * 0.5), GLASS, -xf.basis.x)
+	if undersea:
+		# Colunata: a sala recuada na sombra, quatro colunas por módulo e o friso dourado
+		mb.box(_at(xf, DEPTH * 0.5 + 1.8, GROUND_H + UPPER_H * 0.5, 0), Vector3(DEPTH - 3.6, UPPER_H, w), WHITE)
+		mb.quad(xf * Vector3(1.78, GROUND_H, -w * 0.5), xf * Vector3(1.78, GROUND_H, w * 0.5), xf * Vector3(1.78, top, w * 0.5),
+			xf * Vector3(1.78, top, -w * 0.5), SHADE, -xf.basis.x)
+		for c in 4:
+			var z := -w * 0.5 + (c + 0.5) * w / 4.0
+			mb.box(_at(xf, 0.7, GROUND_H + 0.15, z), Vector3(0.95, 0.3, 0.95), WHITE)
+			mb.cylinder(_at(xf, 0.7, GROUND_H + 0.3, z), 0.36, 0.3, UPPER_H - 0.75, WHITE, 12)
+			mb.box(_at(xf, 0.7, top - 0.3, z), Vector3(1.0, 0.3, 1.0), WHITE)
+		mb.box(_at(xf, 0.7, top - 0.08, 0), Vector3(1.1, 0.16, w + 0.02), GOLD)
+	else:
+		# Volume do andar de cima com fachada de vidro recuada
+		mb.box(_at(xf, DEPTH * 0.5 + 0.8, GROUND_H + UPPER_H * 0.5, 0), Vector3(DEPTH - 1.6, UPPER_H, w), WHITE)
+		glass.quad(xf * Vector3(0.78, GROUND_H + 0.3, -w * 0.5), xf * Vector3(0.78, GROUND_H + 0.3, w * 0.5),
+			xf * Vector3(0.78, top - 0.3, w * 0.5), xf * Vector3(0.78, top - 0.3, -w * 0.5), GLASS, -xf.basis.x)
 	# Laje/marquise avançando sobre a pista dos boxes
 	mb.box(_at(xf, DEPTH * 0.5 - CANOPY * 0.5, top + 0.3, 0), Vector3(DEPTH + CANOPY, 0.6, w + 0.02), WHITE, GREY)
 	# Faixa de anúncio no alto, voltada para a pista (texto legível de quem passa)

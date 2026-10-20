@@ -6,7 +6,7 @@ render_mode blend_add, unshaded, depth_draw_never, cull_back, shadows_disabled, 
 
 #include "res://shaders/track/caustics.gdshaderinc"
 
-uniform float amount = 0.16;
+uniform float amount = 0.11;
 
 varying vec3 wpos;
 

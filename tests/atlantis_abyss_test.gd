@@ -2,10 +2,11 @@ extends SceneTree
 ## Teste da Atlantis Abyss, a pista no fundo do mar (sem janela):
 ##   godot --headless --path . -s res://tests/atlantis_abyss_test.gd
 ## Gera a pista e confere: comprimento, que ela desce abaixo e sobe acima da linha d'água (Portão de
-## Poseidon), sem cruzamentos, pisos (raycast) nas retas, no túnel, na subida, no trecho emerso, no
-## grid e nos 14 boxes (MAX_GRID), barreira dos dois lados em TODA a volta (ninguém cai: sem vigia de
-## quedas), laje de colisão sob os pisos, nada com colisão sobre a pista, túnel de cristal no lugar,
-## o mundo do mar gerado (leito, aqueduto, ruínas, Portão com cachoeiras, água e bichos), o cânion na
+## Poseidon), sem cruzamentos, a Chicane do Tridente (direita-esquerda, escape largo, o tridente
+## gigante ao lado), pisos (raycast) nas retas, no túnel, na subida, no trecho emerso, no grid e nos
+## 14 boxes (MAX_GRID), barreira dos dois lados em TODA a volta (ninguém cai: sem vigia de quedas),
+## laje de colisão sob os pisos, nada com colisão sobre a pista, túnel de cristal no lugar, o mundo do
+## mar gerado (leito, aqueduto, ruínas, Portão com cachoeiras, água e bichos), o cânion na
 ## maior parte da pista submersa (paredes fora do tubo com a inclinação variando, luzes coloridas,
 ## ruínas e pontes de aqueduto fora do tubo) virando montanhas acima do mar no trecho emerso (com as
 ## cachoeiras grandes e largas fora da laje, os aquedutos, os cipós e as árvores debruçadas por cima
@@ -60,6 +61,13 @@ func _hit(from: Vector3, to: Vector3) -> Dictionary:
 	return track.get_world_3d().direct_space_state.intersect_ray(PhysicsRayQueryParameters3D.create(from, to))
 
 
+## Quanto a pista vira (graus, + para a esquerda) entre s0 e s1.
+func _turn(p: TrackPath, s0: float, s1: float) -> float:
+	var a := p.tangents[p.index_at(s0)]
+	var b := p.tangents[p.index_at(s1)]
+	return rad_to_deg(Vector2(a.x, a.z).angle_to(Vector2(b.x, b.z))) * -1.0
+
+
 func _surface_at(pos: Vector3) -> int:
 	var hit := _hit(pos + Vector3.UP * 3.0, pos - Vector3.UP * 3.0)
 	return -1 if hit.is_empty() else TrackSurface.of_body(hit.collider)
@@ -72,7 +80,7 @@ func _run() -> void:
 	var p := track.path
 	var water := track.layout.water_level
 	print("Comprimento: %.0f m, %d amostras" % [p.length, p.size()])
-	_check(absf(p.length - 4732.0) < 40.0, "comprimento perto dos 4.732 m do traçado")
+	_check(absf(p.length - 4762.0) < 40.0, "comprimento perto dos 4.762 m do traçado")
 	var lo := INF
 	var hi := -INF
 	var above := 0.0
@@ -134,6 +142,18 @@ func _run() -> void:
 	for n in ["SeaFloor", "Causeway", "SeaTube", "Tunnel", "Canyon", "Ruins", "Vents", "PoseidonGate", "SeaLife", "Reef", "SeaWorld"]:
 		_check(gen.find_child(n, false, false) != null, "gerado: %s" % n)
 	_check(track.in_tunnel(p.index_at(1200.0)) and not track.in_tunnel(p.index_at(1500.0)), "túnel de cristal no lugar")
+	# Chicane do Tridente no fim do abismo: direita e logo depois esquerda (~50° cada), com escape mais
+	# largo dos dois lados
+	var right := _turn(p, 3425.0, 3458.0)
+	var left := _turn(p, 3459.0, 3492.0)
+	_check(right < -40.0 and left > 40.0, "Chicane do Tridente: direita %.0f° e esquerda %.0f°" % [right, left])
+	var ci := p.index_at(3458.0)
+	_check(track.barrier[0][ci] >= 4.0 and track.barrier[1][ci] >= 4.0, "escape largo na Chicane do Tridente (%.1f e %.1f m)" %
+		[track.barrier[0][ci], track.barrier[1][ci]])
+	# O tridente gigante ao lado dela: fora do tubo e da laje, debaixo d'água
+	var trident: Vector3 = gen.get_node("Ruins").get_meta("trident", Vector3.INF)
+	_check(trident != Vector3.INF and not SeaTube.blocked(track, trident, 3.0) and trident.y < water - 10.0,
+		"tridente gigante ao lado da chicane, fora do tubo")
 	# Tubo de vidro: toda a pista debaixo d'água fica dentro dele ou do túnel (os carros no seco)
 	var wet := 0
 	var uncovered := 0

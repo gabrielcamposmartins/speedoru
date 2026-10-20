@@ -1,7 +1,8 @@
 """Gera a Atlantis Abyss (pista fantasia no fundo do mar, Atlântida) a partir de uma lista de trechos:
 retas e arcos, cada um com a altura no fim (mesmo método da Sky Aerobase). A pista corre entre as
 ruínas, passa por um túnel de cristal, sobe por um aqueduto até SAIR DA ÁGUA (Portão de Poseidon,
-acima de WATER_LEVEL), mergulha de volta e cruza o abismo sobre arcos.
+acima de WATER_LEVEL), mergulha de volta e cruza o abismo sobre arcos, freando no fim dele para a
+Chicane do Tridente (direita-esquerda).
 
 Saída (assets/track/atlantis_abyss/):
   atlantis_abyss_centerline.csv  x, y (leste/norte, m), meia-largura direita/esquerda, elevação (m)
@@ -58,6 +59,9 @@ TRACK = [
     ("S", 220.0, 3.0, "Reta do Abismo"),
     ("C", -22.0, 380.0, 2.0, "Esse do Abismo (dir.)"),
     ("C", 22.0, 380.0, 2.0, "Esse do Abismo (esq.)"),
+    ("C", -50.0, 22.0, 2.0, "Chicane do Tridente (dir.)", 6.8),
+    ("S", 15.0, 2.0, "Meio da Chicane do Tridente", 6.8),
+    ("C", 50.0, 22.0, 2.0, "Chicane do Tridente (esq.)", 6.8),
     ("S?", None, 2.0, "Ponte do Abismo"),
     ("C", 70.0, 190.0, 1.0, "Curva da Baleia"),
     ("S?", None, 0.0, "Reta dos Tritões"),
@@ -84,7 +88,8 @@ def main():
         print("  s %6.0f-%6.0f  z %5.1f  %-28s %s" % (prev, e[0], e[1], e[2], desc))
         prev = e[0]
     for seg in segs:
-        if seg[0].startswith("S") and seg[1] < 40.0:
+        # (o miolo de uma chicane é curto de propósito)
+        if seg[0].startswith("S") and seg[1] < 40.0 and "Chicane" not in seg[3]:
             print("AVISO: reta '%s' curta demais (%.0f m)" % (seg[3], seg[1]))
     dense, total = resample(pts[:-1], 1.0)
     n = len(dense)

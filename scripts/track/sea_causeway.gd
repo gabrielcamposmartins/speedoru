@@ -7,8 +7,9 @@ extends RefCounted
 ##  * no resto, arcos de aqueduto: pilares a cada PIER_SPACING m e arcos entre eles, em andares de
 ##    até TIER m (na fossa do abismo e na subida até o Portão de Poseidon ficam dois ou três), com
 ##    pilastras salientes nas faces dos pilares (impostas em cada andar), aduelas de pedra e tijolo
-##    alternados em volta dos arcos com a pedra de fecho, cornijas entre os andares, lanternas quentes num pilar a cada LANTERN_EVERY e estandartes do
-##    tridente num a cada BANNER_EVERY.
+##    alternados em volta dos arcos com a pedra de fecho (no andar de cima, com um medalhão dourado do
+##    tridente), cornijas entre os andares, lanternas quentes num pilar a cada LANTERN_EVERY e
+##    estandartes do tridente num a cada BANNER_EVERY.
 ## Algas penduradas na cornija e no alto dos arcos e colônias de coral na base dos pilares (SeaReef).
 ## Só visual (a colisão é a DeckFloor do TrackRoad); em pedaços de CHUNK amostras para o recorte.
 
@@ -27,6 +28,7 @@ const CHUNK := 150
 const STONE := Color(0.84, 0.81, 0.74)
 const STONE_DARK := Color(0.64, 0.63, 0.6)
 const LED := Color(0.25, 0.95, 1.0)
+const GOLD := Color(1.0, 0.78, 0.3)
 const VISIBILITY := 1500.0
 
 ## Algas e corais presos na laje e nos pilares (SeaReef).
@@ -285,6 +287,17 @@ static func _arch_span(track: RaceTrack, mb: MeshBuilder, edges: Array, ground: 
 					Vector3(along.length() + 0.06, BAND, 0.7), STONE if u % 2 == 0 else AtlantisRuins.BRICK)
 			var key := p.frame_at(mid_s, side * (e_c + 0.35), spring + rise + BAND * 0.55)
 			mb.box(Transform3D(key.basis, key.origin), Vector3(1.0, BAND * 1.7, 1.3), STONE)
+			if t == 0:
+				# Medalhão dourado com o tridente na pedra de fecho (virado para fora)
+				var out := p.lefts[ia] * side
+				var disc := Basis(key.basis.z, out, key.basis.z.cross(out)).orthonormalized()
+				var face := key.origin + out * 0.68
+				mb.cylinder(Transform3D(disc, face - out * 0.05), 0.62, 0.62, 0.1, GOLD, 12)
+				var flat := Basis(key.basis.z, Vector3.UP, out).orthonormalized()
+				mb.box(Transform3D(flat, face + out * 0.06 + Vector3.DOWN * 0.08), Vector3(0.08, 0.7, 0.06), STONE_DARK)
+				mb.box(Transform3D(flat, face + out * 0.06 + Vector3.UP * 0.12), Vector3(0.42, 0.07, 0.06), STONE_DARK)
+				for tx: float in [-0.18, 0.0, 0.18]:
+					mb.box(Transform3D(flat, face + out * 0.06 + key.basis.z * tx + Vector3.UP * 0.26), Vector3(0.06, 0.26, 0.06), STONE_DARK)
 		for k in 2:
 			if _rng.randf() < 0.7:
 				var lat := lerpf(-float(edges[1][ia]), float(edges[0][ia]), _rng.randf_range(0.1, 0.9))

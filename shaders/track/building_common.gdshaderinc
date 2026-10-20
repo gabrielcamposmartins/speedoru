@@ -105,5 +105,7 @@ void fragment() {
 	vec3 sea_n = normalize((INV_VIEW_MATRIX * vec4(NORMAL, 0.0)).xyz);
 	ALBEDO = sea_stone_albedo(ALBEDO, world_pos, sea_n);
 	EMISSION = sea_caustic_light(world_pos, sea_n, dist, TIME) * ALBEDO;
+	// (sem reflexo do céu: sem contorno a rugosidade é 0 e a pedra virava um espelho da água)
+	SPECULAR = 0.0;
 #endif
 }

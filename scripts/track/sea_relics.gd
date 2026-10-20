@@ -5,10 +5,15 @@ extends RefCounted
 ##  * naufrágios de galés de Atlântida: casco de tábuas tombado e meio enterrado, com um rombo de
 ##    costelas à mostra, convés com tábuas faltando, aríete de bronze, popa enrolada, mastro (de pé com
 ##    a vela do tridente, ou quebrado com a verga caída na areia), remos e ânforas espalhadas;
-##  * praças afundadas: piso de lajes (algumas faltando, a areia cobrindo as bordas), com um templo
+##  * praças afundadas: piso de lajes em mosaico (estrela de oito pontas em azul-marinho e dourado no
+##    meio, uma faixa azul e uma de terracota em volta; algumas lajes faltando, a areia cobrindo as
+##    bordas), com um templo
 ##    redondo de cúpula meio desabada, uma fonte com estátua ou uma estátua grande no pedestal,
 ##    muretas de casas, escadaria, colunas caídas e lanternas ainda acesas;
-##  * arcos de pedra naturais e pináculos de rocha com corais em cima;
+##  * arcos de pedra naturais (um arco de rocha varrido por uma seção irregular, mais grosso nos pés,
+##    com ruído e camadas) e pináculos de rocha (torres afinando com saliências em camadas e o topo
+##    arredondado), na rocha do cânion (SeaCanyon.material: os estratos, rachaduras e líquens), com
+##    corais, leques e kelp;
 ##  * campos de ânforas com âncoras e, às vezes, um baú de moedas;
 ##  * estátuas gigantes tombadas ou meio enterradas (os .glb do blender/build_atlantis.py);
 ##  * junto do vidro, poças de vida: mariscos gigantes, estrelas-do-mar, ouriços e anêmonas.
@@ -28,13 +33,18 @@ const BRONZE := Color(0.3, 0.5, 0.42)
 const IRON := Color(0.24, 0.21, 0.2)
 const TERRACOTTA := Color(0.68, 0.36, 0.2)
 const GOLD := Color(1.0, 0.78, 0.28)
+## Mosaico das praças: azul-marinho, azul e dourado (cores fortes: a pedra só clareia o que é cinza).
+const MOSAIC_NAVY := Color(0.12, 0.2, 0.52)
+const MOSAIC_BLUE := Color(0.18, 0.46, 0.78)
+const MOSAIC_GOLD := Color(0.92, 0.66, 0.2)
 ## Peças: [nome, peso no sorteio, raio ocupado (m), desnível máximo do chão embaixo (m), distância máxima
 ## além da borda do tubo quando é perto (m)]
 const KINDS := [["wreck", 3.0, 23.0, 6.0, 12.0], ["plaza", 3.0, 21.0, 5.0, 16.0], ["arch", 1.4, 13.0, 8.0, 26.0],
 	["pinnacles", 1.2, 10.0, 10.0, 26.0], ["statue", 1.2, 10.0, 8.0, 20.0], ["amphorae", 1.6, 8.0, 6.0, 20.0]]
-## Estátuas: [modelo, altura total (m, mín e máx)]
-const STATUES := [["goddess_head", Vector2(8.0, 12.0)], ["poseidon_face", Vector2(10.0, 15.0)],
-	["poseidon_seated", Vector2(8.0, 11.0)], ["poseidon_standing", Vector2(9.0, 13.0)]]
+## Estátuas: [modelo, altura total (m, mín e máx), quanto dela fica enterrado (fração, mín e máx)]
+## (o busto da deusa só enterra a base: com mais, sobrava o alto da cabeça parecendo um capacete)
+const STATUES := [["goddess_head", Vector2(8.0, 12.0), Vector2(0.06, 0.16)], ["poseidon_face", Vector2(10.0, 15.0), Vector2(0.28, 0.42)],
+	["poseidon_seated", Vector2(8.0, 11.0), Vector2(0.15, 0.3)], ["poseidon_standing", Vector2(9.0, 13.0), Vector2(0.0, 0.0)]]
 
 static var _wood_mat: Material
 static var _model_boxes := {}
@@ -51,13 +61,23 @@ static func build(track: RaceTrack, parent: Node3D) -> void:
 	var counts := {}
 	var spots := {}
 	var points: Array = []
+	var bag: Array[int] = []
+	var misses := 0
 	for sp: Vector2 in SeaCanyon.open_spans(track):
 		for side: int in [1, -1]:
 			var s := sp.x + rng.randf_range(15.0, 45.0)
 			while s < sp.x + sp.y - 15.0:
-				var kind := _pick(rng)
+				var kind := _pick(rng, bag)
 				var at := _feature(track, kind, s, side, buckets, statues, rng)
-				if at != Vector3.INF:
+				if at == Vector3.INF:
+					# (três vezes sem lugar: vai para o fundo do saco e a próxima tenta)
+					misses += 1
+					if misses >= 3:
+						bag.push_front(bag.pop_back())
+						misses = 0
+				else:
+					bag.pop_back()
+					misses = 0
 					var name: String = KINDS[kind][0]
 					counts[name] = int(counts.get(name, 0)) + 1
 					if not spots.has(name):
@@ -71,6 +91,9 @@ static func build(track: RaceTrack, parent: Node3D) -> void:
 				var pool := _pool(track, s, side, rng)
 				if pool != Vector3.INF:
 					counts["pool"] = int(counts.get("pool", 0)) + 1
+					if not spots.has("pool"):
+						spots["pool"] = []
+					spots["pool"].append(pool)
 					points.append(pool + Vector3.UP * 0.5)
 				s += rng.randf_range(POOL_STEP.x, POOL_STEP.y)
 	for key: Vector2i in buckets:
@@ -81,23 +104,27 @@ static func build(track: RaceTrack, parent: Node3D) -> void:
 	root.set_meta("points", PackedVector3Array(points))
 
 
-static func _pick(rng: RandomNumberGenerator) -> int:
-	var total := 0.0
-	for k: Array in KINDS:
-		total += float(k[1])
-	var r := rng.randf() * total
-	for i in KINDS.size():
-		r -= float(KINDS[i][1])
-		if r <= 0.0:
-			return i
-	return 0
+## A próxima peça de um saco embaralhado com cada uma na proporção do peso (sem sequências longas de
+## uma só); a do fim do saco só sai dele quando consegue lugar (quem não coube tenta no próximo s, e
+## depois de três tentativas vai para o fundo do saco).
+static func _pick(rng: RandomNumberGenerator, bag: Array[int]) -> int:
+	if bag.is_empty():
+		for i in KINDS.size():
+			for n in roundi(float(KINDS[i][1]) * 2.0):
+				bag.append(i)
+		for i in range(bag.size() - 1, 0, -1):
+			var j := rng.randi_range(0, i)
+			var t := bag[i]
+			bag[i] = bag[j]
+			bag[j] = t
+	return bag[bag.size() - 1]
 
 
 static func _bucket(out: Dictionary, pos: Vector3) -> Array:
 	var key := Vector2i(floori(pos.x / BUCKET), floori(pos.z / BUCKET))
 	if not out.has(key):
-		# pedra, madeira (e barro, bronze, ferro), brilho (lanternas, ouro), estandartes
-		out[key] = [MeshBuilder.new(), MeshBuilder.new(), MeshBuilder.new(), MeshBuilder.new()]
+		# pedra, madeira (e barro, bronze, ferro), brilho (lanternas, ouro), estandartes, rocha
+		out[key] = [MeshBuilder.new(), MeshBuilder.new(), MeshBuilder.new(), MeshBuilder.new(), MeshBuilder.new()]
 	return out[key]
 
 
@@ -106,6 +133,15 @@ static func _commit(root: Node3D, key: Vector2i, parts: Array) -> void:
 	var wood: MeshBuilder = parts[1]
 	var lamps: MeshBuilder = parts[2]
 	var banners: MeshBuilder = parts[3]
+	var rock: MeshBuilder = parts[4]
+	if not rock.is_empty():
+		var rmi := MeshInstance3D.new()
+		rmi.name = "Rocks_%d_%d" % [key.x, key.y]
+		rmi.mesh = rock.commit(null, SeaCanyon.material())
+		rmi.visibility_range_end = VISIBILITY
+		rmi.visibility_range_end_margin = 60.0
+		rmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		root.add_child(rmi)
 	if not stone.is_empty() or not lamps.is_empty():
 		var mi := MeshInstance3D.new()
 		mi.name = "Relics_%d_%d" % [key.x, key.y]
@@ -165,9 +201,9 @@ static func _feature(track: RaceTrack, kind: int, s: float, side: int, buckets: 
 			"plaza":
 				_plaza(parts, track, pos, radius, rng, statues)
 			"arch":
-				SeaFloor.claim(pos, radius, _rock_arch(track, pos, rng))
+				SeaFloor.claim(pos, radius, _rock_arch(parts[4], track, pos, rng))
 			"pinnacles":
-				SeaFloor.claim(pos, radius, _pinnacles(track, pos, rng))
+				SeaFloor.claim(pos, radius, _pinnacles(parts[4], track, pos, rng))
 			"statue":
 				SeaFloor.claim(pos, radius, _statue(track, pos, rng, statues))
 			"amphorae":
@@ -222,10 +258,10 @@ static func _wreck(parts: Array, track: RaceTrack, pos: Vector3, rng: RandomNumb
 	var length := rng.randf_range(32.0, 42.0)
 	var beam := length * rng.randf_range(0.18, 0.22)
 	var depth := rng.randf_range(3.4, 4.2)
-	var n := 16
+	var n := 26
 	var breach := 1.0 if rng.randf() < 0.5 else -1.0
 	var gap_a := int(n * rng.randf_range(0.3, 0.45))
-	var gap_b := gap_a + rng.randi_range(3, 5)
+	var gap_b := gap_a + rng.randi_range(5, 8)
 	# Seções ao longo do comprimento: [z, meia boca, quilha, borda]; a popa sobe mais (enrolada)
 	var secs: Array = []
 	for k in n:
@@ -235,8 +271,9 @@ static func _wreck(parts: Array, track: RaceTrack, pos: Vector3, rng: RandomNumb
 		var sheer := depth + 1.5 * pow(absf(2.0 * t - 1.0), 3.0) + (1.6 * (0.15 - t) / 0.15 if t < 0.15 else 0.0)
 		secs.append([(t - 0.5) * length, w, keel, sheer])
 	# Perfil da seção (fração da meia boca, fração da altura), da quilha até a borda
-	var prof: Array[Vector2] = [Vector2(0.0, 0.0), Vector2(0.45, 0.12), Vector2(0.8, 0.35), Vector2(0.97, 0.62),
-		Vector2(1.0, 0.85), Vector2(0.96, 1.0)]
+	# (nove pontos: o bojo arredondado e as fiadas de tábuas finas)
+	var prof: Array[Vector2] = [Vector2(0.0, 0.0), Vector2(0.3, 0.05), Vector2(0.58, 0.16), Vector2(0.8, 0.33),
+		Vector2(0.93, 0.52), Vector2(0.99, 0.7), Vector2(1.0, 0.84), Vector2(0.98, 0.94), Vector2(0.95, 1.0)]
 	var pt := func(sec: Array, r: int, side: float) -> Vector3:
 		var f: Vector2 = prof[r]
 		return Vector3(side * float(sec[1]) * f.x, lerpf(sec[2], sec[3], f.y), float(sec[0]))
@@ -244,13 +281,13 @@ static func _wreck(parts: Array, track: RaceTrack, pos: Vector3, rng: RandomNumb
 	for k in n - 1:
 		for side: float in [1.0, -1.0]:
 			for r in prof.size() - 1:
-				if side == breach and k >= gap_a and k < gap_b and r >= 2:
+				if side == breach and k >= gap_a and k < gap_b and r >= 3 and not (r == 3 and (k == gap_a or k == gap_b - 1)):
 					continue
 				var p00: Vector3 = pt.call(secs[k], r, side)
 				var p01: Vector3 = pt.call(secs[k], r + 1, side)
 				var p10: Vector3 = pt.call(secs[k + 1], r, side)
 				var p11: Vector3 = pt.call(secs[k + 1], r + 1, side)
-				var c := WOOD_DARK if r == 3 else (WOOD_LIGHT if r % 2 == 0 else WOOD)
+				var c := WOOD_DARK if r == 5 else (WOOD_LIGHT if r % 2 == 0 else WOOD)
 				var out := Vector3(side, -0.6 + 0.35 * r, 0.0)
 				hull.quad(p00, p10, p11, p01, c * rng.randf_range(0.9, 1.08), out)
 				hull.quad(p00, p01, p11, p10, WOOD_DARK, -out)
@@ -258,6 +295,14 @@ static func _wreck(parts: Array, track: RaceTrack, pos: Vector3, rng: RandomNumb
 	for k in range(gap_a, gap_b + 1):
 		for r in range(1, prof.size() - 1):
 			_beam(hull, pt.call(secs[k], r, breach), pt.call(secs[k], r + 1, breach), 0.24, WOOD_DARK)
+	# Tábuas quebradas nas bordas do rombo, saindo tortas para dentro dele
+	for k: int in [gap_a, gap_b]:
+		for r in range(3, prof.size() - 1):
+			if rng.randf() < 0.6:
+				var at: Vector3 = pt.call(secs[k], r, breach)
+				var dir := Vector3(breach * rng.randf_range(0.2, 0.6), rng.randf_range(-0.2, 0.3),
+					(1.0 if k == gap_a else -1.0) * rng.randf_range(0.6, 1.0)).normalized()
+				_beam(hull, at, at + dir * rng.randf_range(0.8, 2.0), 0.16, WOOD)
 	# Quilha, convés (tábuas faltando e o buraco sobre o rombo), aríete e a popa enrolada
 	_beam(hull, Vector3(0, -0.1, -length * 0.36), Vector3(0, -0.1, length * 0.36), 0.4, WOOD_DARK)
 	for k in n - 1:
@@ -285,8 +330,8 @@ static func _wreck(parts: Array, track: RaceTrack, pos: Vector3, rng: RandomNumb
 		_beam(hull, prev, q, 0.32, WOOD)
 		prev = q
 	# Remos saindo do lado de cima (o casco tomba para o rombo) e afundando na areia
-	for k in range(3, n - 4, 2):
-		var root: Vector3 = pt.call(secs[k], 4, -breach)
+	for k in range(4, n - 6, 3):
+		var root: Vector3 = pt.call(secs[k], 6, -breach)
 		var dir := Vector3(-breach * 0.75, -0.55, rng.randf_range(-0.25, 0.25)).normalized()
 		var reach := rng.randf_range(2.0, 6.5)
 		_beam(hull, root, root + dir * reach, 0.13, WOOD)
@@ -342,7 +387,8 @@ static func _plaza(parts: Array, track: RaceTrack, center: Vector3, radius: floa
 	var stone: MeshBuilder = parts[0]
 	var lamps: MeshBuilder = parts[2]
 	var r_pave := radius * rng.randf_range(0.6, 0.72)
-	var tile := 1.8
+	# (lajes pequenas: o desenho do mosaico aparece)
+	var tile := 1.25
 	var basis := Basis(Vector3.UP, rng.randf() * TAU)
 	var bury := FastNoiseLite.new()
 	bury.seed = rng.randi()
@@ -359,7 +405,7 @@ static func _plaza(parts: Array, track: RaceTrack, center: Vector3, radius: floa
 			if bury.get_noise_2d(at.x, at.z) * 0.5 + 0.5 < smoothstep(r_pave * 0.5, r_pave, d) * 0.95:
 				continue
 			at.y = SeaFloor.ground(track, at.x, at.z) + 0.06 + rng.randf_range(-0.05, 0.05)
-			var c := AtlantisRuins.STONE if (ix + iz) % 2 == 0 else AtlantisRuins.STONE_DARK
+			var c := _mosaic(d / r_pave, atan2(local.z, local.x), (ix + iz) % 2 == 0)
 			stone.box(Transform3D(basis * Basis(Vector3.UP, rng.randf_range(-0.05, 0.05)), at), Vector3(tile - 0.14, 0.3, tile - 0.14),
 				c * rng.randf_range(0.9, 1.05))
 	# O que fica no meio
@@ -406,6 +452,22 @@ static func _plaza(parts: Array, track: RaceTrack, center: Vector3, radius: floa
 	SeaFloor.claim(center, radius, center.y + 3.5)
 	SeaFloor.claim(center, 8.5, top)
 	return top
+
+
+## Cor da laje do mosaico na distância relativa `u` (0 no meio, 1 na borda) e no ângulo `a`: a estrela
+## de oito pontas no meio (dourada no azul-marinho), a faixa azul, a de terracota e o resto em xadrez
+## de pedra clara e escura.
+static func _mosaic(u: float, a: float, even: bool) -> Color:
+	var star := 0.17 + 0.11 * pow(absf(cos(a * 4.0)), 3.0)
+	if u < star:
+		return MOSAIC_GOLD
+	if u < 0.32:
+		return MOSAIC_NAVY
+	if u > 0.48 and u < 0.56:
+		return MOSAIC_BLUE
+	if u > 0.74 and u < 0.8:
+		return AtlantisRuins.BRICK
+	return AtlantisRuins.STONE if even else AtlantisRuins.STONE_DARK
 
 
 ## Templo redondo (tholos): base em degraus, anel de colunas (algumas quebradas), arquitrave sobre as
@@ -469,7 +531,8 @@ static func _dome(stone: MeshBuilder, center: Vector3, r: float, start: float, s
 static func _fountain(stone: MeshBuilder, at: Vector3, rng: RandomNumberGenerator, statues: Array) -> float:
 	var prof := PackedVector2Array([Vector2(3.4, 0.0), Vector2(3.6, 0.9), Vector2(3.3, 1.05), Vector2(3.05, 0.45), Vector2(0.0, 0.35)])
 	stone.lathe(Transform3D(Basis(), at), prof, AtlantisRuins.STONE, 28)
-	stone.cylinder(Transform3D(Basis(), at), 0.9, 0.75, 2.4, AtlantisRuins.STONE_DARK, 12)
+	# (largo o bastante para a base redonda do busto da deusa)
+	stone.cylinder(Transform3D(Basis(), at), 1.35, 1.2, 2.4, AtlantisRuins.STONE_DARK, 14)
 	var model: String = "poseidon_standing" if rng.randf() < 0.6 else "goddess_head"
 	var h := _place_statue(statues, model, rng.randf_range(4.5, 6.0), Transform3D(Basis(Vector3.UP, rng.randf() * TAU), at + Vector3.UP * 2.4))
 	SeaReef.cluster(at + Vector3.UP * 0.45, 2.2, rng, 5)
@@ -506,55 +569,135 @@ static func _house(stone: MeshBuilder, track: RaceTrack, at: Vector3, basis: Bas
 # ---------------------------------------------------------------------------
 ## Arco de pedra natural: pedras encaroçadas encostadas umas nas outras num meio arco, as do pé
 ## maiores, corais em cima, um jardim embaixo e kelp em volta. Devolve o topo.
-static func _rock_arch(track: RaceTrack, center: Vector3, rng: RandomNumberGenerator) -> float:
-	var span := rng.randf_range(13.0, 20.0)
-	var rise := rng.randf_range(8.0, 13.0)
-	var yaw := rng.randf() * TAU
-	var x := Vector3(cos(yaw), 0, sin(yaw))
-	var count := rng.randi_range(12, 16)
-	for k in count + 1:
-		var a := PI * float(k) / count
-		var q := center + x * (-cos(a) * span * 0.5) + Vector3.UP * (sin(a) * rise)
-		var size := lerpf(3.6, 2.1, sin(a)) * rng.randf_range(0.85, 1.15)
-		var b := Basis(Vector3.UP, rng.randf() * TAU).rotated(x, rng.randf_range(-0.35, 0.35))
-		SeaReef.place(SeaReef.Kind.ROCK, Transform3D(b.scaled(Vector3(size, size * 0.85, size)), q - Vector3.UP * size * 0.4), rng)
+static func _rock_arch(mb: MeshBuilder, track: RaceTrack, center: Vector3, rng: RandomNumberGenerator) -> float:
+	var span := rng.randf_range(17.0, 25.0)
+	var rise := rng.randf_range(13.0, 18.0)
+	# (o vão ao longo da pista, com um pouco de giro: de quem passa no tubo ele aparece como arco)
+	var pr := track.path.project(center, true, false)
+	var tan := track.path.tangents[track.path.index_at(pr.x)]
+	var x := Vector3(tan.x, 0.0, tan.z).normalized().rotated(Vector3.UP, rng.randf_range(-0.35, 0.35))
+	var yaw := atan2(x.z, x.x)
+	var z := x.cross(Vector3.UP).normalized()
+	var noise := FastNoiseLite.new()
+	noise.seed = rng.randi()
+	noise.frequency = 0.16
+	# O arco: uma seção irregular varrida pela curva (os pés descem abaixo do leito), mais grossa nos
+	# pés e fina no alto, com ruído e as camadas (degraus) da rocha
+	const RINGS := 26
+	const SIDES := 12
+	var grid: Array[PackedVector3Array] = []
+	for k in RINGS + 1:
+		var u := float(k) / RINGS
+		var a := lerpf(-0.12, PI + 0.12, u)
+		var c := center + x * (-cos(a) * span * 0.5) + Vector3.UP * (sin(a) * rise - 2.0)
+		var tangent := (x * sin(a) * span * 0.5 + Vector3.UP * cos(a) * rise).normalized()
+		var out := tangent.cross(z).normalized()
+		# (pés largos abrindo no chão; no alto mais fino e achatado em cima)
+		var foot := 1.0 - smoothstep(0.0, 0.5, sin(clampf(a, 0.0, PI)))
+		var thick := lerpf(2.5, 4.6, foot) + foot * foot * 2.2
+		var row := PackedVector3Array()
+		for j in SIDES:
+			var t := TAU * j / SIDES
+			var dir := out * cos(t) * (0.95 if cos(t) > 0.0 else 1.2) + z * sin(t) * 1.45
+			var q := c + dir * thick
+			var n := noise.get_noise_3dv(q)
+			var ledge := signf(sin(q.y * 0.9 + n * 2.0))
+			row.append(q + dir.normalized() * thick * (0.42 * n + ledge * 0.06))
+		grid.append(row)
+	_rock_surface(mb, grid, SIDES, true)
 	for side: float in [-1.0, 1.0]:
 		var foot := center + x * side * span * 0.55
 		foot.y = SeaFloor.ground(track, foot.x, foot.z)
-		var size := rng.randf_range(4.0, 5.2)
-		SeaReef.place(SeaReef.Kind.ROCK, Transform3D(Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3(size, size * 0.8, size)),
-			foot - Vector3.UP * size * 0.3), rng)
 		for k in rng.randi_range(2, 4):
 			var h := minf(rng.randf_range(8.0, 15.0), track.layout.water_level - 2.0 - foot.y)
 			if h > 3.0:
-				var at := foot + Vector3(rng.randf_range(-4, 4), -0.3, rng.randf_range(-4, 4))
+				var at := foot + Vector3(rng.randf_range(-5, 5), -0.3, rng.randf_range(-5, 5))
 				SeaReef.place(SeaReef.Kind.KELP, Transform3D(Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3(1.4, h, 1.4)), at), rng)
-	SeaReef.cluster(center + Vector3.UP * (rise + 1.6), 2.4, rng, 6)
+		SeaReef.cluster(foot + x * side * 3.0, 3.0, rng, 5)
+	SeaReef.cluster(center + Vector3.UP * (rise + 0.6), 2.0, rng, 6)
 	SeaReef.place(SeaReef.Kind.FAN, Transform3D(Basis(Vector3.UP, yaw + PI * 0.5).scaled(Vector3.ONE * rng.randf_range(2.4, 3.4)),
-		center + Vector3.UP * (rise + 1.2)), rng)
+		center + Vector3.UP * (rise + 0.4)), rng)
+	for k in 5:
+		SeaReef.hang(center + x * rng.randf_range(-span * 0.3, span * 0.3) + Vector3.UP * (rise - 2.0), rng.randf_range(1.5, 4.0), rng)
 	var ground := func(gx: float, gz: float) -> float: return SeaFloor.ground(track, gx, gz)
 	SeaReef.garden(center, 4.0, rng, ground)
 	return center.y + rise + 5.0
 
 
-## Dois a quatro pináculos de pedras empilhadas, com um coral de mesa, leque ou esponja no topo.
-static func _pinnacles(track: RaceTrack, center: Vector3, rng: RandomNumberGenerator) -> float:
+## Superfície de rocha de uma grade de anéis (cada anel com `sides` pontos, fechado em volta), com
+## normais suaves pela grade (viradas para fora do eixo dos anéis) e as pontas abertas (enterradas,
+## `open_ends`) ou fechada no topo (o último anel fecha num ponto um pouco acima dele).
+static func _rock_surface(mb: MeshBuilder, grid: Array[PackedVector3Array], sides: int, open_ends: bool) -> void:
+	var rows := grid.size()
+	var centers: Array[Vector3] = []
+	for k in rows:
+		var c := Vector3.ZERO
+		for q in grid[k]:
+			c += q
+		centers.append(c / sides)
+	var normals: Array[PackedVector3Array] = []
+	for k in rows:
+		var nrow := PackedVector3Array()
+		for j in sides:
+			var dk := grid[mini(k + 1, rows - 1)][j] - grid[maxi(k - 1, 0)][j]
+			var dj := grid[k][(j + 1) % sides] - grid[k][(j + sides - 1) % sides]
+			var n := dj.cross(dk).normalized()
+			if n.dot(grid[k][j] - centers[k]) < 0.0:
+				n = -n
+			nrow.append(n)
+		normals.append(nrow)
+	var white := Color.WHITE
+	for k in rows - 1:
+		for j in sides:
+			var j1 := (j + 1) % sides
+			mb.tri_smooth(grid[k][j], grid[k][j1], grid[k + 1][j1], normals[k][j], normals[k][j1], normals[k + 1][j1], white)
+			mb.tri_smooth(grid[k][j], grid[k + 1][j1], grid[k + 1][j], normals[k][j], normals[k + 1][j1], normals[k + 1][j], white)
+	if not open_ends:
+		var tip := centers[rows - 1] + Vector3.UP * 0.6
+		for j in sides:
+			var j1 := (j + 1) % sides
+			mb.tri_smooth(grid[rows - 1][j], tip, grid[rows - 1][j1], normals[rows - 1][j], Vector3.UP, normals[rows - 1][j1], white)
+
+
+## Dois a quatro pináculos de rocha: torres afinando, tortas, com saliências em camadas (os estratos)
+## e o topo arredondado, com um coral de mesa, leque, esponja ou coral mole em cima e corais no pé.
+static func _pinnacles(mb: MeshBuilder, track: RaceTrack, center: Vector3, rng: RandomNumberGenerator) -> float:
 	var top := center.y
+	var noise := FastNoiseLite.new()
+	noise.seed = rng.randi()
+	noise.frequency = 0.22
+	const RINGS := 14
+	const SIDES := 11
 	for n in rng.randi_range(2, 4):
 		var a := rng.randf() * TAU
-		var base := center + Vector3(cos(a), 0, sin(a)) * rng.randf_range(0.0, 6.0)
-		base.y = SeaFloor.ground(track, base.x, base.z) - 0.5
-		var size := rng.randf_range(3.0, 4.2)
-		var drift := Vector3(rng.randf_range(-0.35, 0.35), 0.0, rng.randf_range(-0.35, 0.35))
-		var at := base
-		var stack := rng.randi_range(4, 6)
-		for k in stack:
-			var sz := size * (1.0 - 0.11 * k)
-			SeaReef.place(SeaReef.Kind.ROCK, Transform3D(Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3(sz, sz * 1.05, sz)), at), rng)
-			at += Vector3.UP * sz * 0.85 + drift
+		var base := center + Vector3(cos(a), 0, sin(a)) * rng.randf_range(0.0, 6.5)
+		base.y = SeaFloor.ground(track, base.x, base.z) - 1.0
+		var height := minf(rng.randf_range(12.0, 22.0), track.layout.water_level - 5.0 - base.y)
+		if height < 6.0:
+			continue
+		var radius := rng.randf_range(2.6, 3.8)
+		var lean := Vector3(rng.randf_range(-1, 1), 0.0, rng.randf_range(-1, 1)).normalized() * rng.randf_range(0.0, 0.12)
+		var grid: Array[PackedVector3Array] = []
+		var axis := base
+		for k in RINGS + 1:
+			var t := float(k) / RINGS
+			if k > 0:
+				axis += (Vector3.UP + lean) * height / RINGS
+			# (afina para o alto, com as camadas: saliência e reentrância alternando)
+			var r := radius * lerpf(1.25, 0.45, pow(t, 0.9)) * (1.0 + 0.16 * signf(sin(t * 11.0 + n)))
+			var row := PackedVector3Array()
+			for j in SIDES:
+				var th := TAU * j / SIDES
+				var dir := Vector3(cos(th), 0.0, sin(th))
+				var q := axis + dir * r
+				row.append(q + dir * r * 0.3 * noise.get_noise_3dv(q))
+			grid.append(row)
+		_rock_surface(mb, grid, SIDES, false)
+		var at := axis + Vector3.UP * 0.4
 		var crown: int = [SeaReef.Kind.TABLE, SeaReef.Kind.FAN, SeaReef.Kind.BARREL, SeaReef.Kind.SOFT][rng.randi() % 4]
 		SeaReef.place(crown, Transform3D(Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3.ONE * rng.randf_range(2.2, 3.2)), at), rng)
-		SeaReef.cluster(at - Vector3.UP * size * 0.6, size * 0.5, rng, 3)
+		SeaReef.moss(at - Vector3.UP * 0.3, radius * 0.5, rng)
+		SeaReef.cluster(base + Vector3.UP * 0.8, radius * 1.4, rng, 4)
 		top = maxf(top, at.y + 3.0)
 	return top
 
@@ -562,7 +705,8 @@ static func _pinnacles(track: RaceTrack, center: Vector3, rng: RandomNumberGener
 # ---------------------------------------------------------------------------
 # Estátuas, ânforas, âncoras e o baú
 # ---------------------------------------------------------------------------
-## Estátua gigante tombada (Poseidon em pé, deitado) ou meio enterrada e inclinada.
+## Estátua gigante tombada (Poseidon em pé, deitado de costas com as costas na areia) ou meio
+## enterrada e inclinada.
 static func _statue(track: RaceTrack, center: Vector3, rng: RandomNumberGenerator, statues: Array) -> float:
 	var pick: Array = STATUES[rng.randi() % STATUES.size()]
 	var model: String = pick[0]
@@ -570,10 +714,15 @@ static func _statue(track: RaceTrack, center: Vector3, rng: RandomNumberGenerato
 	var target := rng.randf_range(size.x, size.y)
 	var lying := model == "poseidon_standing"
 	var basis := Basis(Vector3.UP, rng.randf() * TAU)
-	var sink := target * rng.randf_range(0.28, 0.42)
+	var buried: Vector2 = pick[2]
+	var sink := target * rng.randf_range(buried.x, buried.y)
 	if lying:
-		basis = basis * Basis(Vector3.RIGHT, PI * 0.5 * rng.randf_range(0.86, 0.95))
-		sink = 0.6
+		# Tombado de costas (o rosto, o peito e o tridente para cima), com as costas uns 0,4 m na areia:
+		# o modelo é fino da frente para trás, e de bruços (ou afundado pelo meio) ele sumia na areia
+		var tilt := PI * 0.5 * rng.randf_range(0.9, 0.97)
+		basis = basis * Basis(Vector3.RIGHT, -tilt)
+		var box := _model_box(model)
+		sink = 0.4 + box.position.z * target / maxf(box.size.y, 0.01) * sin(tilt)
 	else:
 		basis = basis * Basis(Vector3(rng.randf() - 0.5, 0.0, rng.randf() - 0.5).normalized(), rng.randf_range(0.12, 0.38))
 	var h := _place_statue(statues, model, target, Transform3D(basis, center + Vector3.DOWN * sink))
@@ -637,7 +786,8 @@ static func _amphorae(parts: Array, track: RaceTrack, center: Vector3, rng: Rand
 	return center.y + 3.0
 
 
-## Ânfora de barro em `at` (no chão): deitada e meio enterrada ou em pé, inclinada.
+## Ânfora de barro em `at` (no chão), com as faixas pintadas: deitada e meio enterrada ou em pé,
+## inclinada.
 static func _amphora_at(mb: MeshBuilder, at: Vector3, rng: RandomNumberGenerator) -> void:
 	var size := rng.randf_range(1.0, 1.5)
 	var basis := Basis(Vector3.UP, rng.randf() * TAU)
@@ -649,30 +799,50 @@ static func _amphora_at(mb: MeshBuilder, at: Vector3, rng: RandomNumberGenerator
 		at.y -= size * rng.randf_range(0.1, 0.3)
 	var c := TERRACOTTA * rng.randf_range(0.8, 1.1)
 	c.a = 1.0
+	# (com anéis nas bordas das duas faixas pintadas: 0,36–0,42 e 0,58–0,64)
 	var prof := PackedVector2Array([Vector2(0.0, 0.0), Vector2(0.06, 0.0), Vector2(0.09, 0.08), Vector2(0.24, 0.3),
-		Vector2(0.3, 0.5), Vector2(0.27, 0.68), Vector2(0.14, 0.8), Vector2(0.1, 0.84), Vector2(0.1, 0.97), Vector2(0.13, 1.0),
-		Vector2(0.08, 1.0), Vector2(0.0, 0.92)])
+		Vector2(0.258, 0.36), Vector2(0.276, 0.42), Vector2(0.3, 0.5), Vector2(0.287, 0.58), Vector2(0.277, 0.64), Vector2(0.27, 0.68),
+		Vector2(0.14, 0.8), Vector2(0.1, 0.84), Vector2(0.1, 0.97), Vector2(0.13, 1.0), Vector2(0.08, 1.0), Vector2(0.0, 0.92)])
 	var xf := Transform3D(basis.scaled(Vector3.ONE * size), at)
+	var first := mb.verts.size()
 	mb.lathe(xf, prof, c, 12)
+	# Faixas pintadas de preto no bojo e no ombro (pela altura de cada vértice na ânfora)
+	var inv := xf.affine_inverse()
+	for v in range(first, mb.verts.size()):
+		var y := (inv * mb.verts[v]).y
+		if (y > 0.35 and y < 0.43) or (y > 0.57 and y < 0.65):
+			mb.colors[v] = Color(0.12, 0.07, 0.05)
 	# Alças: do gargalo ao ombro
 	for side: float in [1.0, -1.0]:
 		_beam(mb, xf * Vector3(side * 0.1, 0.9, 0), xf * Vector3(side * 0.25, 0.86, 0), 0.05 * size, c)
 		_beam(mb, xf * Vector3(side * 0.25, 0.86, 0), xf * Vector3(side * 0.24, 0.68, 0), 0.05 * size, c)
 
 
-## Âncora de ferro deitada na areia: haste, os dois braços curvos com as patas, o cepo e a argola.
+## Âncora de ferro deitada na areia: a haste com a coroa embaixo, os dois braços curvos de seção
+## redonda com as patas em pá e o bico, o cepo de ponta a ponta com as pontas arredondadas e a argola.
 static func _anchor(mb: MeshBuilder, at: Vector3, rng: RandomNumberGenerator) -> void:
 	var local := MeshBuilder.new()
-	local.cylinder(Transform3D(), 0.12, 0.1, 3.0, IRON, 8)
+	local.cylinder(Transform3D(), 0.13, 0.1, 3.0, IRON, 10)
+	local.blob(Vector3(0, 0.15, 0), Vector3(0.22, 0.2, 0.18), IRON, 8, 5)
 	for side: float in [-1.0, 1.0]:
 		var prev := Vector3(0, 0.2, 0)
-		for k in 4:
-			var ang := (k + 1) / 4.0 * PI * 0.45
+		var d := Vector3.UP
+		for k in 6:
+			var ang := (k + 1) / 6.0 * PI * 0.45
 			var q := Vector3(side * sin(ang) * 1.1, 0.2 + (1.0 - cos(ang)) * 1.1, 0)
-			_beam(local, prev, q, 0.18, IRON)
+			d = (q - prev).normalized()
+			var x := d.cross(Vector3.BACK).normalized()
+			local.cylinder(Transform3D(Basis(x, d, x.cross(d)).orthonormalized(), prev), 0.095, 0.085, prev.distance_to(q) + 0.03, IRON, 8,
+				false)
 			prev = q
-		local.box(Transform3D(Basis(), prev + Vector3(side * 0.1, 0.15, 0)), Vector3(0.36, 0.46, 0.12), IRON)
-	local.box(Transform3D(Basis(), Vector3(0, 2.75, 0)), Vector3(0.2, 0.2, 2.1), IRON)
+		# Pata em pá (achatada) e o bico na ponta
+		local.blob(prev - d * 0.12 + Vector3(side * 0.06, 0.0, 0.0), Vector3(0.24, 0.3, 0.06), IRON, 8, 5)
+		var bx := d.cross(Vector3.BACK).normalized()
+		local.cylinder(Transform3D(Basis(bx, d, bx.cross(d)).orthonormalized(), prev), 0.06, 0.0, 0.3, IRON, 6)
+	# Cepo (perpendicular aos braços) com as pontas arredondadas
+	local.cylinder(Transform3D(Basis(Vector3.RIGHT, PI * 0.5), Vector3(0, 2.75, -1.05)), 0.1, 0.1, 2.1, IRON, 8)
+	for z: float in [-1.05, 1.05]:
+		local.blob(Vector3(0, 2.75, z), Vector3.ONE * 0.14, IRON, 6, 4)
 	var prev := Vector3(0, 3.0, 0)
 	for k in range(1, 9):
 		var a := TAU * k / 8.0
@@ -683,20 +853,49 @@ static func _anchor(mb: MeshBuilder, at: Vector3, rng: RandomNumberGenerator) ->
 	mb.append(local, Transform3D(basis, at + Vector3.UP * 0.18))
 
 
-## Baú de madeira com cintas de bronze, a tampa aberta e moedas de ouro brilhando dentro e em volta.
+## Baú de madeira de tábuas com as cintas e os cantos de bronze, a fechadura, a tampa abobadada aberta
+## e moedas de ouro brilhando dentro e em volta.
 static func _chest(parts: Array, at: Vector3, rng: RandomNumberGenerator) -> void:
 	var wood: MeshBuilder = parts[1]
 	var lamps: MeshBuilder = parts[2]
 	var basis := Basis(Vector3.UP, rng.randf() * TAU) * Basis(Vector3.BACK, rng.randf_range(-0.15, 0.15))
 	at.y -= 0.15
-	wood.box(Transform3D(basis, at + basis.y * 0.35), Vector3(1.3, 0.7, 0.8), WOOD)
+	# Caixa de tábuas (faixas de tom alternado), cintas, cantos e a fechadura
+	for k in 3:
+		wood.box(Transform3D(basis, at + basis.y * (0.12 + k * 0.23)), Vector3(1.3, 0.22, 0.8), WOOD if k % 2 == 0 else WOOD_LIGHT)
 	for side: float in [-1.0, 1.0]:
 		wood.box(Transform3D(basis, at + basis.y * 0.35 + basis.x * side * 0.42), Vector3(0.1, 0.74, 0.84), BRONZE)
-	# Tampa aberta (girada pela dobradiça de trás)
+		for fz: float in [-1.0, 1.0]:
+			wood.box(Transform3D(basis, at + basis.y * 0.35 + basis.x * side * 0.62 + basis.z * fz * 0.37), Vector3(0.1, 0.74, 0.1), BRONZE)
+	wood.box(Transform3D(basis, at + basis.y * 0.55 + basis.z * 0.41), Vector3(0.18, 0.24, 0.05), GOLD)
+	# Tampa abobadada aberta (girada pela dobradiça de trás): o meio cilindro e as cintas por cima
 	var hinge := at + basis.y * 0.7 - basis.z * 0.4
 	var lid := basis * Basis(Vector3.RIGHT, -1.9)
-	wood.box(Transform3D(lid, hinge + lid * Vector3(0, 0.0, 0.4)), Vector3(1.3, 0.14, 0.8), WOOD_LIGHT)
-	lamps.blob(at + basis.y * 0.72, Vector3(0.56, 0.16, 0.32), GOLD, 8, 4)
+	for k in 6:
+		var a0 := PI * k / 6.0
+		var a1 := PI * (k + 1) / 6.0
+		var p0 := Vector3(0.0, sin(a0) * 0.4, cos(a0) * 0.4 + 0.4)
+		var p1 := Vector3(0.0, sin(a1) * 0.4, cos(a1) * 0.4 + 0.4)
+		var c0 := hinge + lid * p0
+		var c1 := hinge + lid * p1
+		var half := basis.x * 0.65
+		var out := lid * Vector3(0.0, sin((a0 + a1) * 0.5), cos((a0 + a1) * 0.5))
+		# (tábuas por fora e o forro escuro por dentro: aberta, a tampa mostra o lado de dentro)
+		wood.quad(c0 - half, c1 - half, c1 + half, c0 + half, WOOD_LIGHT if k % 2 == 0 else WOOD, out)
+		wood.quad(c0 - half, c1 - half, c1 + half, c0 + half, WOOD_DARK, -out)
+		# Os dois meios discos das pontas (dos dois lados)
+		var axis := hinge + lid * Vector3(0.0, 0.0, 0.4)
+		for side: float in [-1.0, 1.0]:
+			var cap := basis.x * side * 0.65
+			wood.tri(axis + cap, c0 + cap, c1 + cap, WOOD_DARK, basis.x * side)
+			wood.tri(axis + cap, c0 + cap, c1 + cap, WOOD_DARK, -basis.x * side)
+			_beam(wood, c0 + basis.x * side * 0.42, c1 + basis.x * side * 0.42, 0.08, BRONZE)
+	# O monte de moedas saindo do baú
+	lamps.blob(at + basis.y * 0.7, Vector3(0.56, 0.2, 0.32), GOLD, 10, 5)
+	for k in 6:
+		var a := TAU * k / 6.0 + rng.randf()
+		lamps.cylinder(Transform3D(Basis(Vector3(rng.randf() - 0.5, 0, rng.randf() - 0.5).normalized(), rng.randf_range(0.3, 0.9)),
+			at + basis.y * 0.86 + basis.x * cos(a) * 0.25 + basis.z * sin(a) * 0.14), 0.09, 0.09, 0.03, GOLD, 8)
 	for k in rng.randi_range(6, 11):
 		var a := rng.randf() * TAU
 		var c := at + Vector3(cos(a), 0, sin(a)) * rng.randf_range(0.7, 1.8) + Vector3.UP * 0.18

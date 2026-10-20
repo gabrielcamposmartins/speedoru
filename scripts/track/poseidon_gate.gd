@@ -23,8 +23,10 @@ extends RefCounted
 const MODELS := "res://assets/track/atlantis_abyss/models/"
 ## Rostos: s e lado (+1 esquerda); ficam na face da montanha.
 const FACES := [[2075.0, 1], [2185.0, -1]]
-## Altura (m acima da base do modelo) e avanço (+Z) da boca do rosto (blender/build_atlantis.py).
-const FACE_MOUTH := Vector2(12.4, 7.2)
+## Altura (m acima da base do modelo) e avanço (+Z) da boca do rosto (blender/atlantis_statues.py:
+## o centro da abertura, 0,3 m à frente do lábio) e a largura da água que sai dela (a da boca).
+const FACE_MOUTH := Vector2(10.8, 8.7)
+const FACE_FALL_WIDTH := 3.2
 ## Arco-íris: s do centro, distância à frente e raio.
 const RAINBOW := Vector3(2140.0, 260.0, 210.0)
 ## Cachoeiras grandes e largas nas montanhas: [s do meio, lado (+1 esquerda), largura].
@@ -99,10 +101,11 @@ static func build(track: RaceTrack, parent: Node3D) -> void:
 		var to_track := p.points[i] - at
 		to_track.y = 0.0
 		to_track = to_track.normalized()
-		var base := Vector3(at.x, water + 5.5, at.z) + to_track * 1.0
+		# (a juba fica até 1,5 m à frente da origem do modelo: encostada na rocha)
+		var base := Vector3(at.x, water + 5.5, at.z) + to_track * 0.3
 		statues.append(["poseidon_face", Transform3D(Basis.looking_at(-to_track), base)])
 		var mouth := base + to_track * FACE_MOUTH.y + Vector3.UP * FACE_MOUTH.x
-		_waterfall(falls, foam, mouth, to_track, 7.0, water, feet)
+		_waterfall(falls, foam, mouth, to_track, FACE_FALL_WIDTH, water, feet)
 	# Cachoeiras grandes e largas saltando das montanhas
 	var curtains := MeshBuilder.new()
 	var mist := MeshBuilder.new()
@@ -809,10 +812,9 @@ static func apply_mood(time_of_day: int) -> void:
 
 
 ## Peixes-voadores saltando perto da ponte, dos dois lados.
-static func _flying_fish(track: RaceTrack, root: Node3D, rng: RandomNumberGenerator, span: Vector2) -> void:
-	var p := track.path
-	var water := track.layout.water_level
-	# Corpo (o do cardume, maior, sem abanar a cauda) e as nadadeiras-asas (COLOR.r = 1 nas pontas)
+## O peixe-voador: o corpo do peixinho do cardume (maior, sem abanar a cauda) e as nadadeiras-asas
+## (COLOR.r = 1 nas pontas, para tremerem no flying_fish.gdshader).
+static func flying_fish_mesh() -> ArrayMesh:
 	var mb := SeaLife.fish_builder(1.6)
 	for v in mb.verts.size():
 		mb.colors[v] = Color(0.0, mb.colors[v].g, 1.0)
@@ -824,7 +826,13 @@ static func _flying_fish(track: RaceTrack, root: Node3D, rng: RandomNumberGenera
 		mb.tri(root_f, tip, root_b, Color(0.0, 0.0, 1.0), Vector3.UP)
 		for v in range(start, mb.verts.size()):
 			mb.colors[v] = Color(clampf(absf(mb.verts[v].x) / 0.66, 0.0, 1.0), 0.0, 1.0)
-	var mesh := mb.commit()
+	return mb.commit()
+
+
+static func _flying_fish(track: RaceTrack, root: Node3D, rng: RandomNumberGenerator, span: Vector2) -> void:
+	var p := track.path
+	var water := track.layout.water_level
+	var mesh := flying_fish_mesh()
 	var xfs: Array[Transform3D] = []
 	var data: Array[Color] = []
 	var length := fposmod(span.y - span.x, p.length)

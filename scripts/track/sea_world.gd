@@ -28,34 +28,42 @@ const RAY_COUNT := 150
 const RAY_REACH := 230.0
 
 ## Período (DaylightPresets.TimeOfDay) → ambiente debaixo d'água: névoa (cor, densidade, espalhamento
-## da luz: quase nada, senão a névoa densa da água acende onde as luzes direcionais apontam), luz
+## da luz: quase nada, senão a névoa densa da água acende onde as luzes direcionais apontam; perspectiva
+## aérea: zero, a névoa é só a cor da água), a água escurecendo com a profundidade (abaixo de
+## deep_start m da linha d'água, densidade deep_density por metro: as fossas somem no escuro), luz
 ## ambiente, céu (topo, horizonte, chão: o que a água reflete), brilho, sol (cor, fração da energia),
 ## teto (janela, fundo), cáustica (força, cor), raios (força, cor) e partículas.
 const UNDER := [
 	{
-		"fog_color": Color(0.02, 0.31, 0.45), "fog_density": 0.0033, "sun_scatter": 0.06,
-		"ambient_color": Color(0.34, 0.68, 0.84), "ambient_energy": 0.62,
-		"sky_top": Color(0.25, 0.72, 0.88), "sky_horizon": Color(0.03, 0.33, 0.47), "sky_ground": Color(0.01, 0.1, 0.18),
-		"glow": 0.4, "sun_color": Color(0.74, 0.95, 1.0), "sun_energy": 0.85,
-		"window": Color(0.7, 0.96, 1.0), "deep": Color(0.03, 0.28, 0.4), "ceiling": 1.1, "ceiling_sun": 8.0,
+		"fog_color": Color(0.012, 0.19, 0.32), "fog_density": 0.0034, "sun_scatter": 0.06, "aerial": 0.0,
+		"deep_start": 36.0, "deep_density": 0.03,
+		"ambient_color": Color(0.26, 0.56, 0.72), "ambient_energy": 0.58,
+		"sky_top": Color(0.2, 0.62, 0.8), "sky_horizon": Color(0.02, 0.24, 0.38), "sky_ground": Color(0.005, 0.06, 0.12),
+		"glow": 0.4, "sun_color": Color(0.74, 0.95, 1.0), "sun_energy": 0.9,
+		"window": Color(0.7, 0.96, 1.0), "deep": Color(0.015, 0.2, 0.32), "mirror": Color(0.3, 0.6, 0.72), "ceiling": 1.0,
+		"ceiling_sun": 8.0,
 		"caustics": 0.75, "caustic_color": Color(0.7, 0.98, 1.0),
-		"rays": 0.22, "ray_color": Color(0.72, 0.96, 1.0), "snow": 0.6, "bubbles": 0.85,
+		"rays": 0.24, "ray_color": Color(0.72, 0.96, 1.0), "snow": 0.6, "bubbles": 0.85,
 	},
 	{
-		"fog_color": Color(0.1, 0.27, 0.4), "fog_density": 0.0039, "sun_scatter": 0.05,
-		"ambient_color": Color(0.55, 0.6, 0.75), "ambient_energy": 0.7,
-		"sky_top": Color(0.88, 0.62, 0.48), "sky_horizon": Color(0.1, 0.26, 0.38), "sky_ground": Color(0.03, 0.08, 0.14),
-		"glow": 0.45, "sun_color": Color(1.0, 0.78, 0.6), "sun_energy": 0.7,
-		"window": Color(1.0, 0.78, 0.6), "deep": Color(0.07, 0.22, 0.34), "ceiling": 1.0, "ceiling_sun": 6.0,
+		"fog_color": Color(0.06, 0.17, 0.29), "fog_density": 0.0038, "sun_scatter": 0.05, "aerial": 0.0,
+		"deep_start": 34.0, "deep_density": 0.034,
+		"ambient_color": Color(0.4, 0.44, 0.66), "ambient_energy": 0.64,
+		"sky_top": Color(0.62, 0.5, 0.58), "sky_horizon": Color(0.08, 0.2, 0.32), "sky_ground": Color(0.02, 0.06, 0.11),
+		"glow": 0.45, "sun_color": Color(1.0, 0.76, 0.58), "sun_energy": 0.6,
+		"window": Color(1.0, 0.78, 0.6), "deep": Color(0.05, 0.16, 0.27), "mirror": Color(0.36, 0.44, 0.6), "ceiling": 1.0,
+		"ceiling_sun": 6.0,
 		"caustics": 0.6, "caustic_color": Color(1.0, 0.82, 0.62),
-		"rays": 0.2, "ray_color": Color(1.0, 0.8, 0.6), "snow": 0.55, "bubbles": 0.8,
+		"rays": 0.22, "ray_color": Color(1.0, 0.8, 0.6), "snow": 0.55, "bubbles": 0.8,
 	},
 	{
-		"fog_color": Color(0.02, 0.075, 0.15), "fog_density": 0.0045, "sun_scatter": 0.0,
-		"ambient_color": Color(0.16, 0.32, 0.5), "ambient_energy": 0.55,
+		"fog_color": Color(0.014, 0.066, 0.14), "fog_density": 0.0045, "sun_scatter": 0.0, "aerial": 0.0,
+		"deep_start": 30.0, "deep_density": 0.04,
+		"ambient_color": Color(0.18, 0.34, 0.54), "ambient_energy": 0.62,
 		"sky_top": Color(0.06, 0.14, 0.26), "sky_horizon": Color(0.01, 0.05, 0.1), "sky_ground": Color(0.0, 0.02, 0.05),
 		"glow": 0.6, "sun_color": Color(0.55, 0.75, 1.0), "sun_energy": 0.8,
-		"window": Color(0.12, 0.22, 0.38), "deep": Color(0.01, 0.04, 0.09), "ceiling": 1.0, "ceiling_sun": 2.0,
+		"window": Color(0.12, 0.22, 0.38), "deep": Color(0.008, 0.035, 0.08), "mirror": Color(0.07, 0.13, 0.24), "ceiling": 1.0,
+		"ceiling_sun": 2.0,
 		"caustics": 0.18, "caustic_color": Color(0.55, 0.75, 1.0),
 		"rays": 0.0, "ray_color": Color(0.5, 0.7, 1.0), "snow": 0.85, "bubbles": 0.6,
 	},
@@ -196,7 +204,7 @@ static func _sun_rays(track: RaceTrack, root: Node3D, rng: RandomNumberGenerator
 		var height := water - bottom
 		if height < 6.0:
 			continue
-		var width := rng.randf_range(3.0, 13.0)
+		var width := rng.randf_range(5.0, 16.0)
 		var basis := Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3(width, height, width))
 		xfs.append(Transform3D(basis, Vector3(pos.x, water, pos.z)))
 		seeds.append(rng.randf())
@@ -279,8 +287,9 @@ static func _caustic_overlay(track: RaceTrack, root: Node3D) -> void:
 	var mat := ShaderMaterial.new()
 	mat.shader = load("res://shaders/track/sea_caustic_overlay.gdshader")
 	TrackMaterials.register_sea(mat)
-	# Na pista a rede é mais fina (o asfalto é visto de perto)
-	mat.set_shader_parameter("caustic_scale", 0.33)
+	# Na pista a rede é mais fina (o asfalto é visto de perto; com células grandes ela virava um
+	# desenho de teia por cima da pista)
+	mat.set_shader_parameter("caustic_scale", 0.46)
 	var mi := MeshInstance3D.new()
 	mi.name = "RoadCaustics"
 	mi.mesh = mb.commit(null, mat)
@@ -302,6 +311,7 @@ static func apply_mood(track: RaceTrack, time_of_day: int) -> void:
 		_ceiling.set_shader_parameter("sun_color", t.sun_color)
 		_ceiling.set_shader_parameter("sun_strength", u.ceiling_sun)
 		_ceiling.set_shader_parameter("deep_color", u.deep)
+		_ceiling.set_shader_parameter("mirror_tint", u.mirror)
 		_ceiling.set_shader_parameter("brightness", u.ceiling)
 	if _rays:
 		_rays.set_shader_parameter("intensity", u.rays)

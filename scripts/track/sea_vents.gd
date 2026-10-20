@@ -6,8 +6,9 @@ extends RefCounted
 ##    bactérias), almofadas de lava nas encostas e pedras em volta;
 ##  * a cratera com o fundo de lava, rachaduras acesas descendo as encostas, um halo de luz sobre a
 ##    boca (vent_glow.gdshader) e uma luz de verdade (mais forte à noite);
-##  * chaminés em volta da cratera soltando fumaça escura e bolhas, com colônias de vermes tubulares
-##    no pé (SeaReef.worms);
+##  * chaminés em volta da cratera (fumarolas negras: tortas, encaroçadas, largas no pé e finas no alto,
+##    com crostas de enxofre e ferrugem em manchas perto da boca e esteiras brancas no pé) soltando
+##    fumaça escura e bolhas, com colônias de vermes tubulares no pé (SeaReef.worms);
 ##  * a coluna de bolhas subindo até a superfície e filetes saindo das rachaduras
 ##    (vent_bubbles.gdshader, sem emissor), a água tremendo de calor sobre a boca
 ##    (vent_shimmer.gdshader) e a espuma onde a coluna chega.
@@ -20,6 +21,8 @@ const SIDES := 28
 const RINGS := 10
 const BASALT := Color(0.14, 0.12, 0.13)
 const GLOW := Color(1.0, 0.42, 0.12)
+## Lava nas rachaduras (mais vermelha que a da boca).
+const CRACK := Color(1.0, 0.3, 0.06)
 ## Crostas minerais: enxofre, ferrugem, esteira de bactérias, ocre.
 const CRUSTS := [Color(0.88, 0.74, 0.18), Color(0.8, 0.4, 0.12), Color(0.9, 0.88, 0.8), Color(0.66, 0.56, 0.2)]
 const MIN_SPACING := 140.0
@@ -225,16 +228,22 @@ static func _mound(mb: MeshBuilder, glow: MeshBuilder, base: Vector3, radius: fl
 		var c := grid[RINGS + 2][(j + 1) % SIDES]
 		var d := grid[RINGS + 2][j]
 		glow.quad(a.lerp(d, 0.35), b.lerp(c, 0.35), c, d, GLOW * 0.8, Vector3.UP)
-	# Rachaduras acesas descendo pelos sulcos (seguindo a superfície, um pouco para fora)
+	# Rachaduras acesas descendo pelos sulcos: finas, em zigue-zague (cada ponto puxado para um lado
+	# entre as colunas da grade), mais largas perto da boca e com falhas no caminho
 	for fa in flows:
 		var j := int(round(fposmod(fa - rot, TAU) / TAU * SIDES)) % SIDES
 		var prev := grid[RINGS - 1][j] + normals[RINGS - 1][j] * 0.12
 		for k in range(RINGS - 2, rng.randi_range(0, 3) - 1, -1):
-			var at := grid[k][j] + normals[k][j] * 0.12
+			var nb := (j + (1 if rng.randf() < 0.5 else SIDES - 1)) % SIDES
+			var at := grid[k][j].lerp(grid[k][nb], rng.randf_range(0.0, 0.3)) + normals[k][j] * 0.12
+			if rng.randf() < 0.2:
+				prev = at
+				continue
 			var side := normals[k][j].cross(at - prev).normalized()
-			var w := lerpf(1.1, 0.25, 1.0 - float(k) / RINGS)
-			glow.quad(prev - side * w * 0.4, prev + side * w * 0.4, at + side * w * 0.5, at - side * w * 0.5, GLOW * 0.9,
-				normals[k][j])
+			var w := lerpf(0.6, 0.14, 1.0 - float(k) / RINGS) * rng.randf_range(0.7, 1.3)
+			var mid := prev.lerp(at, 0.5) + side * rng.randf_range(-0.5, 0.5)
+			glow.quad(prev - side * w * 0.5, prev + side * w * 0.5, mid + side * w * 0.6, mid - side * w * 0.6, CRACK, normals[k][j])
+			glow.quad(mid - side * w * 0.6, mid + side * w * 0.6, at + side * w * 0.4, at - side * w * 0.4, CRACK, normals[k][j])
 			prev = at
 	# Almofadas de lava nas encostas e pedras em volta
 	for k in rng.randi_range(10, 16):
@@ -268,30 +277,79 @@ static func _mound(mb: MeshBuilder, glow: MeshBuilder, base: Vector3, radius: fl
 	return tops
 
 
-## Chaminé: segmentos empilhados afinando e um pouco tortos, com faixas de crosta mineral, a boca
-## alargada com o brilho de lava por dentro. Devolve a boca.
+## Chaminé (fumarola negra): um tronco torto e encaroçado, largo no pé e fino no alto (anéis com o
+## raio variando pelo ruído e saliências de depósito), basalto escuro com manchas de crosta de enxofre
+## e ferrugem perto da boca e esteira branca no pé, uns caroços avulsos e a boca alargada com o brilho
+## de lava por dentro. Devolve a boca.
 static func _chimney(mb: MeshBuilder, glow: MeshBuilder, at: Vector3, height: float, radius: float,
 		rng: RandomNumberGenerator) -> Vector3:
-	var segs := rng.randi_range(3, 5)
+	const RINGS_C := 10
+	const SIDES_C := 11
+	var noise := FastNoiseLite.new()
+	noise.seed = rng.randi()
+	noise.frequency = 0.55
 	var dir := Vector3.UP
-	var r := radius
-	for k in segs:
-		var seg_h := height / segs * rng.randf_range(0.85, 1.15)
-		dir = (dir + Vector3(rng.randf_range(-0.12, 0.12), 0.0, rng.randf_range(-0.12, 0.12))).normalized()
+	var center := at
+	var grid: Array[PackedVector3Array] = []
+	var tees := PackedFloat32Array()
+	var bend := Vector3(rng.randf_range(-1, 1), 0.0, rng.randf_range(-1, 1)).normalized() * rng.randf_range(0.04, 0.1)
+	for k in RINGS_C + 1:
+		var t := float(k) / RINGS_C
+		if k > 0:
+			dir = (dir + bend + Vector3(rng.randf_range(-0.06, 0.06), 0.0, rng.randf_range(-0.06, 0.06))).normalized()
+			center += dir * height / RINGS_C
 		var x := dir.cross(Vector3.FORWARD).normalized()
-		var r1 := r * rng.randf_range(0.72, 0.88)
-		var color: Color = BASALT * 1.2 if k % 2 == 0 else CRUSTS[rng.randi() % CRUSTS.size()] * 0.75
-		color.a = 1.0
-		mb.cylinder(Transform3D(Basis(x, dir, x.cross(dir)).orthonormalized(), at), r, r1, seg_h, color, 9, false)
-		# Anel saliente (depósito) na junta
-		mb.cylinder(Transform3D(Basis(x, dir, x.cross(dir)).orthonormalized(), at + dir * (seg_h - 0.15)), r1 * 1.18, r1 * 1.1, 0.3,
-			BASALT * 1.4, 9, false)
-		at += dir * seg_h
-		r = r1
+		var z := x.cross(dir).normalized()
+		# (largo no pé, afinando; saliências de depósito em alturas ao acaso)
+		var r := radius * lerpf(1.35, 0.62, pow(t, 0.8)) * (1.0 + 0.22 * maxf(sin(t * 19.0 + radius * 7.0), 0.0))
+		var row := PackedVector3Array()
+		for j in SIDES_C:
+			var a := TAU * j / SIDES_C
+			var n := noise.get_noise_3d(cos(a) * 1.6, t * height * 0.5, sin(a) * 1.6)
+			row.append(center + (x * cos(a) + z * sin(a)) * r * (1.0 + 0.3 * n))
+		grid.append(row)
+		tees.append(t)
+	var rows := grid.size()
+	for k in rows - 1:
+		for j in SIDES_C:
+			var j1 := (j + 1) % SIDES_C
+			var pts: Array[Vector3] = [grid[k][j], grid[k][j1], grid[k + 1][j1], grid[k + 1][j]]
+			var cs: Array[Color] = []
+			var ns: Array[Vector3] = []
+			for q in 4:
+				var kk := k + (1 if q >= 2 else 0)
+				var jj := j1 if q == 1 or q == 2 else j
+				var dk := grid[mini(kk + 1, rows - 1)][jj] - grid[maxi(kk - 1, 0)][jj]
+				var dj := grid[kk][(jj + 1) % SIDES_C] - grid[kk][(jj + SIDES_C - 1) % SIDES_C]
+				ns.append(dj.cross(dk).normalized())
+				var p3 := pts[q]
+				var t := tees[kk]
+				var n := noise.get_noise_3d(p3.x * 0.9 + 30.0, p3.y * 0.9, p3.z * 0.9)
+				var c := BASALT * (0.8 + 0.45 * (n * 0.5 + 0.5))
+				var pick: Color = CRUSTS[0] if n > 0.25 else CRUSTS[1]
+				c = c.lerp(pick, smoothstep(0.45, 0.85, t) * smoothstep(0.0, 0.35, absf(n)) * 0.8)
+				c = c.lerp(CRUSTS[2], (1.0 - smoothstep(0.0, 0.18, t)) * smoothstep(0.1, 0.5, n) * 0.7)
+				c.a = 1.0
+				cs.append(c)
+			# (normais para fora: a ordem dos anéis pode virar a conta)
+			var out := (pts[0] - grid[k][(j + SIDES_C / 2) % SIDES_C]).normalized()
+			for q in 4:
+				if ns[q].dot(out) < 0.0:
+					ns[q] = -ns[q]
+			mb.tri_smooth(pts[0], pts[1], pts[2], ns[0], ns[1], ns[2], cs[0], cs[1], cs[2])
+			mb.tri_smooth(pts[0], pts[2], pts[3], ns[0], ns[2], ns[3], cs[0], cs[2], cs[3])
+	# Caroços de depósito colados no tronco
+	for b in rng.randi_range(3, 6):
+		var k := rng.randi_range(1, RINGS_C - 2)
+		var j := rng.randi() % SIDES_C
+		var sz := radius * rng.randf_range(0.35, 0.6)
+		mb.blob(grid[k][j], Vector3(sz, sz * 1.3, sz), BASALT * 1.1, 7, 4, 0.3)
 	# Boca alargada e o brilho dentro dela
-	mb.cylinder(Transform3D(Basis(), at), r, r * 1.35, 0.5, BASALT * 1.3, 9, false)
-	glow.blob(at + Vector3.UP * 0.3, Vector3(r * 0.9, 0.22, r * 0.9), GLOW, 8, 3)
-	return at + Vector3.UP * 0.5
+	var top := grid[RINGS_C][0].lerp(grid[RINGS_C][SIDES_C / 2], 0.5)
+	var r_top := grid[RINGS_C][0].distance_to(top)
+	mb.cylinder(Transform3D(Basis(), top), r_top, r_top * 1.3, 0.45, BASALT * 1.3, 11, false)
+	glow.blob(top + Vector3.UP * 0.28, Vector3(r_top * 0.85, 0.2, r_top * 0.85), GLOW, 8, 3)
+	return top + Vector3.UP * 0.45
 
 
 ## Halo de luz laranja sobre a boca da cratera (billboard aditivo, mais forte à noite).

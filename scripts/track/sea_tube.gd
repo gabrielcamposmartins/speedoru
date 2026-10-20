@@ -9,8 +9,11 @@ extends RefCounted
 ## A seção é quase quadrada (superelipse: paredes retas que curvam no alto), com a base nas bordas
 ## da laje (as mesmas da SeaCauseway: atrás das barreiras, arquibancadas e boxes) e a altura pela
 ## largura (TUBE_MIN..TUBE_MAX m), suavizadas ao longo da pista. Vidro transparente
-## (sea_glass.gdshader), nervuras de metal a cada RIB_SPACING m com luzes quentes embaixo e um friso
-## ciano por dentro, e a viga do topo com uma linha de luz. Só visual; em pedaços para o recorte.
+## (sea_glass.gdshader), nervuras de bronze com pátina (sea_bronze.gdshader) a cada RIB_SPACING m:
+## perfil com aba por fora e por dentro, pilastras na base com capitel dourado, luzes quentes embaixo,
+## um friso ciano por dentro e, a cada BANNER_RIBS nervuras (entre as dos estandartes), um medalhão
+## dourado com o tridente pendurado no alto; a viga do topo com uma linha de luz. Só visual; em
+## pedaços para o recorte.
 ##
 ## Por dentro é seco: surface_carve() dá a máscara de onde ele atravessa a linha d'água (lá a
 ## superfície do mar não é desenhada) e corridor() o trecho perto da câmera, onde as partículas da
@@ -34,7 +37,8 @@ const CARVE_INSET := 0.35
 const CARVE_TEXEL := 0.75
 ## Meio comprimento do trecho do tubo passado às partículas da água (corridor()).
 const CORRIDOR := 48.0
-const METAL := Color(0.3, 0.33, 0.38)
+const METAL := Color(0.62, 0.43, 0.2)
+const GOLD := Color(1.0, 0.8, 0.32)
 const STONE := Color(0.84, 0.81, 0.74)
 const LAMP := Color(1.0, 0.82, 0.42)
 const LED := Color(0.25, 0.95, 1.0)
@@ -302,9 +306,9 @@ static func build(track: RaceTrack, parent: Node3D) -> void:
 			for q in range(k, stop):
 				var i := (a + q) % n
 				if i % every == 0:
-					_rib(track, data, metal, lamps, leds, i, 0.7, 0.7, false)
-					# Estandarte do tridente numa nervura a cada BANNER_RIBS, lados alternados
+					# Estandarte do tridente numa nervura a cada BANNER_RIBS, lados alternados; medalhão na seguinte
 					var r := i / every
+					_rib(track, data, metal, lamps, leds, i, 0.7, 0.7, false, r % BANNER_RIBS == 1)
 					if r % BANNER_RIBS == 0:
 						_rib_banner(track, data, metal, banners, i, 1 if (r / BANNER_RIBS) % 2 == 0 else -1)
 			var gmi := MeshInstance3D.new()
@@ -315,7 +319,7 @@ static func build(track: RaceTrack, parent: Node3D) -> void:
 			root.add_child(gmi)
 			var fmi := MeshInstance3D.new()
 			fmi.name = "Frame%d" % piece
-			fmi.mesh = metal.commit(null, TrackMaterials.metal_plate("sea_tube", false, true))
+			fmi.mesh = metal.commit(null, TrackMaterials.sea_bronze("sea_tube"))
 			if not lamps.is_empty():
 				lamps.commit(fmi.mesh as ArrayMesh, SkyDeck.glow(0.0, 1.8, 3.4))
 			leds.commit(fmi.mesh as ArrayMesh, SkyDeck.glow(0.35, 1.6, 3.4))
@@ -394,7 +398,7 @@ static func _rib_banner(track: RaceTrack, data: Dictionary, metal: MeshBuilder, 
 ## Nervura (ou o portal de pedra, mais grosso) na amostra i: caixas ao longo da seção, luzes
 ## quentes perto da base e um friso ciano por dentro.
 static func _rib(track: RaceTrack, data: Dictionary, mb: MeshBuilder, lamps: MeshBuilder, leds: MeshBuilder, i: int,
-		thick: float, depth: float, portal: bool) -> void:
+		thick: float, depth: float, portal: bool, medallion := false) -> void:
 	var p := track.path
 	var tangent := p.tangents[i].normalized()
 	var prev := point(track, data, i, 0.0, -depth * 0.5)
@@ -403,9 +407,31 @@ static func _rib(track: RaceTrack, data: Dictionary, mb: MeshBuilder, lamps: Mes
 		var q := point(track, data, i, t1, -depth * 0.5)
 		var y := (q - prev).normalized()
 		var z := tangent.cross(y).normalized()
-		mb.box(Transform3D(Basis(tangent, y, z).orthonormalized(), (prev + q) * 0.5), Vector3(thick, prev.distance_to(q) + 0.05, depth),
-			STONE if portal else METAL)
+		var basis := Basis(tangent, y, z).orthonormalized()
+		var length := prev.distance_to(q) + 0.05
+		mb.box(Transform3D(basis, (prev + q) * 0.5), Vector3(thick, length, depth), STONE if portal else METAL)
+		if not portal:
+			# Perfil em I: aba larga por fora e uma mais fina por dentro, colada no vidro
+			var t0 := float(n) / ARC
+			var o0 := point(track, data, i, t0, -depth - 0.06)
+			var o1 := point(track, data, i, t1, -depth - 0.06)
+			mb.box(Transform3D(basis, (o0 + o1) * 0.5), Vector3(thick * 1.7, length, 0.12), METAL)
+			var n0 := point(track, data, i, t0, 0.0)
+			var n1 := point(track, data, i, t1, 0.0)
+			mb.box(Transform3D(basis, (n0 + n1) * 0.5), Vector3(thick * 1.4, length, 0.05), METAL)
 		prev = q
+	if not portal:
+		# Pilastras na base, com o capitel dourado
+		for side: float in [0.0, 1.0]:
+			var foot := point(track, data, i, side, -depth * 0.5)
+			var top := point(track, data, i, absf(side - 0.08), -depth * 0.5)
+			var up := (top - foot).normalized()
+			var basis2 := Basis(tangent, up, tangent.cross(up).normalized()).orthonormalized()
+			mb.box(Transform3D(basis2, (foot + top) * 0.5), Vector3(thick * 1.9, foot.distance_to(top), depth * 1.5), METAL)
+			mb.box(Transform3D(basis2, top), Vector3(thick * 2.3, 0.32, depth * 1.9), GOLD)
+			mb.box(Transform3D(basis2, foot + up * 0.2), Vector3(thick * 2.3, 0.4, depth * 1.9), METAL * 0.8)
+		if medallion:
+			_medallion(track, data, mb, i, tangent)
 	if portal:
 		for t: float in [0.0, 1.0]:
 			var b := point(track, data, i, t, -depth * 0.5)
@@ -429,6 +455,32 @@ static func _rib(track: RaceTrack, data: Dictionary, mb: MeshBuilder, lamps: Mes
 		var y4 := (b2 - a2).normalized()
 		leds.box(Transform3D(Basis(tangent, y4, tangent.cross(y4)).orthonormalized(), (a2 + b2) * 0.5), Vector3(0.1, a2.distance_to(b2), 0.03), LED)
 		a2 = b2
+
+
+## Medalhão dourado com o tridente pendurado no alto da nervura i, virado para quem chega: disco de
+## ouro com a borda de bronze, o tridente em relevo e a haste presa na viga do topo.
+static func _medallion(track: RaceTrack, data: Dictionary, mb: MeshBuilder, i: int, tangent: Vector3) -> void:
+	var p := track.path
+	var top := point(track, data, i, 0.5, 0.0)
+	var c := point(track, data, i, 0.5, 1.6)
+	var down := (c - top).normalized()
+	var side := p.lefts[i]
+	# (eixo do disco ao longo da pista: a face aponta para quem vem)
+	var disc := Basis(side, tangent, side.cross(tangent).normalized()).orthonormalized()
+	mb.cylinder(Transform3D(disc, c - tangent * 0.06), 1.0, 1.0, 0.12, METAL, 18)
+	mb.cylinder(Transform3D(disc, c - tangent * 0.1), 0.85, 0.85, 0.14, GOLD, 18)
+	mb.cylinder(Transform3D(Basis(side, -down, side.cross(-down).normalized()).orthonormalized(), c - down * 0.95), 0.06, 0.06,
+		top.distance_to(c) - 0.95, METAL, 6, false)
+	# Tridente em relevo na face da frente (cabo, travessa e três pontas)
+	var face := c - tangent * 0.13
+	var up := -down
+	var flat := Basis(side, up, -tangent).orthonormalized()
+	mb.box(Transform3D(flat, face - up * 0.12), Vector3(0.1, 1.1, 0.06), METAL)
+	mb.box(Transform3D(flat, face + up * 0.18), Vector3(0.62, 0.09, 0.06), METAL)
+	for x: float in [-0.27, 0.0, 0.27]:
+		mb.box(Transform3D(flat, face + up * (0.38 if x == 0.0 else 0.33) + side * x), Vector3(0.08, 0.36 if x == 0.0 else 0.28, 0.06), METAL)
+		mb.box(Transform3D(flat.rotated(-tangent, PI * 0.25), face + up * (0.58 if x == 0.0 else 0.5) + side * x),
+			Vector3(0.13, 0.13, 0.06), METAL)
 
 
 ## Parede de pedra entre a boca do tubo grande e a do túnel de cristal (na amostra i), com um friso

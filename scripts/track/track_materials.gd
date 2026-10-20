@@ -122,6 +122,18 @@ static func sea_stone(key: String, two_sided := false, params := {}) -> Material
 		return mat)
 
 
+## Bronze de Atlântida (shaders/track/sea_bronze.gdshader): a cor de vértice é o metal (bronze, ouro),
+## com pátina, frisos gravados, brilho de borda e a cáustica da água.
+static func sea_bronze(key: String, params := {}) -> Material:
+	return _cached("sea_bronze_%s" % key, func() -> Material:
+		var mat := ShaderMaterial.new()
+		mat.shader = load("res://shaders/track/sea_bronze.gdshader")
+		for k in params:
+			mat.set_shader_parameter(k, params[k])
+		register_sea(mat)
+		return mat)
+
+
 ## Inclui um material com a cáustica (caustics.gdshaderinc) nos ajustes do SeaWorld, já com os
 ## valores atuais.
 static func register_sea(mat: ShaderMaterial) -> void:

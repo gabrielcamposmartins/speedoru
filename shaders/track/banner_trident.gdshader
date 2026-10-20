@@ -51,4 +51,6 @@ void fragment() {
 	ALBEDO = col;
 	EMISSION = gold * max(trident, border) * (0.15 + 0.6 * night);
 	ROUGHNESS = 0.0;
+	// (sem reflexo do céu: com rugosidade 0 ele virava um espelho)
+	SPECULAR = 0.0;
 }

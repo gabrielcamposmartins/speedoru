@@ -10,23 +10,26 @@ extends RefCounted
 ## quase todos nos trechos abertos (sem cânion: SeaCanyon.open_spans), onde há espaço para nadar;
 ##  * o polvo gigante enroscado numa coluna por fora da Curva do Polvo;
 ##  * grupos de águas-vivas brilhantes (mais fortes à noite).
-## Os bichos grandes vêm de blender/build_atlantis.py (sea_creature.gdshader, cor e nado por
-## instância). Cada rota é conferida (_route_ok): fora do tubo de vidro (SeaTube.inside), abaixo da
-## linha d'água e acima do leito e das montanhas. Nada tem colisão.
+## Os bichos grandes vêm de blender/atlantis_creatures.py (sea_creature.gdshader: dorso, ventre e
+## destaque por instância, as máscaras e o peso do nado pintados no modelo). Cada rota é conferida
+## (_route_ok): fora do tubo de vidro (SeaTube.inside), abaixo da linha d'água e acima do leito e das
+## montanhas. Nada tem colisão.
 
 const MODELS := "res://assets/track/atlantis_abyss/models/"
 ## Distância máxima em que os bichos aparecem (a névoa da água esconde antes).
 const VISIBILITY := 700.0
 ## Meia-altura da baleia na escala 1 (com folga), para as rotas.
 const WHALE_SIZE := 2.6
-## Bicho: [cor do dorso, cor do ventre, manchas, modo do nado, amplitude, frequência, onda]
+## Bicho: [cor do dorso, cor do ventre, manchas, modo do nado, amplitude, frequência, onda, cor de destaque]
+## (o desenho de cada um — ventre, destaque, olhos, guelras, placas — vem pintado no modelo: as manchas
+## de ruído ficam desligadas)
 const LOOK := {
-	"whale": [Color(0.16, 0.24, 0.34), Color(0.78, 0.82, 0.86), 0.6, 1, 0.9, 0.9, 0.18],
-	"manta": [Color(0.07, 0.1, 0.18), Color(0.93, 0.93, 0.95), 0.8, 2, 1.1, 1.4, 0.9],
-	"shark": [Color(0.4, 0.46, 0.52), Color(0.92, 0.93, 0.95), 0.0, 0, 0.35, 2.4, 1.1],
-	"turtle": [Color(0.34, 0.42, 0.22), Color(0.86, 0.8, 0.58), 0.9, 3, 0.25, 1.6, 0.0],
-	"dolphin": [Color(0.32, 0.42, 0.55), Color(0.9, 0.92, 0.95), 0.0, 1, 0.22, 3.0, 1.6],
-	"octopus": [Color(0.62, 0.22, 0.18), Color(0.95, 0.66, 0.55), 1.0, 4, 0.55, 0.7, 0.0],
+	"whale": [Color(0.13, 0.16, 0.21), Color(0.86, 0.88, 0.9), 0.0, 1, 0.9, 0.9, 0.18, Color(0.8, 0.83, 0.84)],
+	"manta": [Color(0.06, 0.08, 0.12), Color(0.93, 0.94, 0.95), 0.0, 2, 1.1, 1.4, 0.9, Color(0.84, 0.86, 0.88)],
+	"shark": [Color(0.42, 0.47, 0.52), Color(0.94, 0.95, 0.96), 0.0, 0, 0.35, 2.4, 1.1, Color(0.88, 0.9, 0.92)],
+	"turtle": [Color(0.3, 0.32, 0.27), Color(0.9, 0.85, 0.66), 0.0, 3, 0.25, 1.6, 0.0, Color(0.5, 0.4, 0.22)],
+	"dolphin": [Color(0.47, 0.52, 0.58), Color(0.93, 0.92, 0.93), 0.0, 1, 0.22, 3.0, 1.6, Color(0.27, 0.31, 0.37)],
+	"octopus": [Color(0.66, 0.24, 0.17), Color(0.96, 0.7, 0.58), 0.0, 4, 0.55, 0.7, 0.0, Color(0.98, 0.86, 0.78)],
 }
 
 static var _creature_mat: ShaderMaterial
@@ -74,6 +77,7 @@ static func creature(root: Node3D, kind: String, scale: float, phase: float, sha
 		mi.material_override = creature_material()
 		mi.set_instance_shader_parameter("top_color", look[0])
 		mi.set_instance_shader_parameter("belly_color", look[1])
+		mi.set_instance_shader_parameter("accent_color", look[7])
 		mi.set_instance_shader_parameter("spots", look[2])
 		mi.set_instance_shader_parameter("mode", float(look[3]))
 		mi.set_instance_shader_parameter("amp", float(look[4]) / scale)
@@ -116,19 +120,21 @@ static func _line(a: Vector3, b: Vector3, n := 20) -> Array[Vector3]:
 
 
 ## A rota (pontos, oscilando ±swing m na altura) não entra no tubo, não passa da superfície e não
-## atravessa o leito nem as montanhas, para um bicho de meia-altura `size`.
-static func _route_ok(track: RaceTrack, pts: Array[Vector3], swing: float, size: float) -> bool:
+## atravessa o leito nem as montanhas, para um bicho (ou bando) de meia-altura `size` e meia-largura
+## `width` (a mesma se negativa: os bandos são bem mais largos que altos).
+static func _route_ok(track: RaceTrack, pts: Array[Vector3], swing: float, size: float, width := -1.0) -> bool:
 	var water := track.layout.water_level
+	var w := size if width < 0.0 else width
 	for pt in pts:
 		if pt.y + swing + size > water - 1.0:
 			return false
 		if pt.y - swing - size < SeaFloor.ground(track, pt.x, pt.z) + 1.0:
 			return false
 		# (por cima dos vulcões, naufrágios e ruínas do leito)
-		if pt.y - swing - size < SeaFloor.claim_top(pt.x, pt.z, size) + 1.0:
+		if pt.y - swing - size < SeaFloor.claim_top(pt.x, pt.z, w) + 1.0:
 			return false
 		for dy: float in [-swing, 0.0, swing]:
-			if SeaTube.blocked(track, pt + Vector3.UP * dy, size + 2.0):
+			if SeaTube.blocked(track, pt + Vector3.UP * dy, w + 2.0):
 				return false
 	return true
 
@@ -183,9 +189,10 @@ static func _occupied(track: RaceTrack, i: int, side: int) -> float:
 
 
 ## Procura uma órbita perto de s0 (±reach): centro a lat.x..lat.y m da pista (dos dois lados), a
-## above.x..above.y m acima dela, raios entre r_min e r_max. [centro, raios] ou [] se não achar.
+## above.x..above.y m acima dela, raios entre r_min e r_max, para um bicho (ou bando) de meia-altura
+## `size` e meia-largura `width` (_route_ok). [centro, raios] ou [] se não achar.
 static func _find_orbit(track: RaceTrack, rng: RandomNumberGenerator, s0: float, reach: float, lat: Vector2, above: Vector2,
-		r_min: Vector2, r_max: Vector2, swing: float, size: float, flock := false, tries := 30) -> Array:
+		r_min: Vector2, r_max: Vector2, swing: float, size: float, flock := false, tries := 30, width := -1.0) -> Array:
 	var p := track.path
 	for t in tries:
 		var s := s0 + rng.randf_range(-reach, reach)
@@ -194,7 +201,15 @@ static func _find_orbit(track: RaceTrack, rng: RandomNumberGenerator, s0: float,
 		center.y = minf(p.height_at(s) + rng.randf_range(above.x, above.y), track.layout.water_level - swing - size - 2.0)
 		var radii := Vector2(rng.randf_range(r_min.x, r_max.x), rng.randf_range(r_min.y, r_max.y))
 		var pts := _lissajous(center, radii) if flock else _ellipse(center, radii)
-		if _route_ok(track, pts, swing, size):
+		# Por cima das ruínas, naufrágios e vulcões do leito (SeaFloor.claim): sobe o que precisar, até
+		# perto da superfície (senão quase nenhum bando grande achava lugar nos trechos abertos)
+		var floor_top := -INF
+		for pt in pts:
+			floor_top = maxf(floor_top, SeaFloor.claim_top(pt.x, pt.z, size if width < 0.0 else width))
+		if floor_top + swing + size + 1.5 > center.y:
+			center.y = minf(floor_top + swing + size + 1.5, track.layout.water_level - swing - size - 2.0)
+			pts = _lissajous(center, radii) if flock else _ellipse(center, radii)
+		if _route_ok(track, pts, swing, size, width):
 			return [center, radii]
 	return []
 
@@ -263,8 +278,9 @@ static func _big(track: RaceTrack, root: Node3D, animator: SceneryAnimator, rng:
 			tt.set_meta("at", o[0])
 	# Golfinhos: dois grupos de seis andando juntos (como um bando)
 	for g in 2:
-		var o2 := _find_orbit(track, rng, open.call(), 250.0, Vector2(100, 240), Vector2(8, 16), Vector2(60, 45), Vector2(120, 90), 6.0, 9.0,
-			true, 40)
+		# (o grupo: ±2 m de altura e ±8 m de largura, mais o tamanho de um golfinho)
+		var o2 := _find_orbit(track, rng, open.call(), 250.0, Vector2(80, 240), Vector2(8, 16), Vector2(40, 30), Vector2(90, 70), 6.0, 3.5,
+			true, 80, 10.0)
 		if o2.is_empty():
 			continue
 		var pod := Node3D.new()
@@ -289,7 +305,8 @@ static func _octopus(track: RaceTrack, root: Node3D) -> void:
 	base.y = SeaFloor.ground(track, base.x, base.z)
 	var mb := MeshBuilder.new()
 	var top := p.points[i].y + 6.0 - base.y
-	AtlantisRuins.column(mb, base, top, 1.4, 0.0)
+	# (sem o musgo no alto da coluna do polvo: atravessaria a membrana dele)
+	AtlantisRuins.column(mb, base, top, 1.4, 0.0, AtlantisRuins.STONE, false)
 	AtlantisRuins.column(mb, base + p.tangents[i] * 9.0 + Vector3.DOWN * 0.5, top * 0.6, 1.2, 0.4)
 	var mi := MeshInstance3D.new()
 	mi.name = "OctopusColumn"
@@ -323,8 +340,9 @@ static func _schools(track: RaceTrack, root: Node3D, animator: SceneryAnimator, 
 			transforms.append(Transform3D(Basis().scaled(Vector3(s, s, s)), offset))
 			data.append(Color(rng.randf(), rng.randf(), color, 0.0))
 		var s0 := SeaCanyon.random_open_s(track, rng) if f % 5 != 0 else rng.randf() * p.length
-		var o := _find_orbit(track, rng, s0, 100.0, Vector2(35, 200), Vector2(4, 18), Vector2(30, 25),
-			Vector2(90, 70), 6.0, spread + 2.0, true)
+		# (o cardume: ±0,5 spread de altura e ±spread de largura, mais o vaivém dos peixes)
+		var o := _find_orbit(track, rng, s0, 100.0, Vector2(35, 200), Vector2(4, 18), Vector2(18, 14),
+			Vector2(55, 42), 6.0, spread * 0.5 + 1.5, true, 60, spread + 2.0)
 		if o.is_empty():
 			continue
 		var mm := MultiMesh.new()
@@ -344,8 +362,8 @@ static func _schools(track: RaceTrack, root: Node3D, animator: SceneryAnimator, 
 		animator.add_flock(mmi, o[0], o[1], rng.randf_range(5.0, 9.0), rng.randf() * TAU)
 
 
-## Peixinho de ~0,5 m: corpo em losango (alto e fino) e a cauda; frente em +Z. COLOR.r = peso da
-## cauda; COLOR.g = ventre.
+## Peixinho de ~0,56 m (frente em +Z): corpo fusiforme alto e achatado dos lados (anéis elípticos),
+## cauda em forquilha, nadadeira dorsal e as peitorais. COLOR.r = peso da cauda; COLOR.g = ventre.
 static func _fish_mesh() -> ArrayMesh:
 	return fish_builder().commit()
 
@@ -353,22 +371,51 @@ static func _fish_mesh() -> ArrayMesh:
 ## As peças do peixinho (escala `k`), para quem quiser acrescentar (os peixes-voadores ganham asas).
 static func fish_builder(k := 1.0) -> MeshBuilder:
 	var mb := MeshBuilder.new()
-	var nose := Vector3(0, 0, 0.26) * k
-	var top := Vector3(0, 0.1, 0.02) * k
-	var bottom := Vector3(0, -0.09, 0.02) * k
-	var tail := Vector3(0, 0, -0.16) * k
+	const SIDES := 7
+	# Anéis ao longo do corpo: z, meia-largura, meia-altura, centro em y (do focinho ao pedúnculo)
+	var rings := [[0.2, 0.024, 0.04, -0.005], [0.12, 0.04, 0.082, 0.0], [0.03, 0.045, 0.098, 0.004],
+		[-0.06, 0.035, 0.074, 0.004], [-0.13, 0.017, 0.034, 0.002], [-0.165, 0.009, 0.022, 0.0]]
+	var nose := Vector3(0, -0.008, 0.265) * k
+	var ring_pts: Array[PackedVector3Array] = []
+	for r: Array in rings:
+		var row := PackedVector3Array()
+		for j in SIDES:
+			var a := TAU * j / SIDES
+			row.append(Vector3(cos(a) * float(r[1]), float(r[3]) + sin(a) * float(r[2]), float(r[0])) * k)
+		ring_pts.append(row)
+	var white := Color.WHITE
+	for j in SIDES:
+		var j1 := (j + 1) % SIDES
+		var a0 := ring_pts[0][j]
+		var a1 := ring_pts[0][j1]
+		mb.tri(nose, a1, a0, white, (a0 + a1) * 0.5 - nose * 0.5)
+		for r in rings.size() - 1:
+			var p00 := ring_pts[r][j]
+			var p01 := ring_pts[r][j1]
+			var p10 := ring_pts[r + 1][j]
+			var p11 := ring_pts[r + 1][j1]
+			var out := (p00 + p01 + p10 + p11) * 0.25
+			out = Vector3(out.x, out.y, 0.0)
+			mb.quad(p00, p01, p11, p10, white, out)
+	# Cauda em forquilha (dois lobos e o entalhe no meio)
+	var base := Vector3(0, 0, -0.165) * k
+	var top := Vector3(0, 0.1, -0.31) * k
+	var bottom := Vector3(0, -0.095, -0.3) * k
+	var notch := Vector3(0, 0.0, -0.25) * k
+	mb.tri(base, top, notch, white, Vector3.RIGHT)
+	mb.tri(base, notch, bottom, white, Vector3.RIGHT)
+	# Dorsal e peitorais
+	mb.tri(Vector3(0, 0.09, 0.09) * k, Vector3(0, 0.155, -0.02) * k, Vector3(0, 0.07, -0.08) * k, white, Vector3.RIGHT)
 	for side: float in [1.0, -1.0]:
-		var mid := Vector3(side * 0.045, 0.0, 0.04) * k
-		mb.tri(nose, top, mid, Color(0.0, 0.0, 1.0), Vector3(side, 0.4, 0.3))
-		mb.tri(nose, mid, bottom, Color(0.0, 1.0, 1.0), Vector3(side, -0.4, 0.3))
-		mb.tri(top, tail, mid, Color(0.4, 0.0, 1.0), Vector3(side, 0.4, -0.3))
-		mb.tri(mid, tail, bottom, Color(0.4, 1.0, 1.0), Vector3(side, -0.4, -0.3))
-	# Cauda (barbatana vertical)
-	mb.tri(tail, Vector3(0, 0.09, -0.3) * k, Vector3(0, -0.09, -0.3) * k, Color(1.0, 0.0, 1.0), Vector3.RIGHT)
-	# Peso da cauda pela posição (de 0 na frente a 1 na ponta da cauda)
+		mb.tri(Vector3(side * 0.04, -0.02, 0.1) * k, Vector3(side * 0.09, -0.05, 0.02) * k, Vector3(side * 0.035, -0.04, 0.05) * k,
+			white, Vector3(side, -0.3, 0.0))
+	# Peso da cauda pela posição (de 0 na frente a 1 na ponta da cauda) e o ventre (embaixo da linha do
+	# meio do corpo)
 	for v in mb.verts.size():
-		var w := clampf((0.05 * k - mb.verts[v].z) / (0.35 * k), 0.0, 1.0)
-		mb.colors[v] = Color(w, mb.colors[v].g, 1.0)
+		var q := mb.verts[v] / k
+		var w := clampf((0.05 - q.z) / 0.35, 0.0, 1.0)
+		var belly := smoothstep(0.0, -0.05, q.y) if absf(q.x) > 0.001 or q.z > -0.17 else 0.0
+		mb.colors[v] = Color(w, belly, 1.0)
 	return mb
 
 
@@ -384,7 +431,7 @@ static func _jellyfish(track: RaceTrack, root: Node3D, rng: RandomNumberGenerato
 	var water := track.layout.water_level
 	var xfs: Array[Transform3D] = []
 	var data: Array[Color] = []
-	for cluster: Array in [[3000.0, -1], [3200.0, 1], [3420.0, -1], [4420.0, 1], [180.0, -1], [1620.0, -1], [2880.0, 1],
+	for cluster: Array in [[3000.0, -1], [3200.0, 1], [3420.0, -1], [4450.0, 1], [180.0, -1], [1620.0, -1], [2880.0, 1],
 			[3980.0, -1], [900.0, 1]]:
 		var hue := rng.randf()
 		for k in 34:
@@ -419,32 +466,58 @@ static func _jellyfish(track: RaceTrack, root: Node3D, rng: RandomNumberGenerato
 	root.add_child(mmi)
 
 
-## Água-viva de ~1,2 m: sino (meia esfera achatada) e oito tentáculos em fita. COLOR.r = 0 no sino e
-## até 1 na ponta dos tentáculos; COLOR.g = 1 na borda do sino.
+## Água-viva de ~1,2 m: sino em domo com a borda levemente aberta e recortada em lóbulos, quatro
+## braços orais largos e franzidos no meio e dezesseis tentáculos finos saindo da borda. COLOR.r = 0
+## no sino e até 1 na ponta dos braços e tentáculos; COLOR.g = 1 na borda do sino.
 static func _jelly_mesh() -> ArrayMesh:
 	var mb := MeshBuilder.new()
 	var prof := PackedVector2Array()
-	for k in 7:
-		var t := k / 6.0
+	for k in 10:
+		var t := k / 9.0
 		var a := t * PI * 0.5
-		prof.append(Vector2(cos(a) * 0.6, sin(a) * 0.45))
-	mb.lathe(Transform3D(Basis(), Vector3.ZERO), prof, Color(0, 0, 1), 14)
-	# Borda do sino mais clara
+		# (a borda abre um pouco para fora, como uma saia)
+		prof.append(Vector2(cos(a) * 0.6 + 0.05 * pow(1.0 - t, 3.0), sin(a) * 0.45 - 0.04 * pow(1.0 - t, 2.0)))
+	mb.lathe(Transform3D(Basis(), Vector3.ZERO), prof, Color(0, 0, 1), 20)
+	# Borda em lóbulos e mais clara
 	for v in mb.verts.size():
-		var y := mb.verts[v].y
-		mb.colors[v] = Color(0.0, 1.0 - smoothstep(0.0, 0.12, y), 1.0)
-	for k in 8:
-		var a := TAU * k / 8.0
-		var base := Vector3(cos(a), 0.0, sin(a)) * 0.42
-		var side := Vector3(-sin(a), 0.0, cos(a)) * 0.05
+		var q := mb.verts[v]
+		var y := q.y
+		if y < 0.03:
+			var a := atan2(q.z, q.x)
+			var lobe := 1.0 + 0.05 * absf(sin(a * 8.0))
+			mb.verts[v] = Vector3(q.x * lobe, y, q.z * lobe)
+		mb.colors[v] = Color(0.0, 1.0 - smoothstep(-0.05, 0.12, y), 1.0)
+	# Braços orais: fitas largas franzidas (ondulando de lado) descendo do meio
+	for k in 4:
+		var a := TAU * k / 4.0 + 0.4
+		var out := Vector3(cos(a), 0.0, sin(a))
+		var side := Vector3(-sin(a), 0.0, cos(a))
+		var rows := 9
+		for r in rows:
+			var t0 := float(r) / rows
+			var t1 := float(r + 1) / rows
+			var c0 := out * (0.06 + 0.08 * t0) + Vector3.DOWN * (0.05 + t0 * 1.7) + side * sin(t0 * 9.0) * 0.06
+			var c1 := out * (0.06 + 0.08 * t1) + Vector3.DOWN * (0.05 + t1 * 1.7) + side * sin(t1 * 9.0) * 0.06
+			var w0 := lerpf(0.13, 0.05, t0)
+			var w1 := lerpf(0.13, 0.05, t1)
+			var start := mb.verts.size()
+			mb.quad(c0 - side * w0, c0 + side * w0, c1 + side * w1, c1 - side * w1, Color(t0, 0, 1), out)
+			for v in range(start, mb.verts.size()):
+				mb.colors[v] = Color(clampf(-mb.verts[v].y / 1.75, 0.0, 1.0) * 0.8, 0.15, 1.0)
+	# Tentáculos finos saindo da borda, de comprimentos diferentes
+	for k in 16:
+		var a := TAU * k / 16.0
+		var base := Vector3(cos(a), 0.0, sin(a)) * 0.6
+		var side := Vector3(-sin(a), 0.0, cos(a)) * 0.022
+		var length := 2.4 + 0.8 * absf(sin(k * 2.3))
 		var rows := 6
 		for r in rows:
 			var t0 := float(r) / rows
 			var t1 := float(r + 1) / rows
-			var y0 := Vector3.DOWN * (t0 * 2.6)
-			var y1 := Vector3.DOWN * (t1 * 2.6)
+			var y0 := Vector3.DOWN * (t0 * length) - base * 0.12 * t0
+			var y1 := Vector3.DOWN * (t1 * length) - base * 0.12 * t1
 			var start := mb.verts.size()
 			mb.quad(base + y0 - side, base + y0 + side, base + y1 + side, base + y1 - side, Color(t0, 0, 1), Vector3(cos(a), 0, sin(a)))
 			for v in range(start, mb.verts.size()):
-				mb.colors[v] = Color(clampf(-mb.verts[v].y / 2.6, 0.0, 1.0), 0.0, 1.0)
+				mb.colors[v] = Color(clampf(-mb.verts[v].y / length, 0.0, 1.0), 0.0, 1.0)
 	return mb.commit()

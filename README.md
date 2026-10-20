@@ -1397,15 +1397,17 @@ Segunda pista da categoria **Fantasia**: Atlântida submersa. `scenes/tracks/atl
 
 - **Traçado** (`python tools/build_atlantis_abyss.py [--debug pasta]`, o mesmo método por trechos da
   Sky Aerobase: `solve`, `trace`, `elevation` e `check` de `tools/build_sky_aerobase.py`, que recebem
-  o sentido e a meia-largura). 4,73 km, anti-horário: **Reta do Anfiteatro** (boxes, grid e
+  o sentido e a meia-largura). 4,76 km, anti-horário: **Reta do Anfiteatro** (boxes, grid e
   arquibancadas, ~970 m somando o fim da volta), Curva do Templo, Avenida das Colunas, Curva do Polvo,
   **Túnel de Cristal** (366 m, quase reto), **Grampo da Âncora**, **Subida do Aqueduto** (até 34 m,
   6,9% no máximo) que **sai da água**, o trecho emerso (**Portão de Poseidon** e Ponte das
   Cachoeiras, ~640 m acima da linha d'água), o **Mergulho** (−7,6%) de volta para baixo, Curva da
-  Tartaruga, Chicane dos Corais, Reta e Esses do Abismo (sobre a fossa), Curva da Baleia, Reta dos
-  Tritões e a Última Curva. Sem cruzamentos (trechos não vizinhos a 94 m ou mais). O desenho de
-  `--debug` marca em amarelo o que fica fora d'água. Os bots fazem ~74 s (volta mínima plausível
-  online: 55 s).
+  Tartaruga, Chicane dos Corais, Reta e Esses do Abismo (sobre a fossa), a **Chicane do Tridente**
+  (direita-esquerda de raio 22 m com 15 m de miolo, no fim dos ~510 m de pé embaixo do abismo: os bots
+  freiam de ~280 para ~110 km/h; escape de 4,5 m dos dois lados e placas de frenagem), a Ponte do
+  Abismo, Curva da Baleia, Reta dos Tritões e a Última Curva. Sem cruzamentos (trechos não vizinhos a
+  94 m ou mais). O desenho de `--debug` marca em amarelo o que fica fora d'água. Os bots fazem ~78 s
+  (volta mínima plausível online: 55 s).
 - **Barreiras em toda a volta** (ninguém cai; não há `FallWatch`): mureta de pedra arredondada com
   um **painel de vidro** em cima (`sea_glass.gdshader`: transparente, fresnel ciano, faixas de
   reflexo, montantes a cada 8 m) e **friso de LED ciano** no alto; a colisão é a mesma das outras
@@ -1419,8 +1421,11 @@ Segunda pista da categoria **Fantasia**: Atlântida submersa. `scenes/tracks/atl
   `sea_stone.gdshader` — o `building_common` com o cinza puxado para mármore, **sem o contorno anime**
   (`no_outline` forçado), juntas de cantaria (blocos em fiadas desencontradas, cada um num tom),
   musgo em duas escalas (manchas grandes e tufos finos) nas faces de cima, fios finos de alga
-  escorrendo nas paredes, colônias de coral em tons quentes com borda e pólipos, as faces de baixo
-  mais escuras e a **cáustica** da água (`caustics.gdshaderinc`: dois Voronoi animados, só abaixo
+  escorrendo nas paredes, colônias de coral pequenas (rosa, laranja e roxo) com borda e pólipos —
+  algas e coral só debaixo d'água; no trecho emerso a pedra fica com o musgo —, as faces de baixo
+  mais escuras, **sem reflexo do céu** (`SPECULAR = 0`: sem contorno a rugosidade é 0 e a pedra, o
+  leito, a rocha do cânion, os corais, o bronze e os estandartes viravam um espelho da água) e a
+  **cáustica** da água (`caustics.gdshaderinc`: dois Voronoi animados, só abaixo
   da linha d'água, voltada para cima, some de longe). `TrackMaterials.set_sea` troca os parâmetros
   da água em todos os materiais de uma vez.
 - **Geração** (ramo `layout.undersea` do `RaceTrack.rebuild`; o servidor pula tudo menos pista,
@@ -1431,18 +1436,26 @@ Segunda pista da categoria **Fantasia**: Atlântida submersa. `scenes/tracks/atl
     pista, e montanhas avulsas pontudas à vista da pista, picos até 3 m abaixo da superfície) e, nos
     trechos em cânion, o chão entre o tubo e a parede e a **serra atrás de cada parede** (crista e a
     descida até longe, da grade de `SeaCanyon`), que passa do mar em volta do trecho emerso;
-    `seabed.gdshader` (areia com ondinhas, rocha nas encostas pela inclinação no vértice, algas,
-    cáustica fina, sem contorno anime; acima do mar, rocha seca e vegetação).
+    `seabed.gdshader` (areia bege-acinzentada — a clara, na luz azulada da água, virava verde-menta —
+    com manchas, ondinhas de crista clara e vale escuro, cascalho, conchas e pedrinhas de perto, rocha
+    nas encostas íngremes — o limiar no fragment, com ruído —, algas, cáustica fina, sem contorno
+    anime; acima do mar, rocha seca e vegetação). Os shaders do mar que desenham pela posição no mundo
+    (leito, pedra, cáustica, bronze, rocha do cânion) usam **hashes sem seno**: longe da origem o
+    `fract(sin(...))` perdia a precisão na placa de vídeo e a areia saía em polígonos de faixas retas.
   - `SeaCauseway` ("aqueduto"): laje de pedra sob a pista (até `RaceTrack.deck_edge`, alargada até a
     base do tubo) com cornija e friso de LED; onde o leito está perto, parede cheia; no resto,
     **arcos de aqueduto** a cada 24 m, em andares de até 24 m (dois ou três na subida e no abismo),
     com pilastras salientes nos pilares, aduelas de pedra e tijolo alternados em volta dos arcos,
-    pedra de fecho, cornijas entre os andares, lanternas e estandartes do tridente nos pilares;
+    pedra de fecho (no andar de cima, com um medalhão dourado do tridente), cornijas entre os andares,
+    lanternas e estandartes do tridente nos pilares;
     algas penduradas na cornija e nos arcos, corais no pé dos pilares e musgo.
   - `SeaTube` ("tubo"): o **tubo de vidro grande em volta de toda a pista submersa** (os carros
-    correm no seco): seção em superelipse da largura da laje, 13 a 22 m de altura, nervuras a cada
-    12 m, espinha no topo com friso de LED, portais de pedra onde a pista sai da água e um anel
-    ligando ao Túnel de Cristal. `SeaTube.clearance`/`covers`/`inside`/`blocked` são usados por
+    correm no seco): seção em superelipse da largura da laje, 13 a 22 m de altura, **nervuras de
+    bronze com pátina** a cada 12 m (`sea_bronze.gdshader`: a cor de vértice é o metal, manchas de
+    pátina verde-azulada, frisos gravados, brilho de borda e cáustica; perfil em I com aba por fora e
+    por dentro, pilastras na base com capitel dourado e, a cada três nervuras, um **medalhão dourado
+    com o tridente** pendurado no alto, virado para quem chega), espinha no topo com friso de LED,
+    portais de pedra onde a pista sai da água e um anel ligando ao Túnel de Cristal. `SeaTube.clearance`/`covers`/`inside`/`blocked` são usados por
     ruínas, bichos, recifes e vulcões para ficar do lado de fora. **Por dentro é seco**: onde o tubo
     atravessa a linha d'água (subida para o Portão e mergulho) a superfície do mar é recortada
     (`SeaTube.surface_carve`, máscara vista de cima em `sea_carve.gdshaderinc`, usada pelo
@@ -1452,8 +1465,8 @@ Segunda pista da categoria **Fantasia**: Atlântida submersa. `scenes/tracks/atl
   - Estandartes do tridente pendurados numa nervura a cada três do tubo de vidro (lados
     alternados, por cima da faixa entre a barreira e o vidro).
   - `GlassTunnel` ("túnel"): o **Túnel de Cristal**, o tubo menor dentro do grande, sobre a pista,
-    com nervuras de metal a cada 8 m (luzes amarelas e friso ciano), viga no topo, estandartes e
-    portais de pedra; luz ciano dentro e refletores à noite.
+    com nervuras de bronze a cada 8 m (o mesmo material do tubo grande; luzes amarelas e friso ciano),
+    viga no topo, estandartes e portais de pedra; luz ciano dentro e refletores à noite.
   - `SeaCanyon` ("cânion"): na maior parte da pista submersa (`layout.canyons`: trechos e a folga
     de cada lado entre o tubo e o pé da parede — 5 a 8 m, mais só no polvo e no portal —, ~60% da
     volta debaixo d'água) o tubo corre num **cânion de montanhas submarinas** bem junto dele:
@@ -1475,7 +1488,8 @@ Segunda pista da categoria **Fantasia**: Atlântida submersa. `scenes/tracks/atl
     nos patamares, algas penduradas da cornija e musgo na borda, **jardins de corais elaborados** a
     cada 17 m nos patamares (`SeaReef.garden`), prateleiras de coral de placa e chicotes-do-mar na
     face, corais moles de cabeça para baixo na cornija e **cavernas** na face (`cave_mouth.gdshader`:
-    a boca escura com pedras em volta, pontinhos de bioluminescência e, às vezes, os olhos de uma
+    a boca escura com pedras em volta, a sobrancelha de pedra por cima com estalactites e o cascalho na
+    soleira, pontinhos de bioluminescência e, às vezes, os olhos de uma
     moreia); nas montanhas, arbustos e **árvores**
     (pinheiros-mansos, ciprestes e pinheiros de `CityProps.add_trees`) na crista e na serra. **Luzes coloridas
     submarinas** (~130): cristais acesos nos patamares (e no leito dos trechos abertos), um facho
@@ -1484,35 +1498,58 @@ Segunda pista da categoria **Fantasia**: Atlântida submersa. `scenes/tracks/atl
   - `CanyonRuins` (na etapa "cânion"): ruínas de Atlântida junto da pista para dar variedade —
     **pontes de pedra atravessando o cânion por cima do tubo** (6: um arco grande que acompanha a
     seção do tubo ou do túnel de cristal 2,5 m por fora, com os pés no fundo dos dois lados, aduelas
-    e fecho marcados, cornija, tabuleiro com mureta abaixo da superfície, estandartes e lanternas;
+    alternando pedra escura e tijolo e o fecho com o medalhão dourado do tridente, cornija, tabuleiro com mureta abaixo da superfície, estandartes e lanternas;
     algumas com o tabuleiro desabado no meio), **fachadas de templo** esculpidas no pé das paredes
     (colunas, entablamento e frontão entrando na rocha, porta escura, estátua ou estandartes),
     colunas quebradas e tambores caídos nos patamares e, nos trechos abertos, **aquedutos de dois
     andares** ao lado do tubo; tudo com corais, algas e musgo, e nada dentro do tubo.
   - `AtlantisRuins` ("ruínas"): Templo de Poseidon por fora da Curva do Templo (escadaria, colunas,
-    frontão e a estátua), colunatas na avenida, o **Portal de Atlântida** (arco sobre a pista, 15 m
-    livres), a muralha em arcos de dois andares atrás das arquibancadas do anfiteatro e, ao longe,
-    prédios em ruínas, torres, aquedutos em ruínas (`AtlantisRuins.aqueduct`: dois andares,
+    friso de tríglifos, frontão com a moldura saliente, o tímpano recuado, o **tridente dourado** em
+    relevo e os acrotérios, e a estátua), colunatas na avenida, o **Portal de Atlântida** (arco sobre a pista, 15 m
+    livres), o **Tridente do abismo** (um tridente gigante de bronze com pátina e pontas de ouro,
+    `sea_bronze.gdshader`, fincado no fundo da fossa por fora da Chicane do Tridente, com as pontas a
+    3 m da superfície: de quem freia para a chicane ele aparece bem à frente; o Portal com pilastras e
+    capitel nos pilares, aduelas alternando pedra e tijolo, a pedra de fecho saliente com o tridente
+    dourado em relevo e a cornija), a muralha em arcos de dois andares atrás das arquibancadas do anfiteatro e, ao longe,
+    prédios em ruínas (com pedaços do telhado caídos dentro, blocos soltos em volta e, às vezes, a
+    escadaria e meio frontão), torres (cornijas a cada andar, janelas em arco, ameias faltando e
+    blocos caídos no pé), aquedutos em ruínas (`AtlantisRuins.aqueduct`: dois andares,
     contrafortes, o canal no alto com as lajes, pontas e vãos desabados; os arcos com plinto,
-    imposta, aduelas de tijolo, fecho e cornija) e colunas com lanternas, estandartes azuis com o tridente
+    imposta, aduelas de tijolo, fecho e cornija) e colunas (cada uma no chão do seu lugar) com
+    lanternas (globo aceso com o anel e a tampa de bronze em cúpula), estandartes azuis com o tridente
     dourado (`banner_trident.gdshader`, desenhado no shader) e estátuas, tudo fora do tubo; corais
-    no pé das colunas, musgo no alto e algas penduradas nas arcadas.
+    no pé das colunas, musgo no alto e algas penduradas nas arcadas. As **colunas** (`column`, usadas
+    pelo templo, pela avenida, pelas praças, pelas fachadas do cânion e pelas ruínas) são jônicas: base
+    moldurada, fuste com êntase e doze caneluras em facetas (o toon mostra as listras), equino, as duas
+    volutas enroladas e o ábaco; as quebradas têm o topo irregular. A muralha do anfiteatro tem
+    estátuas (Poseidon e a deusa, alternando) em pedestais no alto.
   - `SeaVents` ("vulcões"): **10 vulcões de bolhas** logo ao lado do tubo nos trechos abertos (3 a 22 m
     da borda dele, sem encostar no tubo, na laje nem nos arcos) — montes de rocha vulcânica irregular
     (anéis com ruído, sulcos de lava escorrida), crostas minerais coloridas perto da boca (enxofre,
     ferrugem, esteiras de bactérias), almofadas de lava, a cratera acesa, rachaduras de lava, halo
-    laranja (`vent_glow.gdshader`) e uma luz de verdade; **chaminés** em volta da boca soltando fumaça
-    escura e bolhas, com **vermes tubulares** no pé (tubos brancos com a pluma vermelha), a água
+    laranja (`vent_glow.gdshader`) e uma luz de verdade; **chaminés** em volta da boca (fumarolas
+    negras: troncos tortos e encaroçados, largos no pé e finos no alto, com crostas de enxofre e
+    ferrugem em manchas perto da boca e a esteira branca no pé) soltando fumaça escura e bolhas, as
+    rachaduras de lava finas e em zigue-zague, com falhas, **vermes tubulares** no pé (tubos brancos
+    com a pluma vermelha), a água
     tremendo de calor sobre a boca (`vent_shimmer.gdshader`), a coluna de bolhas até a superfície
     (`vent_bubbles.gdshader`, sem emissor; o modo `puff` faz a fumaça) e a espuma onde ela chega.
   - `SeaRelics` ("relíquias"): o que enche o leito nos trechos abertos, dos dois lados do tubo (perto
-    na maioria): **naufrágios de galés** (casco de tábuas tombado e meio enterrado com o rombo e as
-    costelas à mostra, aríete de bronze, popa enrolada, remos, mastro com a vela do tridente ou
-    quebrado, ânforas), **praças afundadas** (lajes com a areia nas bordas, templo redondo de cúpula
-    meio desabada, fonte com estátua ou estátua no pedestal, muretas de casas, escadaria, lanternas),
-    **arcos de pedra** naturais e **pináculos** com corais no topo, campos de **ânforas** com âncora e
-    baú de moedas, **estátuas gigantes** tombadas ou meio enterradas e, junto do vidro, **poças de vida**
-    (marisco gigante com o manto colorido, estrelas-do-mar, ouriços, anêmonas). Cada peça ocupa o seu
+    na maioria): **naufrágios de galés** (casco de tábuas tombado e meio enterrado — 26 seções com o
+    bojo arredondado de nove pontos e as fiadas de tábuas finas —, o rombo com as costelas à mostra e
+    tábuas quebradas saindo tortas, aríete de bronze, popa enrolada, remos, mastro com a vela do
+    tridente ou quebrado, ânforas), **praças afundadas** (lajes com a areia nas bordas, templo redondo de cúpula
+    meio desabada, fonte com estátua ou estátua no pedestal, muretas de casas, escadaria, lanternas,
+    o piso em mosaico com a estrela de oito pontas em azul-marinho e dourado e as faixas azul e
+    terracota),
+    **arcos de pedra** naturais e **pináculos** (malhas de rocha varridas, com ruído e camadas, na
+    rocha estratificada do cânion) com corais no topo, campos de **ânforas** (com as faixas pintadas de
+    preto) com âncora e baú de moedas (tábuas, cintas e cantos de bronze, fechadura dourada e a tampa
+    abobadada aberta), **estátuas gigantes** caídas (Poseidon tombado de costas, com as costas na areia, e o
+    rosto, o busto e o sentado meio enterrados, cada um na sua profundidade) e, junto do vidro, **poças de vida**
+    (marisco gigante com o manto colorido, estrelas-do-mar, ouriços, anêmonas). As peças saem de um
+    saco embaralhado na proporção dos pesos (quem não coube tenta no próximo lugar e, depois de três
+    vezes, vai para o fundo do saco), então nenhuma falta quando o traçado muda. Cada peça ocupa o seu
     lugar do leito (`SeaFloor.claim`): os recifes não nascem dentro e os bichos grandes passam por
     cima.
   - `PoseidonGate` ("portão"): no trecho emerso, a **cadeia de montanhas** do cânion em volta da
@@ -1536,31 +1573,57 @@ Segunda pista da categoria **Fantasia**: Atlântida submersa. `scenes/tracks/atl
     coral mole com cachos de pólipos, chicote-do-mar, marisco gigante, estrela-do-mar, ouriço e
     vermes tubulares), florestas de kelp e capim do mar (mais nos trechos abertos, nada dentro da rocha do
     cânion), mais o que as construções e as paredes do cânion registram (`hang`/`cluster`/`moss`/
-    `place`). Tudo em MultiMesh por blocos com `coral.gdshader` (cor por instância, balanço da
-    corrente, pólipos que brilham à noite, desenho na superfície).
+    `place`). Tudo em MultiMesh por blocos com `coral.gdshader` (cor por instância — cores cheias, não
+    claras demais: as claras viravam pastel de brinquedo na luz azulada —, escura na base e clareando
+    para um tom mais quente nas pontas, um pouco de luz própria para os vermelhos e laranjas não
+    apagarem, balanço da corrente, pólipos que brilham à noite, desenho na superfície e a cavidade
+    escura no miolo dos tubos). O coral ramificado é um chifre-de-veado (galhos que se curvam e abrem em
+    volta até o terceiro nível, com galhos curtos no meio), o coral-cérebro é caroçudo, o de mesa tem
+    dois andares com a borda em lóbulos, o leque (gorgônia) é curvo como uma concha aberta, a anêmona
+    tem a coluna, o disco oral com a boca escura e três voltas de tentáculos curvos com as pontas em
+    bolinha, a estrela-do-mar tem o disco abaulado e cinco braços roliços com as pontas erguidas, o
+    capim do mar tem onze folhas em fita curvando e torcendo, o kelp tem lâminas compridas que sobem
+    e caem, mais cheias no alto, as prateleiras de coral de placa têm anéis de crescimento e a borda
+    subindo, o coral-pilar tem os caroços das colônias, a esponja-barril tem os gomos, a borda ondulada
+    e o miolo escuro, o coral mole se divide em galhos com cachos de pólipos (uma couve-flor), os
+    chicotes-do-mar têm a ponta arredondada e os pólipos, o marisco tem mais gomos na concha, o ouriço
+    tem mais espinhos e de tamanhos variados, os vermes tubulares têm anéis de crescimento e a pluma
+    com oito filamentos, as algas penduradas têm folhas alternadas, o musgo tem os tufos fofos na borda
+    e as pedras do recife têm camadas de estrato e o topo achatado. A âncora das relíquias tem a coroa,
+    os braços de seção redonda com as patas em pá e o bico, e o cepo com as pontas arredondadas.
   - `SeaWorld` ("oceano"): a superfície em `water_level` — vista de cima o mar (`water.gdshader`),
     vista de baixo o **espelho d'água** (`sea_ceiling.gdshader`): pela **janela de Snell** o que
     está acima do mar — o céu de verdade do período com as nuvens e o sol, as montanhas, as
     cachoeiras e os barcos — refratado (água → ar) e distorcido pelas ondas, procurado na imagem da
     **janela do céu** (`SkyWindow`: `SubViewport` com uma câmera na superfície olhando para cima,
     só a camada `SeaWorld.WINDOW_LAYER`, com uma cópia do ambiente de fora d'água, desenhada só com a
-    câmera debaixo d'água); fora dela a superfície continua com a **luminosidade do céu**, distorcida
-    pelas ondas (o céu da janela "dobrado" para fora dela), com o reflexo do fundo, das paredes do
-    cânion e do tubo por cima, discreto (reflexo no espaço da tela pela profundidade); o Fresnel e
-    a borda clara entre os dois;
+    câmera debaixo d'água); fora dela (reflexão total) a superfície reflete a água funda: prateada
+    perto da borda da janela (`mirror_tint` do período) e escurecendo até a cor da água no horizonte,
+    com as linhas de luz das ondas — sem copiar a tela (o reflexo da cena virava riscos coloridos e o
+    céu dobrado punha nuvens no teto todo), então o teto é opaco; o Fresnel e a borda clara entre os
+    dois;
     **barcos e navios** perto da pista (`SeaBoats`: lanchas e veleiros bem por cima dela, ao longo,
-    e navios ao lado nos trechos abertos e fundos, indo e voltando, com esteira; as rotas não passam
-    sobre rocha, o tubo perto da superfície nem a ponte);
-    raios de sol descendo pela água (`sea_rays.gdshader`), neve marinha e bolhas em volta da câmera
+    e navios ao lado, a 110–230 m, nos trechos abertos e fundos, indo e voltando, com esteira; o fundo
+    dos navios debaixo d'água é de verdade — seções em V com a pintura vermelha antiincrustante, o
+    bulbo da proa, a hélice e o leme —; as rotas não passam sobre rocha, o tubo perto da superfície
+    nem a ponte);
+    raios de sol descendo pela água (`sea_rays.gdshader`: inclinados pela luz já refratada — no máximo
+    ~48,6° da vertical —, abrindo um pouco para baixo e com filetes por dentro), neve marinha e bolhas
+    em volta da câmera
     (`sea_specks.gdshader`: posições numa caixa que o shader repete em volta da câmera, sem emissor;
     fora do tubo) e a cáustica sobre os pisos (`sea_caustic_overlay.gdshader`).
-  - `SeaLife` ("vida marinha"): nos **trechos abertos** (sem cânion), muitos bichos — 24 cardumes de
-    peixinhos coloridos (MultiMesh, `fish.gdshader`), raias-manta, **baleias grandes** (34 a 39 m,
+  - `SeaLife` ("vida marinha"): nos **trechos abertos** (sem cânion), muitos bichos — até 24 cardumes de
+    peixinhos (MultiMesh: corpo fusiforme em anéis, cauda em forquilha, dorsal e peitorais;
+    `fish.gdshader` com quatro espécies desenhadas no shader — cirurgião-amarelo, cirurgião-azul,
+    sardinha e palhaço), raias-manta, **baleias grandes** (34 a 39 m,
     indo e voltando junto do tubo, do lado sem arquibancadas nem boxes: um grupo com filhote ao lado
     do abismo e mais quatro nos trechos abertos), tubarões,
-    tartarugas e dois grupos de golfinhos (rotas fora do tubo, acima do leito), o polvo gigante numa
+    tartarugas e dois grupos de golfinhos (rotas fora do tubo, acima do leito; as órbitas sobem o que
+    precisarem para passar por cima das ruínas, naufrágios e vulcões, e os bandos contam a altura e a
+    largura em separado: um cardume é bem mais largo que alto), o polvo gigante numa
     coluna por fora da Curva do
-    Polvo e grupos de **águas-vivas brilhantes** (`jellyfish.gdshader`, aditivas, mais fortes à
+    Polvo e grupos de **águas-vivas brilhantes** (sino em domo com a borda em lóbulos, quatro braços
+    orais franzidos e dezesseis tentáculos finos; `jellyfish.gdshader`, aditivas, mais fortes à
     noite); todos andam pelo `SceneryAnimator` (Rust) e nadam no shader (`sea_creature.gdshader`: um
     material só, cor e nado por *instance uniform*, peso da animação na cor de vértice).
 - **Saindo da água** (`SeaSplash`): quando a câmera passa da água para o ar (andando, depois de um
@@ -1572,21 +1635,54 @@ Segunda pista da categoria **Fantasia**: Atlântida submersa. `scenes/tracks/atl
 - **Linha d'água** (`SeaAtmosphere`): a altura da câmera contra `water_level` mistura (faixa de
   ±0,8 m) o ambiente do período com o de **debaixo d'água** (`SeaWorld.UNDER`: névoa densa e azul,
   céu e reflexos de água, luz do sol mais fraca e fria, sem névoa rasteira nem espalhamento da luz na
-  névoa); reaplica só quando muda. Só mexe no que o `Daylight` define de novo, mais `fog_sky_affect` e
-  `fog_sun_scatter`, devolvidos ao sair da pista. **Noite**: água azul-marinho, LEDs, vidro e
-  águas-vivas brilhando, sem raios de sol; **entardecer**: luz e cáustica douradas.
+  névoa; a perspectiva aérea zerada, então a névoa é só a cor da água — com o céu misturado o fundo
+  ficava azul-claro e lavado —, e a névoa de altura escurecendo a água abaixo de `deep_start` m de
+  profundidade: as fossas somem no escuro); reaplica só quando muda. Só mexe no que o `Daylight`
+  define de novo, mais `fog_sky_affect`, `fog_sun_scatter`, a perspectiva aérea e a névoa de altura,
+  devolvidos ao sair da pista. **Noite**: água azul-marinho, LEDs, vidro e águas-vivas brilhando, sem
+  raios de sol; **entardecer**: água azul-arroxeada, luz e cáustica douradas.
 - **Modelos** (`blender/build_atlantis.py`, `blender -b --factory-startup -P blender/build_atlantis.py
-  [-- --render <pasta>] [--only=nomes]`): metabolas em `assets/track/atlantis_abyss/models/` — rosto
-  de Poseidon (das cachoeiras, boca aberta), Poseidon em pé e sentado com o tridente, cabeça da
-  deusa, polvo, baleia, raia-manta, tubarão, tartaruga e golfinho (frente para −Y no Blender, +Z no
-  jogo). As estátuas vão sem cor de vértice (a pedra usa a cor de vértice como cor); nos bichos, R =
-  quanto a parte mexe (cauda, asas, nadadeiras, tentáculos).
+  [-- --render <pasta>] [--only=nomes] [--out <pasta>]`, em `assets/track/atlantis_abyss/models/`;
+  frente para −Y no Blender, +Z no jogo). O `build_atlantis.py` só junta, escala, reduz até o limite
+  de triângulos de cada peça, pinta a cor de vértice e exporta; as peças ficam em
+  `blender/atlantis_statues.py` e `blender/atlantis_creatures.py`.
+  - **Bichos** (`atlantis_creatures.py`): modelados por seções já na resolução final (o corpo é um
+    tubo de anéis em superelipse com costuras onde a cor muda, as nadadeiras são perfis de asa, olhos,
+    tubérculos, cracas e fendas são peças encaixadas). **Jubarte** (~9 mil triângulos: cabeça achatada
+    com tubérculos, mandíbula, pregas da garganta, peitorais de 1/3 do corpo com o bordo ondulado,
+    corcova, cauda com o entalhe e a borda serrilhada, cracas), **raia-manta** (asa em aerofólio,
+    lobos cefálicos enrolados, fendas das guelras, as manchas brancas dos ombros), **tubarão**
+    (galha-preta: cinco fendas, duas dorsais, cauda heterocerca, contra-sombreamento nítido e as
+    pontas pretas), **golfinho** (bico, melão, dorsal falcada, o capote escuro), **tartaruga-verde**
+    (carapaça com as placas de verdade em relevo, plastrão claro, nadadeiras da frente longas como
+    asas) e o **polvo** (manto rugoso, olhos com a pupila em barra, sifão, membrana e oito braços
+    com as ventosas: três descem enrolados na coluna, cinco ficam soltos com as pontas enroladas).
+    A cor de vértice vai para o `sea_creature.gdshader`: R = peso do nado, G = ventre, B =
+    escurecimento (olhos, guelras, sulcos, bordas das placas, oclusão) e A = a cor de destaque; a cor
+    final é `mix(mix(dorso, ventre, G), destaque, A) × (1 − 0,85·B)`, com dorso, ventre e destaque de
+    cada bicho por *instance uniform* (`SeaLife.LOOK`).
+  - **Estátuas** (`atlantis_statues.py`): esculpidas como um campo de distância em numpy e viradas
+    em malha pelo OpenVDB do Blender (mechas, dobras e musculatura em relevo sobre o volume, os cachos
+    como botões com o sulco em espiral, as peças duras — trono, plinto, base do busto — com arestas
+    vivas; na redução o rosto e as mãos ficam com a maior parte dos triângulos). O **rosto das
+    cachoeiras** (28 m: testa franzida, olhos fundos, nariz grego, a boca aberta e funda com o lábio de
+    baixo de bica — `PoseidonGate.FACE_MOUTH` = 10,8 m de altura e 8,7 m à frente, a água com a
+    largura da boca —, bigode, barba longa em mechas e cachos, juba de ondas do mar e coroa de nove
+    pontas), **Poseidon em pé** (15 m: contrapposto, o punho fechado no tridente farpado, himátio com
+    o rolo na cintura e as dobras, sandálias e plinto), **Poseidon sentado** (11 m: trono com o encosto
+    em leque de concha, golfinhos nos braços e ondas nos painéis, himátio no colo, o tridente em pé) e
+    o **busto da deusa** (7,8 m: rosto sereno, cabelo repartido com o coque torcido e as mechas
+    onduladas, o diadema em crescente baixo com a concha, quíton com dobras e a base moldurada). A cor de vértice é a pedra
+    escurecida pela oclusão medida no campo (os sulcos e o fundo da boca escuros), mais o dourado das
+    coroas, dos tridentes e do diadema; a pedra de Atlântida (`sea_stone`) clareia os cinzas para o
+    mármore e mantém o dourado.
 - **Som** (`SeaAudio`, sons de `python tools/generate_sea_sounds.py` em `assets/audio/ambient/`, bus
   Crowd; `water_exit.wav` é da saída da água): debaixo d'água o zumbido grave e as bolhas (entram e
   saem com a linha d'água) e cantos de
   baleia de vez em quando; no Portão, o rugido de cada cachoeira, e o borbulhar de cada vulcão (3D,
   só perto da câmera).
-- Teste: `tests/atlantis_abyss_test.gd` (traçado abaixo e acima da água, pisos, grid e 14 boxes,
+- Teste: `tests/atlantis_abyss_test.gd` (traçado abaixo e acima da água, a Chicane do Tridente
+  (direita-esquerda, escape largo) e o tridente gigante fora do tubo, pisos, grid e 14 boxes,
   boxes antes da linha, barreira em toda a volta, nada sobre a pista, cenário gerado, pista submersa
   toda dentro do tubo ou do túnel, corais e águas-vivas fora do tubo, vulcões, barcos e baleias
   grandes perto do tubo, cânion na maior parte da pista submersa com as paredes fora do tubo e a
@@ -1597,7 +1693,12 @@ Segunda pista da categoria **Fantasia**: Atlântida submersa. `scenes/tracks/atl
   estandartes no tubo e no aqueduto, cipós e árvores sobre a pista com a folga dos carros, bandeiras
   nas cristas, barcos perto da pista, a janela do céu, troca de névoa na linha d'água e o
   Environment de volta ao sair, gotas na tela e som saindo da água, carro parado nas curvas e
-  rampas); capturas em `tests/atlantis_abyss_shots.gd` (com janela: rode com `--offline`).
+  rampas); a galeria dos modelos em `tests/atlantis_models_gallery.gd` (com janela, `--offline`: esconde
+  o cenário e monta cada peça do fundo do mar sozinha, de perto, num lugar plano do leito longe da
+  pista, com os materiais e a luz do jogo — uma captura por peça); capturas em
+  `tests/atlantis_abyss_shots.gd` (com janela: rode com `--offline`), inclusive
+  a Chicane do Tridente (chegando, por dentro e do alto), o tridente gigante, um cardume, as
+  águas-vivas, o kelp, um recife do leito e as relíquias de perto.
 
 ## Vitrine: balões de personagem, outdoors e murais
 
@@ -1914,8 +2015,9 @@ godot --path . -s res://tests/capture_trails.gd -- <pasta> [efeito ...]   # rast
 godot --headless --path . -s res://tests/race_test.gd -- 3 9 3  # corrida de 3 voltas, 9 bots, dificuldade mista (+ monaco, suzuka, las_vegas, sky_aerobase ou atlantis_abyss no fim = nessa pista)
 godot --headless --path . -s res://tests/sky_aerobase_test.gd # Sky Aerobase: traçado, bordas abertas com escape e vazio embaixo, cenário, quedas (jogador, bot, treino) voltando pelo box
 godot --path . -s res://tests/sky_aerobase_shots.gd -- <pasta> [horário] [prefixo]  # screenshots da Sky Aerobase (curvas, túnel, borda do abismo, motores, base aérea)
-godot --headless --path . -s res://tests/atlantis_abyss_test.gd # Atlantis Abyss: traçado abaixo/acima da água, barreiras em toda a volta, tubo cobrindo a pista submersa, cânion, montanhas, cenário, linha d'água (névoa) e carro parado nas rampas
-godot --path . -s res://tests/atlantis_abyss_shots.gd -- <pasta> [horário] [prefixo] [só,estes]  # screenshots da Atlantis Abyss (tubo, cânion com pontes e fachadas, túnel de cristal, aqueduto, montanhas, cachoeiras largas e aquedutos sobre a pista, abismo, espelho d'água, vulcões, recifes, bichos e baleias de perto, barcos)
+godot --headless --path . -s res://tests/atlantis_abyss_test.gd # Atlantis Abyss: traçado abaixo/acima da água, Chicane do Tridente, barreiras em toda a volta, tubo cobrindo a pista submersa, cânion, montanhas, cenário, linha d'água (névoa) e carro parado nas rampas
+godot --path . -s res://tests/atlantis_models_gallery.gd -- <pasta> [só,estas] --offline  # galeria da Atlantis Abyss: cada peça do fundo do mar sozinha, de perto, num leito plano longe da pista (bichos, polvo, peixes, peixes-voadores, águas-vivas, estátuas, os 22 tipos de coral e de vida presa, naufrágio, praça, templo redondo, fonte, estátuas no pedestal, tombada e enterradas, arco de pedra, pináculos, ânforas, âncora, baú, poça de vida, vulcão e chaminé, colunas, lanterna, torre, prédio e aqueduto)
+godot --path . -s res://tests/atlantis_abyss_shots.gd -- <pasta> [horário] [prefixo] [só,estes]  # screenshots da Atlantis Abyss (tubo, cânion com pontes e fachadas, túnel de cristal, aqueduto, montanhas, cachoeiras largas e aquedutos sobre a pista, abismo, as duas chicanes e o tridente gigante, espelho d'água, vulcões, recifes, kelp, relíquias, cardumes, águas-vivas, bichos e baleias de perto, barcos)
 godot --headless --path . -s res://tests/monaco_test.gd     # Mônaco: traçado, desnível, pisos, túnel coberto, cidade, porto, carro na rampa
 godot --path . -s res://tests/monaco_shots.gd -- <pasta> [horário] [ambiente] [prefixo]  # screenshots de Mônaco (+ calçadas, navios, balões, dirigíveis e o céu visto da pista)
 godot --headless --path . -s res://tests/suzuka_test.gd     # Suzuka: traçado, desnível, cruzamento (folga, projeção nos dois níveis), nada acima do asfalto, terreno, carro na ponte e embaixo dela

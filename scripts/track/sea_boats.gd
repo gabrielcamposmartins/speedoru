@@ -5,8 +5,11 @@ extends Node3D
 ## navios (TrackOffshore.ship_mesh) ao lado, nos trechos abertos (fundos: o casco desce ~8 m), cada
 ## um com a esteira de espuma atrás. As rotas não passam por cima de rocha, do tubo perto da
 ## superfície nem da ponte do trecho emerso. De baixo d'água aparecem como silhuetas (o casco está
-## na água) e pela janela do céu (SeaWorld.WINDOW_LAYER); do trecho emerso, como barcos. Um _process
-## só, para todos (poucos nós).
+## na água: nos navios, o fundo chato com a pintura antiincrustante, a popa da cor do fundo, o bulbo da
+## proa, a hélice e o leme — o casco das outras pistas é aberto embaixo e tem a popa da cor do
+## costado: de baixo virava uma placa clara solta) e pela
+## janela do céu (SeaWorld.WINDOW_LAYER); do trecho emerso, como barcos. Um _process só, para todos
+## (poucos nós).
 
 const SHIPS := [[TrackOffshore.Ship.CRUISE, 210.0, 6.5], [TrackOffshore.Ship.CONTAINER, 180.0, 7.5], [TrackOffshore.Ship.FERRY, 110.0, 9.0]]
 ## [tipo, comprimento, velocidade]
@@ -38,7 +41,8 @@ func _setup(track: RaceTrack) -> void:
 		_ship_mat.specular_mode = BaseMaterial3D.SPECULAR_DISABLED
 	# Navios: ao lado da pista, nos trechos abertos (fundos)
 	for spec: Array in SHIPS:
-		var route := _near_route(track, rng, SHIP_DRAFT, Vector2(45.0, 150.0), Vector2(700.0, 1100.0), true)
+		# (não muito perto: de dentro do tubo o casco de um navio de 200 m cortava o teto como uma faixa)
+		var route := _near_route(track, rng, SHIP_DRAFT, Vector2(110.0, 230.0), Vector2(700.0, 1100.0), true)
 		if route.is_empty():
 			continue
 		var ship := MeshInstance3D.new()
@@ -46,6 +50,11 @@ func _setup(track: RaceTrack) -> void:
 		ship.mesh = TrackOffshore.ship_mesh(int(spec[0]), float(spec[1]), rng)
 		ship.material_override = _ship_mat
 		add_child(ship)
+		var keel := MeshInstance3D.new()
+		keel.name = "Keel"
+		keel.mesh = _keel_mesh(int(spec[0]), float(spec[1]))
+		keel.material_override = _ship_mat
+		ship.add_child(keel)
 		_wake(ship, float(spec[1]))
 		_boats.append([ship, route[0], route[1], float(spec[2]), rng.randf() * 2.0, route[0].distance_to(route[1])])
 	# Lanchas e veleiros: bem por cima da pista, ao longo dela
@@ -117,6 +126,64 @@ func _clear(track: RaceTrack, a: Vector3, b: Vector3, draft: float) -> bool:
 			if p.points[i].y > water - 3.0 and absf(pr.y) < SeaTube.clearance(track, i, side) + 6.0:
 				return false
 	return true
+
+
+## Fundo do navio debaixo d'água (aponta para +X; a linha d'água em y = 0). O casco do
+## TrackOffshore._hull é aberto embaixo e a popa é uma placa da cor do costado: de baixo d'água o navio
+## virava uma placa clara boiando. Aqui: o fundo chato no calado (na boca de baixo do costado), com a
+## pintura antiincrustante, a popa da cor do fundo abaixo da linha d'água, o bulbo da proa e, atrás da
+## popa, a hélice de quatro pás e o leme. [boca (fração do comprimento), altura do costado, calado, cor
+## do fundo] de cada tipo, como no TrackOffshore.ship_mesh.
+static func _keel_mesh(kind: int, length: float) -> ArrayMesh:
+	var spec: Array
+	match kind:
+		TrackOffshore.Ship.CRUISE:
+			spec = [0.13, 13.0, 8.0, Color(0.1, 0.16, 0.32)]
+		TrackOffshore.Ship.CONTAINER:
+			spec = [0.145, 11.0, 9.0, Color(0.55, 0.16, 0.12)]
+		_:
+			spec = [0.19, 9.0, 5.0, Color(0.1, 0.3, 0.6)]
+	var beam: float = length * spec[0]
+	var h: float = spec[1]
+	var draft: float = spec[2]
+	var hull: Color = spec[3]
+	var mb := MeshBuilder.new()
+	# (vermelho escuro: de dentro do tubo, na névoa, o vivo virava uma barra vermelha boiando)
+	var red := Color(0.3, 0.09, 0.08)
+	const STATIONS := 14
+	var widths: Array[float] = []
+	for k in STATIONS + 1:
+		var u := float(k) / STATIONS
+		# (a mesma boca do TrackOffshore._hull)
+		widths.append(beam * 0.5 * (0.92 + 0.08 * u / 0.65 if u < 0.65 else sqrt(maxf(1.0 - pow((u - 0.65) / 0.35, 2.0), 0.0))))
+	for k in STATIONS:
+		var x0 := -length * 0.5 + float(k) / STATIONS * length
+		var x1 := -length * 0.5 + float(k + 1) / STATIONS * length
+		var w0 := widths[k] * 0.8
+		var w1 := widths[k + 1] * 0.8
+		mb.quad(Vector3(x0, -draft, -w0), Vector3(x1, -draft, -w1), Vector3(x1, -draft, w1), Vector3(x0, -draft, w0), red, Vector3.DOWN)
+	# Popa abaixo da linha d'água, logo atrás da placa do costado (o trapézio dela: 0,8 da boca no
+	# calado, a boca inteira no alto)
+	var st := widths[0]
+	var xs := -length * 0.5 - 0.05
+	var top := -0.15
+	var f := 0.8 + 0.2 * (top + draft) / (h + draft)
+	mb.quad(Vector3(xs, -draft, st * 0.8), Vector3(xs, -draft, -st * 0.8), Vector3(xs, top, -st * f), Vector3(xs, top, st * f),
+		hull * 0.8, Vector3.LEFT)
+	# Bulbo da proa
+	mb.blob(Vector3(length * 0.5 - length * 0.025, -draft * 0.62, 0.0), Vector3(length * 0.04, draft * 0.22, draft * 0.2), red, 10, 6)
+	# Hélice (cubo e quatro pás) e leme atrás da popa
+	var bronze := Color(0.62, 0.43, 0.2)
+	var hub := Vector3(-length * 0.5 - 1.4, -draft * 0.55, 0.0)
+	mb.cylinder(Transform3D(Basis(Vector3.BACK, PI * 0.5), hub + Vector3(1.4, 0, 0)), 0.8, 0.45, 2.2, bronze, 10)
+	for blade in 4:
+		var a := TAU * blade / 4.0 + 0.4
+		var out := Vector3(0, cos(a), sin(a))
+		var side := Vector3(1, 0, 0).cross(out)
+		mb.box(Transform3D(Basis(side.rotated(out, 0.5), out, Vector3(1, 0, 0).rotated(out, 0.5)), hub + out * draft * 0.18),
+			Vector3(2.0, draft * 0.3, 0.22), bronze)
+	mb.box(Transform3D(Basis(), Vector3(-length * 0.5 - 3.6, -draft * 0.5, 0.0)), Vector3(2.6, draft * 0.8, 0.5), red)
+	return mb.commit()
 
 
 ## Esteira atrás da popa (o barco aponta para +X): faixa do meio e os dois braços em V, sumindo.

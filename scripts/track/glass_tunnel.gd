@@ -1,9 +1,9 @@
 class_name GlassTunnel
 extends RefCounted
 ## O túnel da pista no fundo do mar (layout.tunnel): um tubo de vidro sobre a pista, de barreira a
-## barreira, com nervuras de metal escuro a cada RIB_SPACING m (luzes amarelas embaixo e um friso
-## ciano por dentro), uma viga no topo, estandartes de Atlântida entre as nervuras e portais de pedra
-## nas duas pontas. Visto de dentro, o mar, as ruínas e os bichos passam por cima.
+## barreira, com nervuras de bronze com pátina (o mesmo do tubo grande, sea_bronze.gdshader) a cada
+## RIB_SPACING m (luzes amarelas embaixo e um friso ciano por dentro), uma viga no topo, estandartes de
+## Atlântida entre as nervuras e portais de pedra nas duas pontas. Visto de dentro, o mar, as ruínas e os bichos passam por cima.
 ## Nada aqui tem colisão (as barreiras do túnel seguram o carro).
 
 const HEIGHT := 8.8
@@ -13,7 +13,7 @@ const RIB := 0.45
 const RIB_DEPTH := 0.4
 ## Folga além da face de fora da barreira até a base do tubo (m).
 const BASE_GAP := 0.8
-const METAL := Color(0.3, 0.33, 0.38)
+const METAL := SeaTube.METAL
 const STONE := Color(0.84, 0.81, 0.74)
 const LAMP := Color(1.0, 0.82, 0.42)
 const LED := Color(0.25, 0.95, 1.0)
@@ -72,7 +72,7 @@ static func build(track: RaceTrack, s0: float, s1: float, parent: Node3D) -> voi
 	root.add_child(glass_mi)
 	var mi := MeshInstance3D.new()
 	mi.name = "Frame"
-	mi.mesh = metal.commit(null, TrackMaterials.metal_plate("glass_tunnel", false, true))
+	mi.mesh = metal.commit(null, TrackMaterials.sea_bronze("glass_tunnel"))
 	stone.commit(mi.mesh as ArrayMesh, TrackMaterials.sea_stone("tunnel_portal", false, {"no_outline": true, "panel_size": 1.0}))
 	lamps.commit(mi.mesh as ArrayMesh, SkyDeck.glow(0.0, 1.8, 3.4))
 	leds.commit(mi.mesh as ArrayMesh, SkyDeck.glow(0.35, 1.6, 3.4))

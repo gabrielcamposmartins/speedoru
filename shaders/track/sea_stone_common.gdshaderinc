@@ -11,8 +11,12 @@ uniform float moss_amount : hint_range(0.0, 1.0) = 0.5;
 uniform vec3 coral_color : source_color = vec3(0.92, 0.42, 0.5);
 uniform float coral_amount : hint_range(0.0, 1.0) = 0.2;
 
+// (hash sem seno: com coordenadas de mundo grandes o fract(sin(...)) perdia a precisão na placa de
+// vídeo e as células vizinhas saíam quase iguais, em faixas retas)
 float stone_hash(vec2 p) {
-	return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+	vec3 p3 = fract(vec3(p.xyx) * 0.1031);
+	p3 += dot(p3, p3.yzx + 33.33);
+	return fract((p3.x + p3.y) * p3.z);
 }
 
 float stone_noise(vec2 p) {
@@ -33,8 +37,10 @@ float stone_fbm(vec2 p) {
 
 // Cor final da pedra no ponto `wp` (mundo) com normal de mundo `wn`: mármore, musgo em manchas com
 // borda fofa e tufos finos por cima, fios de alga escorrendo pelas paredes, colônias de coral
-// incrustado com borda e pólipos, e as faces de baixo mais escuras.
+// incrustado com borda e pólipos (algas e coral só debaixo d'água: fora dela, no trecho emerso, a
+// pedra fica com o musgo), e as faces de baixo mais escuras.
 vec3 sea_stone_albedo(vec3 c, vec3 wp, vec3 wn) {
+	float wet = smoothstep(-1.0, 1.5, water_level - wp.y);
 	float lum = dot(c, vec3(0.3, 0.59, 0.11));
 	float sat = max(max(c.r, c.g), c.b) - min(min(c.r, c.g), c.b);
 	c = mix(c, marble_tint * (0.3 + lum * 0.85), marble_mix * (1.0 - smoothstep(0.08, 0.35, sat)));
@@ -48,7 +54,9 @@ vec3 sea_stone_albedo(vec3 c, vec3 wp, vec3 wn) {
 	// Musgo: manchas grandes e, dentro delas, tufos (duas escalas finas)
 	float big = stone_fbm(wp.xz * 0.22 + vec2(wp.y * 0.13));
 	float fine = stone_noise(wp.xz * 3.1 + vec2(wp.y * 2.3)) * 0.6 + stone_noise(wp.xz * 7.7 - vec2(wp.y * 3.1)) * 0.4;
-	float moss_mask = smoothstep(0.36, 0.58, big + (fine - 0.5) * 0.22) * up;
+	// (menos musgo no que tem cor forte — o ouro das coroas, dos tridentes e do diadema —: a pátina fica,
+	// mas o ouro não vira uma touca verde)
+	float moss_mask = smoothstep(0.36, 0.58, big + (fine - 0.5) * 0.22) * up * (1.0 - 0.6 * smoothstep(0.25, 0.5, sat));
 	vec3 moss = mix(moss_color * 0.55, mix(moss_color, vec3(0.55, 0.62, 0.22), 0.45), fine);
 	c = mix(c, moss, clamp(moss_mask * moss_amount, 0.0, 1.0));
 	// Algas escorrendo pelas paredes: fios finos (uns 20 cm) de comprimentos diferentes, descendo
@@ -58,19 +66,20 @@ vec3 sea_stone_albedo(vec3 c, vec3 wp, vec3 wn) {
 	float reach = stone_fbm(vec2(floor(h_coord) * 0.37, wp.y * 0.11));
 	float algae = smoothstep(0.58, 0.7, strand) * smoothstep(0.45, 0.6, reach) * wall;
 	vec3 alg = mix(vec3(0.16, 0.42, 0.2), vec3(0.42, 0.62, 0.22), fine) * (0.85 + 0.3 * strand);
-	c = mix(c, alg, clamp(algae * moss_amount * 1.1, 0.0, 1.0));
-	// Coral incrustado: colônias menores, em tons quentes (aparecem no azul), com os pólipos em
-	// pontinhos claros e a borda da colônia mais escura
-	float col_n = stone_fbm(sp * 0.6 + vec2(17.0, 3.0));
-	float colony = smoothstep(0.6, 0.7, col_n);
-	float rim = smoothstep(0.56, 0.62, col_n) * (1.0 - colony);
+	c = mix(c, alg, clamp(algae * moss_amount * 1.1, 0.0, 1.0) * wet);
+	// Coral incrustado: colônias pequenas (grandes viravam manchas cor-de-rosa na pedra), em tons
+	// quentes variados (aparecem no azul), com os pólipos em pontinhos claros e a borda mais escura
+	float col_n = stone_fbm(sp * 0.95 + vec2(17.0, 3.0));
+	float colony = smoothstep(0.67, 0.74, col_n);
+	float rim = smoothstep(0.63, 0.68, col_n) * (1.0 - colony);
 	// Pólipos: um por célula, cada um num lugar e num tamanho (sem formar uma grade)
 	vec2 cid = floor(sp * 3.4);
 	vec2 jit = vec2(stone_hash(cid), stone_hash(cid + 7.3)) - 0.5;
 	float polyp = 1.0 - smoothstep(0.08, 0.2 + 0.08 * stone_hash(cid + 3.1), length(fract(sp * 3.4) - 0.5 - jit * 0.5));
-	vec3 coral = mix(coral_color, vec3(1.0, 0.62, 0.25), step(0.5, stone_noise(sp * 0.13)));
-	c = mix(c, c * 0.65, rim * coral_amount * 2.0 * (0.35 + 0.65 * wall));
-	c = mix(c, coral * (0.75 + 0.5 * polyp), colony * clamp(coral_amount * 2.2, 0.0, 1.0) * (0.35 + 0.65 * wall));
+	float hue = stone_noise(sp * 0.13 + 41.0);
+	vec3 coral = hue < 0.4 ? coral_color : (hue < 0.78 ? vec3(1.0, 0.56, 0.2) : vec3(0.62, 0.34, 0.86));
+	c = mix(c, c * 0.65, rim * coral_amount * 2.0 * (0.35 + 0.65 * wall) * wet);
+	c = mix(c, coral * (0.75 + 0.5 * polyp), colony * clamp(coral_amount * 2.2, 0.0, 1.0) * (0.35 + 0.65 * wall) * wet);
 	// Por baixo (beirais, arcos): sombra e crescimento escuro
 	c *= 1.0 - 0.25 * down;
 	return c;

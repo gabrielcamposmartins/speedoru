@@ -1,4 +1,4 @@
-[gd_resource type="Resource" script_class="TrackLayout" load_steps=25 format=3]
+[gd_resource type="Resource" script_class="TrackLayout" load_steps=27 format=3]
 
 [ext_resource type="Script" path="res://scripts/track/track_layout.gd" id="1_layout"]
 [ext_resource type="Script" path="res://scripts/track/track_feature.gd" id="2_feature"]
@@ -8,7 +8,7 @@ script = ExtResource("2_feature")
 kind = 3
 label = "Muros de vidro"
 s_start = 0.0
-s_end = 4728.0
+s_end = 4762.0
 side = 2
 distance = 2.5
 rows = 12
@@ -98,8 +98,8 @@ variant = 1
 script = ExtResource("2_feature")
 kind = 3
 label = "Última Curva: escape"
-s_start = 4150.0
-s_end = 4235.0
+s_start = 4180.0
+s_end = 4265.0
 side = 1
 distance = 7.0
 rows = 12
@@ -190,7 +190,7 @@ script = ExtResource("2_feature")
 kind = 6
 label = "Lanternas da pista"
 s_start = 0.0
-s_end = 4728.0
+s_end = 4762.0
 side = 2
 distance = 1.0
 rows = 12
@@ -280,9 +280,35 @@ variant = 0
 script = ExtResource("2_feature")
 kind = 9
 label = "Última Curva"
-s_start = 4173.0
-s_end = 4173.0
+s_start = 4203.0
+s_end = 4203.0
 side = 1
+distance = 2.0
+rows = 12
+spacing = 40.0
+roof = false
+variant = 0
+
+[sub_resource type="Resource" id="F22"]
+script = ExtResource("2_feature")
+kind = 3
+label = "Chicane do Tridente: escape"
+s_start = 3415.0
+s_end = 3500.0
+side = 2
+distance = 4.5
+rows = 12
+spacing = 40.0
+roof = false
+variant = 1
+
+[sub_resource type="Resource" id="F23"]
+script = ExtResource("2_feature")
+kind = 9
+label = "Chicane do Tridente"
+s_start = 3432.0
+s_end = 3432.0
+side = 0
 distance = 2.0
 rows = 12
 spacing = 40.0
@@ -306,7 +332,7 @@ undersea = true
 water_level = 28.0
 seabed_depth = 14.0
 trenches = PackedVector2Array(2930, 3630)
-canyons = PackedVector4Array(545, 775, 8, 8, 775, 890, 20, 6, 890, 1000, 5, 5, 1000, 1366, 5, 5, 1366, 1485, 6, 6, 1485, 2700, 6, 6, 2700, 2920, 5, 5, 3611, 4212, 5, 5)
+canyons = PackedVector4Array(545, 775, 8, 8, 775, 890, 20, 6, 890, 1000, 5, 5, 1000, 1366, 5, 5, 1366, 1485, 6, 6, 1485, 2700, 6, 6, 2700, 2920, 5, 5, 3611, 4242, 5, 5)
 auto_kerbs = true
 kerb_max_radius = 120.0
 kerb_width = 1.4
@@ -326,4 +352,4 @@ paddock_depth = 0.0
 grid_slots = 20
 grid_spacing = 8.0
 grid_lateral = 2.6
-features = Array[ExtResource("2_feature")]([SubResource("F0"), SubResource("F1"), SubResource("F2"), SubResource("F3"), SubResource("F4"), SubResource("F5"), SubResource("F6"), SubResource("F7"), SubResource("F8"), SubResource("F9"), SubResource("F10"), SubResource("F11"), SubResource("F12"), SubResource("F13"), SubResource("F14"), SubResource("F15"), SubResource("F16"), SubResource("F17"), SubResource("F18"), SubResource("F19"), SubResource("F20"), SubResource("F21")])
+features = Array[ExtResource("2_feature")]([SubResource("F0"), SubResource("F1"), SubResource("F2"), SubResource("F3"), SubResource("F4"), SubResource("F5"), SubResource("F6"), SubResource("F7"), SubResource("F8"), SubResource("F9"), SubResource("F10"), SubResource("F11"), SubResource("F12"), SubResource("F13"), SubResource("F14"), SubResource("F15"), SubResource("F16"), SubResource("F17"), SubResource("F18"), SubResource("F19"), SubResource("F20"), SubResource("F21"), SubResource("F22"), SubResource("F23")])

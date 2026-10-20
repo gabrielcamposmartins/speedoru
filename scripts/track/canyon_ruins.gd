@@ -172,8 +172,10 @@ static func _bridge(track: RaceTrack, data: Dictionary, i: int, stone: MeshBuild
 			var y_top0 := extra[k].y if cut else y_deck
 			var y_top1 := extra[k + 1].y if cut else y_deck
 			stone.quad(q0 + o, q1 + o, at.call(lat1, y_top1) + o, at.call(lat0, y_top0) + o, AtlantisRuins.STONE, n)
+			# (aduelas alternando pedra escura e tijolo, de duas em duas, como nos aquedutos)
 			var out := fwd * (half + 0.18) * sgn
-			stone.quad(q0 + out, q1 + out, extra[k + 1] + out, extra[k] + out, AtlantisRuins.STONE_DARK, n)
+			stone.quad(q0 + out, q1 + out, extra[k + 1] + out, extra[k] + out,
+				AtlantisRuins.STONE_DARK if (k / 2) % 2 == 0 else AtlantisRuins.BRICK, n)
 	# Intradorso (por baixo do arco) e as faces de dentro dos pés, do fundo até a pista
 	for k in segs:
 		var q0 := intra[k]
@@ -192,6 +194,17 @@ static func _bridge(track: RaceTrack, data: Dictionary, i: int, stone: MeshBuild
 	# Fecho saliente
 	var key := (intra[segs / 2] + extra[segs / 2]) * 0.5 + Vector3.UP * 0.3
 	stone.box(Transform3D(Basis(lv, Vector3.UP, fwd), key), Vector3(1.8, RING + 0.9, half * 2.0 + 0.5), AtlantisRuins.STONE_DARK)
+	# Medalhão dourado com o tridente nas duas faces do fecho
+	for sgn: float in [1.0, -1.0]:
+		var face := key + fwd * (half + 0.3) * sgn
+		var disc := Basis(lv, fwd * sgn, lv.cross(fwd * sgn)).orthonormalized()
+		stone.cylinder(Transform3D(disc, face - fwd * 0.05 * sgn), 0.7, 0.7, 0.12, SeaTube.GOLD, 12)
+		var flat := Basis(lv, Vector3.UP, fwd * sgn).orthonormalized()
+		var relief := face + fwd * 0.08 * sgn
+		stone.box(Transform3D(flat, relief + Vector3.DOWN * 0.1), Vector3(0.09, 0.8, 0.06), AtlantisRuins.STONE_DARK)
+		stone.box(Transform3D(flat, relief + Vector3.UP * 0.14), Vector3(0.48, 0.08, 0.06), AtlantisRuins.STONE_DARK)
+		for tx: float in [-0.2, 0.0, 0.2]:
+			stone.box(Transform3D(flat, relief + lv * tx + Vector3.UP * 0.3), Vector3(0.07, 0.3, 0.06), AtlantisRuins.STONE_DARK)
 	# Tabuleiro, cornija e mureta (interrompidos na parte desabada)
 	var spans: Array[Vector2] = [Vector2(lat_r, lat_l)]
 	if broken:

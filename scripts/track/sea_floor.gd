@@ -53,6 +53,13 @@ static var _claims: Array[Vector4] = []
 static var _claim_grid := {}
 const CLAIM_CELL := 50.0
 
+## A grade de alturas da malha (build), para ground() devolver a altura dela: (nx, nz) nós a partir de
+## _grid_origin, de CELL em CELL m.
+static var _grid := PackedFloat32Array()
+static var _grid_size := Vector2i()
+static var _grid_origin := Vector2()
+static var _grid_path: TrackPath
+
 
 ## Ocupa o círculo em volta de `pos` (raio em m) até a altura `top`.
 static func claim(pos: Vector3, radius: float, top: float) -> void:
@@ -153,8 +160,34 @@ static func _ring(x: float, z: float) -> float:
 	return smoothstep(120.0, 520.0, sqrt(dx * dx + dz * dz))
 
 
-## Altura do leito no ponto (x, z) do mundo.
+## Altura do leito no ponto (x, z) do mundo: a da malha (os dois triângulos de cada célula da grade
+## que build() monta, com a diagonal de (1, 0) a (0, 1) como em _chunk), para o que pousa no leito
+## ficar em cima dela — o relevo entre os nós (_relief) difere da malha em até ~1 m nas dunas e
+## encostas, e o que é baixo (estrelas-do-mar, capim, ânforas) afundava ou flutuava. Antes de build()
+## (ou fora da grade), o relevo direto.
 static func ground(track: RaceTrack, x: float, z: float) -> float:
+	if _grid_path != track.path:
+		return _relief(track, x, z)
+	var gx := (x - _grid_origin.x) / CELL
+	var gz := (z - _grid_origin.y) / CELL
+	var ix := floori(gx)
+	var iz := floori(gz)
+	if ix < 0 or iz < 0 or ix >= _grid_size.x - 1 or iz >= _grid_size.y - 1:
+		return _relief(track, x, z)
+	var fx := gx - ix
+	var fz := gz - iz
+	var a := iz * _grid_size.x + ix
+	var h10 := _grid[a + 1]
+	var h01 := _grid[a + _grid_size.x]
+	if fx + fz <= 1.0:
+		var h00 := _grid[a]
+		return h00 + (h10 - h00) * fx + (h01 - h00) * fz
+	var h11 := _grid[a + _grid_size.x + 1]
+	return h11 + (h01 - h11) * (1.0 - fx) + (h10 - h11) * (1.0 - fz)
+
+
+## Relevo do leito no ponto (x, z) do mundo (o que a grade da malha amostra nos nós).
+static func _relief(track: RaceTrack, x: float, z: float) -> float:
 	if _bounds_path != track.path:
 		_bounds_path = track.path
 		_bounds = track.path.bounds()
@@ -263,6 +296,7 @@ static func build(track: RaceTrack, parent: Node3D) -> void:
 	SeaReef.reset(track)
 	_claims.clear()
 	_claim_grid.clear()
+	_grid_path = null
 	var root := Node3D.new()
 	root.name = "SeaFloor"
 	parent.add_child(root)
@@ -273,7 +307,12 @@ static func build(track: RaceTrack, parent: Node3D) -> void:
 	heights.resize(nx * nz)
 	for iz in nz:
 		for ix in nx:
-			heights[iz * nx + ix] = ground(track, b.position.x + ix * CELL, b.position.y + iz * CELL)
+			heights[iz * nx + ix] = _relief(track, b.position.x + ix * CELL, b.position.y + iz * CELL)
+	# (daqui em diante, ground() é a altura da malha)
+	_grid = heights
+	_grid_size = Vector2i(nx, nz)
+	_grid_origin = b.position
+	_grid_path = track.path
 	var per := int(CHUNK / CELL)
 	var mat := material()
 	for cz in range(0, nz - 1, per):

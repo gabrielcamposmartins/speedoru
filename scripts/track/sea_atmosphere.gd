@@ -9,8 +9,10 @@ extends Node
 ## O "acima" é o que o Daylight aplicou (capture(), chamado pelo SeaWorld.apply_mood logo depois
 ## dele); o "embaixo" é o preset do período (SeaWorld.UNDER). Só mexe em propriedades que o
 ## Daylight._apply_mood define de novo (névoa, luz ambiente, brilho, céu, sol, névoa rasteira), mais
-## fog_sky_affect e fog_sun_scatter, devolvidos ao sair (o Environment é um sub-recurso do
-## daylight.tscn e pode ser o mesmo objeto na próxima pista).
+## fog_sky_affect, fog_sun_scatter, a perspectiva aérea (debaixo d'água a névoa é só a cor da água: com
+## a do céu misturada o fundo ficava azul-claro, lavado) e a névoa de altura (o fundo escurecendo
+## abaixo de UNDER.deep_start m de profundidade, as fossas sumindo no escuro), devolvidos ao sair (o
+## Environment é um sub-recurso do daylight.tscn e pode ser o mesmo objeto na próxima pista).
 ##
 ## Também cuida da janela do céu (SeaWorld: a câmera na superfície olhando para cima que o espelho
 ## d'água usa): ela fica com uma cópia do ambiente de fora d'água (o céu de verdade do período), segue
@@ -52,9 +54,13 @@ func capture() -> void:
 	# fog_sun_scatter o Daylight não define de novo: ficam os da primeira vez.)
 	var sky_affect: float = _above.get("fog_sky_affect", env.fog_sky_affect)
 	var scatter: float = _above.get("fog_sun_scatter", env.fog_sun_scatter)
+	var aerial: float = _above.get("fog_aerial_perspective", env.fog_aerial_perspective)
+	var height: float = _above.get("fog_height", env.fog_height)
+	var height_density: float = _above.get("fog_height_density", env.fog_height_density)
 	_above = {
 		"fog_density": env.fog_density, "fog_light_color": env.fog_light_color, "fog_sky_affect": sky_affect,
-		"fog_sun_scatter": scatter,
+		"fog_sun_scatter": scatter, "fog_aerial_perspective": aerial, "fog_height": height,
+		"fog_height_density": height_density,
 		"ambient_light_color": env.ambient_light_color, "ambient_light_energy": env.ambient_light_energy,
 		"glow_intensity": env.glow_intensity,
 	}
@@ -175,6 +181,10 @@ func _apply(f: float) -> void:
 	env.fog_light_color = (_above.fog_light_color as Color).lerp(under.fog_color, f)
 	env.fog_sky_affect = lerpf(_above.fog_sky_affect, 1.0, f)
 	env.fog_sun_scatter = lerpf(_above.fog_sun_scatter, under.sun_scatter, f)
+	env.fog_aerial_perspective = lerpf(_above.fog_aerial_perspective, under.aerial, f)
+	# (a altura só vale com densidade: fora d'água fica a de antes)
+	env.fog_height = track.layout.water_level - under.deep_start if f > 0.0 else _above.fog_height
+	env.fog_height_density = lerpf(_above.fog_height_density, under.deep_density, f)
 	env.ambient_light_color = (_above.ambient_light_color as Color).lerp(under.ambient_color, f)
 	env.ambient_light_energy = lerpf(_above.ambient_light_energy, under.ambient_energy, f)
 	env.glow_intensity = lerpf(_above.glow_intensity, under.glow, f)

@@ -451,6 +451,11 @@ static func column(track: RaceTrack, data: Dictionary, i: int, side: int) -> Pac
 	var e: float = data.e[i]
 	# (nas encostas mais deitadas os patamares são largos, em terraços; nos penhascos, estreitos)
 	var share := LEDGES * (1.0 - 0.75 * e) * remap(slope, SLOPE_RANGE.x, SLOPE_RANGE.y, 0.55, 1.35)
+	# Por dentro das curvas fechadas, nada além de 0,8 do raio nem do alcance da amostra (reach): as
+	# colunas passavam do centro da curva, se cruzavam e a parede virava uma placa solta sobre o leito
+	# (Última Curva, r 40 m)
+	var bend := float(p.curvature[i]) * side
+	var lat_max := maxf(minf(0.8 / bend if bend > 1e-4 else INF, reach(track, data, i, side) - 2.0), foot)
 	for t in ts:
 		var y := fl - 2.5 + (height + 2.5) * t
 		var lat := foot + run * _shelf(t, ledges, share) - CORNICE * smoothstep(0.86, 0.97, t) * cw
@@ -458,13 +463,59 @@ static func column(track: RaceTrack, data: Dictionary, i: int, side: int) -> Pac
 		pos.y = y
 		# Rocha: saliências e reentrâncias, menos no pé e na borda
 		var amp := (0.25 + 0.75 * sin(t * PI)) * (1.0 + 1.3 * e)
-		pos += dir * ((_crag.get_noise_3dv(pos) * 2.2 + _crag.get_noise_3dv(pos * 3.1) * 0.7) * amp)
+		var bump := (_crag.get_noise_3dv(pos) * 2.2 + _crag.get_noise_3dv(pos * 3.1) * 0.7) * amp
+		pos += dir * bump
+		if lat + bump > lat_max:
+			pos = p.points[i] + dir * lat_max
+			pos.y = y
 		out.append(pos)
 	# Borda: deita sobre a crista e desce por trás dela até embaixo do leito (a serra)
 	for lip: Vector2 in [Vector2(5.0, 0.6), Vector2(8.0 + hidden(data, i), -3.0), Vector2(20.0 + hidden(data, i), -14.0)]:
-		var pos := p.points[i] + dir * (foot + run - CORNICE * cw + lip.x)
+		var pos := p.points[i] + dir * minf(foot + run - CORNICE * cw + lip.x, lat_max)
 		pos.y = top + lip.y
 		out.append(pos)
+	return out
+
+
+## Até onde (m, para fora da pista) a normal da amostra i do lado `side` é dela: além disso o ponto fica
+## mais perto de outro pedaço da mesma curva, do outro lado do centro dela (por dentro das curvas
+## fechadas e nas amostras logo antes e depois delas, onde a borda comprida da face chega lá). INF se
+## vai além de 90 m. Os trechos longe na volta (outra reta do lado) não contam.
+static func reach(track: RaceTrack, data: Dictionary, i: int, side: int) -> float:
+	if not data.has("reach"):
+		data["reach"] = [_reach_side(track, data, 1), _reach_side(track, data, -1)]
+	return data.reach[0 if side > 0 else 1][i]
+
+
+static func _reach_side(track: RaceTrack, data: Dictionary, side: int) -> PackedFloat32Array:
+	var p := track.path
+	var n := p.size()
+	var out := PackedFloat32Array()
+	out.resize(n)
+	out.fill(INF)
+	var own := func(i: int, lat: float) -> bool:
+		var pr := p.project(p.points[i] + p.lefts[i] * side * lat, false, false)
+		if pr.y == INF:
+			return true
+		var ds := absf(fposmod(pr.x - p.s_at(i) + p.length * 0.5, p.length) - p.length * 0.5)
+		return ds < 12.0 or ds > 200.0
+	for i in n:
+		if float(data.w[i]) < 0.02:
+			continue
+		var lo := 0.0
+		for lat: float in [25.0, 35.0, 45.0, 60.0, 75.0, 90.0]:
+			if own.call(i, lat):
+				lo = lat
+				continue
+			var hi := lat
+			for _b in 3:
+				var mid := (lo + hi) * 0.5
+				if own.call(i, mid):
+					lo = mid
+				else:
+					hi = mid
+			out[i] = lo
+			break
 	return out
 
 
@@ -628,17 +679,29 @@ static func _chunk(track: RaceTrack, data: Dictionary, root: Node3D, side: int, 
 	var verts := PackedVector3Array()
 	var normals := PackedVector3Array()
 	var top_y := -INF
+	var lip_from := top_ring() + 1
 	for c in cols:
+		var inward: Vector3 = -p.lefts[i0 + c] * side
+		var raw := PackedVector3Array()
+		for r in rings:
+			var along: Vector3 = grid[mini(c + 1, cols - 1)][r] - grid[maxi(c - 1, 0)][r]
+			var up: Vector3 = grid[c][mini(r + 1, rings - 1)] - grid[c][maxi(r - 1, 0)]
+			raw.append(up.cross(along).normalized())
+		# (o sentido da face pelo meio dela, quase vertical)
+		var face_sign := 1.0 if raw[lip_from / 2].dot(inward) >= 0.0 else -1.0
 		for r in rings:
 			var v: Vector3 = grid[c][r]
 			verts.append(v)
 			top_y = maxf(top_y, v.y)
-			var along: Vector3 = grid[mini(c + 1, cols - 1)][r] - grid[maxi(c - 1, 0)][r]
-			var up: Vector3 = grid[c][mini(r + 1, rings - 1)] - grid[c][maxi(r - 1, 0)]
-			var nrm := up.cross(along).normalized()
-			# (para dentro do cânion, do lado da pista)
-			if nrm.dot(-p.lefts[i0 + c] * side) < 0.0:
-				nrm = -nrm
+			var nrm := raw[r]
+			# Na face, para dentro do cânion (do lado da pista); na borda, que deita sobre a crista e desce
+			# por trás dela, no sentido da face — virada para dentro, ela ficava preta onde aparece (no fim
+			# dos cânions, vista de fora)
+			if r < lip_from:
+				if nrm.dot(inward) < 0.0:
+					nrm = -nrm
+			else:
+				nrm *= face_sign
 			normals.append(nrm)
 	var indices := PackedInt32Array()
 	# Ordem dos vértices pela normal (frente horária, como no MeshBuilder)
@@ -827,6 +890,17 @@ static func _cave(ring: PackedVector3Array, nrm: PackedVector3Array, r: int, tan
 		SeaReef.place(SeaReef.Kind.ROCK, Transform3D(Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3(sz, sz * 0.8, sz)), q - Vector3.UP * sz * 0.4), rng)
 	for k in rng.randi_range(2, 4):
 		SeaReef.hang(c + ux * rng.randf_range(-w, w) * 0.7 + uy * h * 1.05 + nh * 0.2, rng.randf_range(0.8, 2.2), rng)
+	# A sobrancelha de pedra por cima da boca, estalactites penduradas da borda de cima e o cascalho na
+	# soleira (a boca deixa de ser só um disco escuro na parede)
+	var along := Basis(ux, Vector3.UP, ux.cross(Vector3.UP)).orthonormalized()
+	SeaReef.place(SeaReef.Kind.ROCK, Transform3D(along.scaled(Vector3(w * 0.75, 0.7, 1.3)), c + uy * h * 1.06 + nh * 0.35 - Vector3.UP * 0.3),
+		rng)
+	for k in rng.randi_range(4, 7):
+		var u := rng.randf_range(-0.75, 0.75)
+		var rim := c + ux * u * w + uy * h * sqrt(1.0 - u * u) * 0.94 + nh * 0.2
+		var drop := rng.randf_range(0.5, 1.3)
+		SeaReef.place(SeaReef.Kind.ROCK, Transform3D(Basis(ux, PI).scaled(Vector3(0.26, drop, 0.26)), rim + Vector3.UP * 0.12), rng)
+	SeaReef.place(SeaReef.Kind.ROCK, Transform3D(along.scaled(Vector3(w * 0.6, 0.45, 1.6)), c - uy * h * 0.98 + nh * 0.5 - Vector3.UP * 0.2), rng)
 	SeaReef.cluster(c - uy * h * 1.15 + nh * 0.6, 1.2, rng, 3)
 	_cave_spots.append(c)
 
