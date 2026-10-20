@@ -24,7 +24,9 @@ func _initialize() -> void:
 	RaceSettings.laps = 5
 	RaceSettings.opponents = 5
 	RaceSettings.difficulty = 1
-	RaceSettings.grid = RaceSettings.Grid.MIDDLE
+	# O carro do jogador fica parado (sem piloto): no fim do grid ninguém larga atrás dele (um bot
+	# preso atrás dele quando a amarela entra acabava "ultrapassando" o carro parado)
+	RaceSettings.grid = RaceSettings.Grid.BACK
 	RaceSettings.skip_menu = true
 	Engine.max_physics_steps_per_frame = 200
 	var scene := (load("res://scenes/tracks/monza.tscn") as PackedScene).instantiate()
@@ -42,6 +44,14 @@ func _seconds(t: float) -> void:
 func _run() -> void:
 	while manager.state != RaceManager.State.RACING:
 		await process_frame
+	# Sem colisão entre os carros e sem dano: um toque ou uma batida no muro de verdade na largada
+	# soltava peça e abria uma amarela fora de hora (e, na confusão, um bot passava carro rodado):
+	# o teste ficava na sorte. As amarelas aqui são só as das batidas simuladas (report_crash).
+	for a in manager.entries:
+		(a.car.get_node("Damage") as CarDamage).damage_scale = 0.0
+		for b in manager.entries:
+			if a != b:
+				a.car.add_collision_exception_with(b.car)
 	var pe := manager.player_entry
 	pe.car.player_controlled = false
 	Engine.physics_ticks_per_second = 240

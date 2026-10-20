@@ -696,8 +696,47 @@ Retrô: visual synthwave + monitor CRT + HUD de ficção científica:
   ultrapassagem lenta, lado a lado; pode passar quem está nos boxes ou envolvido na batida, e os envolvidos
   podem passar todos para chegar ao box) e não passar o **safety car** (+10 s). O limitador **não
   é obrigatório** sob amarela (só um jeito fácil de andar devagar atrás do safety car). O safety
-  car entra à frente do líder com a giroflex âmbar, anda a até 180 km/h na linha ideal (mais devagar
+  car entra à frente do líder com a barra de luzes âmbar piscando, anda a até 180 km/h na linha ideal (mais devagar
   nas curvas, pelo perfil de velocidade) e aparece no minimapa (SC). Quem não bateu pode aproveitar para trocar pneus; isso não muda a bandeira.
+- **O safety car** (`blender/build_safety_car.py` → `assets/car/safety_car/safety_car.glb`, ~62 mil
+  triângulos): cupê GT de 4,5 m modelado em cima de fotos do safety car da F1 (AMG GT R de 2018).
+  - **Proporções da foto lateral:** com a escala pelo entre-eixos de 2,63 m, o nariz fica 0,78 m à
+    frente do eixo dianteiro e a traseira 1,0 m atrás do traseiro. A base do para-brisa fica a
+    0,91 m, o teto começa em 1,23 m e chega a 1,26 m, a cintura fica a 0,875 m e a tampa traseira a
+    0,88 m. Sobreposto à foto na mesma escala, o contorno coincide do nariz à asa.
+  - **Carroceria:** capô longo com duas saídas de ar com lâminas, cabine recuada em fastback e
+    janela lateral em gota.
+  - **Frente:** grade de lâminas verticais com a placa "SAFETY CAR", entradas de ar com lâminas,
+    "cortinas" de ar e faróis com LED.
+  - **Lateral e base:** saída de ar com friso cromado atrás da roda da frente, maçaneta, splitter e
+    saias.
+  - **Traseira:** asa baixa (10 cm acima da tampa), difusor com aletas e escape duplo no centro.
+  - **Rodas:** 10 raios pretos com aba polida e pinças coloridas.
+  - **Barra de luzes:** alta, sobre uma base no meio do teto (onde fica na foto). As âmbar piscam
+    alternando esquerda e direita, junto com os LEDs âmbar no alto do para-brisa e do vidro
+    traseiro; a verde do meio fica apagada. A placa de trás fica iluminada. À noite (e no
+    entardecer) acendem os faróis, e o brilho âmbar ilumina a pista em volta.
+  - **Grafismos (como os do carro real):** nas portas, emblema grande com a linha de texto embaixo e
+    os blocos pretos inclinados. No capô, "SAFETY CAR / DRIVE SAFELY" com traços, emblema e linha do
+    campeonato. Faixa preta com "SAFETY CAR" no para-brisa e no vidro traseiro, que tem também
+    "DRIVE SAFELY" embaixo. Emblema acima da placa traseira, e placas claras "SAFETY CAR" na frente
+    e atrás.
+  - **Emblema:** onde o carro real leva o logo da F1 e o texto da FIA, vai o emblema do campeonato
+    do jogo ("SPEEDORU" com a bandeira quadriculada) e "WORLD CHAMPIONSHIP". O jogo só usa marcas
+    próprias.
+  - **Movimento:** as rodas giram com a velocidade e as da frente esterçam pela curva da linha ideal.
+  - **Pinturas:** duas, como a F1, que alterna dois safety cars. Prata com grafismos pretos e pinças
+    laranja (a do GT R) em Monza, Suzuka e Sky Aerobase; verde com filetes e pinças limão e letreiros
+    brancos em Mônaco, Las Vegas e Atlantis.
+  - **Materiais:** os do `.glb` são slots (`SC_Paint`, `SC_Stripe`, `SC_BarAmberL`...) que o jogo
+    troca pelos materiais toon da pintura. A carroceria usa o shader da pintura metálica dos carros,
+    e o carro fica na camada dos carros (mesma luz de contorno).
+  - **"Adesivos":** vidros, faróis, lanternas, grafismos e letreiros são contornos 2D triangulados e
+    projetados na carroceria por raycast, alguns milímetros acima. Os letreiros saem da fonte Chakra
+    Petch do jogo.
+  - **Servidor:** sem janela, o modelo não é montado.
+  - **Regenerar:** `blender -b --factory-startup -P blender/build_safety_car.py` (`-- --all-views`
+    para mais vistas). Gera o `.glb` e as vistas em `blender/renders/safety_car/`.
 - **Fim:** a amarela (com o safety car) dura **no mínimo 30 s** e só termina quando todos os
   carros batidos estão nos boxes (indo pela faixa, parados no box ou levados até ele); aí vem a
   bandeira verde e o safety car sai. **Só na última volta** (do líder) ela dura **10 s** e termina
@@ -2032,6 +2071,8 @@ godot --headless --path . -s res://tests/race_menu_test.gd    # Tab só no trein
 godot --headless --path . -s res://tests/race_control_test.gd # bandeira amarela, safety car, ida ao box, penalidades
 godot --headless --path . -s res://tests/last_lap_yellow_test.gd # amarela de 10 s só na última volta
 godot --path . -s res://tests/capture_yellow.gd -- <pasta>   # instrução da amarela, safety car
+godot --headless --path . -s res://tests/safety_car_test.gd # modelo do safety car: todo slot tem material, rodas no lugar
+godot --path . -s res://tests/capture_safety_car.gd -- <pasta> [pista] [day|sunset|night]   # safety car de vários ângulos, nas duas fases do pisca
 godot --headless --path . -s res://tests/ui_nav_test.gd     # menus pelo controle: foco, D-pad, A/B, LB/RB
 godot --headless --path . -s res://tests/economy_test.gd    # economia: chances, sorteio, giro, repetidas, loja, estúdio, partículas, faíscas de frenagem, tickets, exclusivos, Sirene
 godot --headless --path . -s res://tests/missions_test.gd   # missões diárias e da semana, conquistas pagas, títulos especiais e roleta do vencedor (sem rede)

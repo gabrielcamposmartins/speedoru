@@ -109,7 +109,7 @@ jobs:
       # nada de publicar uma versão quebrada
       - name: Testes rápidos
         run: |
-          for t in compile_check economy_test settings_test gearbox_test ui_nav_test; do
+          for t in compile_check economy_test settings_test gearbox_test ui_nav_test safety_car_test; do
             echo "::group::$t"
             "$GODOT" --headless --path . -s "res://tests/$t.gd"
             echo "::endgroup::"
