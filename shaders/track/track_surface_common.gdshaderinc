@@ -1,6 +1,7 @@
 // Piso da pista (asfalto, zebras, cascalho, faixas pintadas): cor de vértice + granulação
 // procedural em coordenadas de mundo (some com a distância para não serrilhar). Usado por
-// track_surface.gdshader (sombreamento toon) e track_surface_smooth.gdshader (sem toon: pista no céu).
+// track_surface.gdshader (sombreamento toon), track_surface_smooth.gdshader (sem toon: pista no céu)
+// e track_surface_gloss.gdshader (toon com brilho de verniz: pista fofa nas nuvens, SURFACE_GLOSS).
 
 uniform float grain_scale = 6.0;
 uniform float grain_strength : hint_range(0.0, 0.5) = 0.06;
@@ -13,6 +14,11 @@ uniform sampler2D normal_tex : hint_normal, filter_linear_mipmap_anisotropic;
 uniform float normal_strength = 0.0;
 uniform float normal_scale = 0.5;
 uniform float normal_fade_distance = 60.0;
+#ifdef SURFACE_GLOSS
+// Verniz (pista fofa nas nuvens): reflexo do céu e brilho do sol no piso.
+uniform float gloss_roughness = 0.45;
+uniform float gloss_specular = 0.22;
+#endif
 
 varying vec3 world_pos;
 
@@ -52,7 +58,12 @@ void fragment() {
 		c *= 1.0 + (hash(cell + 3.0) - 0.45) * pebble * pebble_strength;
 	}
 	ALBEDO = c;
+#ifdef SURFACE_GLOSS
+	ROUGHNESS = gloss_roughness;
+	SPECULAR = gloss_specular;
+#else
 	ROUGHNESS = 1.0;
+#endif
 	if (normal_strength > 0.0) {
 		NORMAL_MAP = texture(normal_tex, world_pos.xz * normal_scale).rgb;
 		float dist = length(world_pos - CAMERA_POSITION_WORLD);

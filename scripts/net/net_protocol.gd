@@ -17,7 +17,8 @@ extends RefCounted
 ## pista Atlantis Abyss (um cliente antigo não a conhece).
 ## 9: Chicane do Tridente na Atlantis Abyss (o traçado e a colisão mudaram: um cliente antigo
 ## correria na pista de antes).
-const VERSION := 9
+## 10: pista Rainbow Raceway (um cliente antigo não a conhece).
+const VERSION := 10
 ## O servidor aceita o carro (skins, peças e engenharia) que o jogador traz do aparelho, sem
 ## conferir se a conta tem os itens.
 ## PENDENTE (produção): desligar e validar no servidor que a conta tem as skins e peças.
@@ -90,9 +91,10 @@ const MIN_PLAUSIBLE_LAP := 78.0
 ## O mesmo por pista (Mônaco é bem mais curta; Suzuka tem o comprimento de Monza, mas bem mais curvas;
 ## Las Vegas é um pouco mais longa que Monza, com retas enormes; a Sky Aerobase é curta e travada,
 ## com grampo e chicane: os bots mais rápidos fazem ~64 s; a Atlantis Abyss tem 4,8 km com retas
-## rápidas, um grampo e duas chicanes: os bots fazem ~78 s).
+## rápidas, um grampo e duas chicanes: os bots fazem ~78 s; a Rainbow Raceway tem 4,2 km com uma
+## espiral, um grampo e uma chicane: os bots fazem ~76 s).
 const MIN_LAP_BY_TRACK := {"monza": MIN_PLAUSIBLE_LAP, "monaco": 55.0, "suzuka": 85.0, "las_vegas": 80.0, "sky_aerobase": 50.0,
-	"atlantis_abyss": 55.0}
+	"atlantis_abyss": 55.0, "rainbow_raceway": 55.0}
 
 
 ## Lê o endereço que o jogador digitou: "host", "host:porta", IPv6 puro ("2001:db8::1") ou IPv6

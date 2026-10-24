@@ -1,0 +1,313 @@
+[gd_resource type="Resource" script_class="TrackLayout" load_steps=24 format=3]
+
+[ext_resource type="Script" path="res://scripts/track/track_layout.gd" id="1_layout"]
+[ext_resource type="Script" path="res://scripts/track/track_feature.gd" id="2_feature"]
+
+[sub_resource type="Resource" id="F0"]
+script = ExtResource("2_feature")
+kind = 3
+label = "Muros acolchoados"
+s_start = 0.0
+s_end = 4226.0
+side = 2
+distance = 2.5
+rows = 12
+spacing = 40.0
+roof = false
+variant = 1
+
+[sub_resource type="Resource" id="F1"]
+script = ExtResource("2_feature")
+kind = 3
+label = "Muros do túnel"
+s_start = 1620.0
+s_end = 1885.0
+side = 2
+distance = 1.2
+rows = 12
+spacing = 40.0
+roof = false
+variant = 1
+
+[sub_resource type="Resource" id="F2"]
+script = ExtResource("2_feature")
+kind = 3
+label = "Curva do Ursinho: escape"
+s_start = 370.0
+s_end = 470.0
+side = 1
+distance = 7.0
+rows = 12
+spacing = 40.0
+roof = false
+variant = 1
+
+[sub_resource type="Resource" id="F3"]
+script = ExtResource("2_feature")
+kind = 3
+label = "Grampo do Castelo: escape"
+s_start = 1165.0
+s_end = 1285.0
+side = 1
+distance = 8.0
+rows = 12
+spacing = 40.0
+roof = false
+variant = 1
+
+[sub_resource type="Resource" id="F4"]
+script = ExtResource("2_feature")
+kind = 3
+label = "Curva da Torre: escape"
+s_start = 1380.0
+s_end = 1540.0
+side = 0
+distance = 5.0
+rows = 12
+spacing = 40.0
+roof = false
+variant = 1
+
+[sub_resource type="Resource" id="F5"]
+script = ExtResource("2_feature")
+kind = 3
+label = "Curva do Pirulito: escape"
+s_start = 2965.0
+s_end = 3080.0
+side = 1
+distance = 7.0
+rows = 12
+spacing = 40.0
+roof = false
+variant = 1
+
+[sub_resource type="Resource" id="F6"]
+script = ExtResource("2_feature")
+kind = 3
+label = "Chicane da Estrela: escape"
+s_start = 3150.0
+s_end = 3265.0
+side = 2
+distance = 4.5
+rows = 12
+spacing = 40.0
+roof = false
+variant = 1
+
+[sub_resource type="Resource" id="F7"]
+script = ExtResource("2_feature")
+kind = 3
+label = "Última Curva: escape"
+s_start = 3740.0
+s_end = 3800.0
+side = 1
+distance = 6.0
+rows = 12
+spacing = 40.0
+roof = false
+variant = 1
+
+[sub_resource type="Resource" id="F8"]
+script = ExtResource("2_feature")
+kind = 0
+label = "Arquibancada principal"
+s_start = -330.0
+s_end = -170.0
+side = 0
+distance = 2.0
+rows = 16
+spacing = 40.0
+roof = true
+variant = 0
+
+[sub_resource type="Resource" id="F9"]
+script = ExtResource("2_feature")
+kind = 0
+label = "Arquibancada da largada"
+s_start = -150.0
+s_end = 60.0
+side = 0
+distance = 2.0
+rows = 14
+spacing = 40.0
+roof = true
+variant = 3
+
+[sub_resource type="Resource" id="F10"]
+script = ExtResource("2_feature")
+kind = 0
+label = "Arquibancada do Ursinho"
+s_start = 480.0
+s_end = 580.0
+side = 1
+distance = 2.0
+rows = 12
+spacing = 40.0
+roof = true
+variant = 1
+
+[sub_resource type="Resource" id="F11"]
+script = ExtResource("2_feature")
+kind = 0
+label = "Arquibancada do Castelo"
+s_start = 1290.0
+s_end = 1370.0
+side = 1
+distance = 2.0
+rows = 12
+spacing = 40.0
+roof = true
+variant = 2
+
+[sub_resource type="Resource" id="F12"]
+script = ExtResource("2_feature")
+kind = 0
+label = "Arquibancada da Chicane"
+s_start = 3275.0
+s_end = 3385.0
+side = 0
+distance = 2.0
+rows = 12
+spacing = 40.0
+roof = true
+variant = 1
+
+[sub_resource type="Resource" id="F13"]
+script = ExtResource("2_feature")
+kind = 0
+label = "Arquibancada dos Ursinhos"
+s_start = 3615.0
+s_end = 3735.0
+side = 1
+distance = 2.0
+rows = 12
+spacing = 40.0
+roof = true
+variant = 1
+
+[sub_resource type="Resource" id="F14"]
+script = ExtResource("2_feature")
+kind = 6
+label = "Bengalas de doce"
+s_start = 0.0
+s_end = 4226.0
+side = 2
+distance = 1.0
+rows = 12
+spacing = 40.0
+roof = false
+variant = 1
+
+[sub_resource type="Resource" id="F15"]
+script = ExtResource("2_feature")
+kind = 8
+label = "Largada"
+s_start = 12.0
+s_end = 12.0
+side = 2
+distance = 2.0
+rows = 12
+spacing = 40.0
+roof = false
+variant = 0
+
+[sub_resource type="Resource" id="F16"]
+script = ExtResource("2_feature")
+kind = 9
+label = "Curva do Ursinho"
+s_start = 383.0
+s_end = 383.0
+side = 0
+distance = 2.0
+rows = 12
+spacing = 40.0
+roof = false
+variant = 0
+
+[sub_resource type="Resource" id="F17"]
+script = ExtResource("2_feature")
+kind = 9
+label = "Grampo do Castelo"
+s_start = 1178.0
+s_end = 1178.0
+side = 1
+distance = 2.0
+rows = 12
+spacing = 40.0
+roof = false
+variant = 0
+
+[sub_resource type="Resource" id="F18"]
+script = ExtResource("2_feature")
+kind = 9
+label = "Curva da Torre"
+s_start = 1388.0
+s_end = 1388.0
+side = 0
+distance = 2.0
+rows = 12
+spacing = 40.0
+roof = false
+variant = 0
+
+[sub_resource type="Resource" id="F19"]
+script = ExtResource("2_feature")
+kind = 9
+label = "Curva do Pirulito"
+s_start = 2978.0
+s_end = 2978.0
+side = 1
+distance = 2.0
+rows = 12
+spacing = 40.0
+roof = false
+variant = 0
+
+[sub_resource type="Resource" id="F20"]
+script = ExtResource("2_feature")
+kind = 9
+label = "Chicane da Estrela"
+s_start = 3162.0
+s_end = 3162.0
+side = 1
+distance = 2.0
+rows = 12
+spacing = 40.0
+roof = false
+variant = 0
+
+[resource]
+script = ExtResource("1_layout")
+centerline = "res://assets/track/rainbow_raceway/rainbow_raceway_centerline.csv"
+raceline = "res://assets/track/rainbow_raceway/rainbow_raceway_raceline.csv"
+line_margin = 1.6
+bot_pace = 0.95
+start_offset = 0.0
+width_scale = 1.0
+min_half_width = 5.0
+display_name = "Rainbow Raceway"
+flag_colors = PackedColorArray(1, 0.55, 0.76, 1, 0.99, 0.97, 0.99, 1, 0.72, 0.58, 0.98, 1)
+flag_style = 1
+tunnel = Vector2(1620, 1885)
+clouds = true
+cloud_floor = -320.0
+auto_kerbs = true
+kerb_max_radius = 120.0
+kerb_width = 1.4
+auto_gravel = false
+barrier_distance = 2.5
+has_pit = true
+pit_side = -1
+pit_entry_s = -400.0
+pit_exit_s = 320.0
+pit_taper = 80.0
+pit_lane_width = 12.0
+garage_count = 14
+garage_width = 12.0
+garage_center_s = -120.0
+pit_building_length = 210.0
+paddock_depth = 0.0
+grid_slots = 20
+grid_spacing = 8.0
+grid_lateral = 2.6
+features = Array[ExtResource("2_feature")]([SubResource("F0"), SubResource("F1"), SubResource("F2"), SubResource("F3"), SubResource("F4"), SubResource("F5"), SubResource("F6"), SubResource("F7"), SubResource("F8"), SubResource("F9"), SubResource("F10"), SubResource("F11"), SubResource("F12"), SubResource("F13"), SubResource("F14"), SubResource("F15"), SubResource("F16"), SubResource("F17"), SubResource("F18"), SubResource("F19"), SubResource("F20")])

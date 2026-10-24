@@ -26,8 +26,9 @@ func _initialize() -> void:
 	# Com janela e sem --offline o Net conecta sozinho com a conta real e regrava o account.cfg do
 	# jogador: desconecta e passa a gravar num arquivo de teste
 	var net := root.get_node_or_null("Net")
-	if net and not "--offline" in OS.get_cmdline_user_args():
+	if net:
 		net.account_file = "user://test_perf_account.cfg"
+	if net and not "--offline" in OS.get_cmdline_user_args():
 		net.disconnect_from_server()
 		net._retry = 0.0
 	_run.call_deferred()

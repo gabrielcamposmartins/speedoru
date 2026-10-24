@@ -12,6 +12,7 @@ const TRACKS := [
 	{"id": "las_vegas", "name": "Las Vegas", "scene": "res://scenes/tracks/las_vegas.tscn", "category": "real"},
 	{"id": "sky_aerobase", "name": "Sky Aerobase", "scene": "res://scenes/tracks/sky_aerobase.tscn", "category": "fantasy"},
 	{"id": "atlantis_abyss", "name": "Atlantis Abyss", "scene": "res://scenes/tracks/atlantis_abyss.tscn", "category": "fantasy"},
+	{"id": "rainbow_raceway", "name": "Rainbow Raceway", "scene": "res://scenes/tracks/rainbow_raceway.tscn", "category": "fantasy"},
 ]
 ## Categorias de pista (abas na escolha de pista): [id, nome]. "real" = circuitos de verdade,
 ## "fantasy" = pistas inventadas (no céu, no fundo do mar...).

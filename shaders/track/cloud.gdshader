@@ -5,6 +5,10 @@ render_mode diffuse_toon, specular_disabled, shadows_disabled;
 
 uniform vec4 lit_color : source_color = vec4(0.9, 0.91, 0.93, 1.0);
 uniform vec4 shade_color : source_color = vec4(0.72, 0.78, 0.96, 1.0);
+// À noite a cor cai até night_floor (as nuvens da Rainbow Raceway ficam lilases de luar, com um
+// brilho próprio night_glow, em vez de quase pretas).
+uniform float night_floor = 0.18;
+uniform float night_glow = 0.0;
 
 varying float up;
 global uniform float night;
@@ -16,8 +20,8 @@ void vertex() {
 void fragment() {
 	// Embaixo levemente azulada mesmo no sol; o toon cuida da sombra do lado oposto ao sol
 	ALBEDO = mix(shade_color.rgb, lit_color.rgb, smoothstep(-0.6, 0.3, up));
-	ALBEDO *= mix(1.0, 0.18, night);
-	EMISSION = shade_color.rgb * 0.08 * (1.0 - night);
+	ALBEDO *= mix(1.0, night_floor, night);
+	EMISSION = shade_color.rgb * (0.08 * (1.0 - night) + night_glow * night);
 	ROUGHNESS = 1.0;
 	RIM = 0.4;
 	RIM_TINT = 1.0;

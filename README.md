@@ -32,7 +32,7 @@ O carro fica à direita; à esquerda, os botões grandes
 (`scripts/menu/menu_ui.gd`):
 
 - **Jogar solo:** pista (abas **Reais**: Monza, Mônaco, Suzuka ou Las Vegas; **Fantasia**: Sky
-  Aerobase ou Atlantis Abyss), modo, voltas, adversários, dificuldade, largada, horário
+  Aerobase, Atlantis Abyss ou Rainbow Raceway), modo, voltas, adversários, dificuldade, largada, horário
   e ambiente → Correr. A pista se escolhe num **carrossel** (`scripts/menu/track_carousel.gd`, o
   mesmo dos ajustes da sala multiplayer): o traçado de cada pista (linha central do CSV, norte para
   cima) num anel que gira ao trocar; a da frente fica grande, com nome, extensão, largada (sentido da
@@ -1739,6 +1739,98 @@ Segunda pista da categoria **Fantasia**: Atlântida submersa. `scenes/tracks/atl
   a Chicane do Tridente (chegando, por dentro e do alto), o tridente gigante, um cardume, as
   águas-vivas, o kelp, um recife do leito e as relíquias de perto.
 
+## Rainbow Raceway (pista fantasia fofa nas nuvens)
+
+Terceira pista da categoria **Fantasia**: uma pista cor-de-rosa flutuando sobre nuvens de algodão-doce,
+entre ilhas voadoras, arco-íris e ursinhos de pelúcia. `scenes/tracks/rainbow_raceway.tscn` +
+`resources/tracks/rainbow_raceway_layout.tres` (grupo "Nuvens" do `TrackLayout`: `clouds = true` e
+`cloud_floor`, a altura do mar de nuvens lá embaixo; o túnel em `tunnel`).
+
+- **Traçado** (`python tools/build_rainbow_raceway.py [--debug pasta]`, o método por trechos da Sky
+  Aerobase). 4,23 km, anti-horário, de 8 a 41 m de altura: **Reta do Arco-Íris** (boxes, grid e
+  arquibancadas, ~820 m somando o fim da volta), Curva do Ursinho, Subida do Algodão, Esses das Nuvens,
+  Reta do Castelo, **Grampo do Castelo** (165°, raio 34 m), Ponte Levadiça, Curva da Torre, o **Túnel do
+  Arco-Íris** (265 m), Esse das Bolhas, a **Reta do Mirante** e a **Espiral do Algodão-Doce** (300° de
+  raio 66 m descendo 18 m em volta da Torre de Algodão-Doce), que sai **por baixo da Reta do Mirante**
+  (o único cruzamento da pista: 19 m de folga, a 60°; o rumo soma 720° — `DIRECTION = 2` no gerador),
+  a Passagem do Arco-Íris, a Curva do Pirulito, Reta das Cachoeiras, a **Chicane da Estrela**
+  (esquerda-direita de raio 22 m), Reta dos Balões, Curva do Coração, Reta dos Ursinhos e a Última
+  Curva. O gerador confere que há exatamente um cruzamento com folga e que os outros trechos não
+  vizinhos ficam a 60 m ou mais. A linha de corrida (`rainbow_raceway_raceline.csv`) leva a elevação, como
+  a de Suzuka: o `RacingLine` projeta cada ponto com a altura e não mistura os dois níveis no cruzamento.
+  Os bots fazem ~76 s (volta mínima plausível online: 55 s).
+- **Barreiras em toda a volta** (ninguém cai; não há `FallWatch`): muro acolchoado cor-de-rosa com o
+  topo arredondado, um **rolo de almofada** creme por cima e **corações acesos** na face a cada ~10 m
+  (`TrackBarriers._cloud_wall`; colisão igual à das outras pistas). Escape maior por fora das curvas
+  lentas; laje de colisão sob os pisos (`DeckFloor`); 14 boxes (todo o grid online).
+- **Pista** (`TrackRoad`, com `clouds`): **asfalto rosa envernizado** (`track_surface_gloss.gdshader`:
+  o piso de sempre com brilho e reflexo do céu), **zebras de arco-íris** (as seis cores em sequência),
+  faixa creme até a barreira com as **seis listras do arco-íris** no pé dela, **corações brancos
+  pintados** no meio da pista (vazados a cada ~55 m nas retas, com um par de pequenos cheios nas
+  faixas) e **três estrelas acesas** no piso na saída de cada curva lenta. Os postes são **bengalas de
+  doce** listradas com o gancho sobre a pista e uma estrela pendurada (luz de verdade à noite).
+- **Plástico pastel** (`TrackMaterials.candy`, ligado pelo RaceTrack nesta pista): tudo o que passa
+  por `TrackMaterials.building()` (barreiras, boxes, arquibancadas, pórticos, castelo, enfeites) usa
+  `candy.gdshader` — cinzas e brancos da cor de vértice viram lilás, rosa e creme pela claridade,
+  cores fortes ficam, com brilho macio de brinquedo e pontinhos de **açúcar cintilando** de perto.
+- **Geração** (ramo `layout.clouds` do `RaceTrack.rebuild`; o servidor pula tudo menos pista,
+  barreiras, boxes e objetos, que é o que tem colisão):
+  - `CloudDeck` ("almofadas"): laje de glacê sob a pista, de uma borda à outra da plataforma, com a
+    beirada branca, as seis listras do arco-íris na lateral e o fundo lilás, apoiada em **nuvens
+    fofas** (de pé nas beiradas, aparecendo um pouco acima da laje, e de cabeça para baixo no fundo,
+    com umas pendentes maiores); perto do cruzamento as da pista de cima não descem sobre a de baixo.
+    Pedaços de ~300 m com a nuvem detalhada até 420 m e uma simples longe.
+  - `RainbowTunnel` ("túnel"): abóbada com as seis faixas acesas subindo dos dois lados até o teto
+    lilás estrelado, **anéis de luz** a cada ~12 m com um pulso correndo no sentido da pista, portais
+    de arco-íris sólido com estrela nas duas bocas e, por fora, a casca rosa coberta de nuvens.
+  - `CloudIslands` ("ilhas"): ~60 **ilhas voadoras** (rocha de bala afinando para baixo, em degradê
+    pastel e com normais suaves, topo de grama menta ou rosa, contorno de nuvens) longe da plataforma, com **árvores de pirulito e
+    de algodão-doce**, arbustos, canteiros de flores, cogumelos, balas de goma, bengalas e **casinhas
+    de cupcake** (porta em arco, janelas acesas, granulado, cereja e chaminé de bengala), agrupados por
+    célula do mapa num MultiMesh por tipo (`CandyDecor`). **Cachoeiras** pastel caindo das beiradas
+    (`candy_fall.gdshader`: filetes, arco-íris no meio da queda, somem em névoa) com riacho até a
+    borda, nuvens de névoa e arco-íris pequenos. Marcos (`CloudIslands.LANDMARKS`): a ilha do
+    castelo, a **Ilha do Coração** (moldura de coração gigante), a **Ilha das Cachoeiras** (alta, três
+    quedas), a **Ilha dos Ursinhos**, a do Ursinho da curva 1, a **Ilha dos Doces** (cupcakes,
+    rosquinhas e pirulitos gigantes) e a ilha da torre no meio da espiral (`spiral_center`).
+  - `CandyCastle` ("castelo"): o **Castelo de Algodão-Doce** no campo interno, de frente para a
+    largada: base em degraus, muralha de oito lados com ameias e glacê escorrendo, oito torres com
+    telhado de bruxa, aba dourada e bandeira, a torre principal com varanda e **janela de coração**,
+    quatro torres altas e duas agulhas, portão com ponte levadiça e janelas acesas à noite, com um
+    **arco-íris sólido** por trás; e a **Torre de Algodão-Doce** (forminha listrada e uma espiral de
+    sorvete subindo até ~66 m, com cereja e coração) que a pista contorna na espiral.
+  - `HeartArches` ("arcos"): o **Arco do Coração** na largada (arco fofo cor-de-rosa sobre a pista e
+    a pista dos boxes, arco-íris por dentro, coração aceso no topo, estrelas e a **faixa xadrez** que
+    segura as luzes de largada — o `TrackProps` só põe as luzes na altura `START_BEAM`), **arcos de
+    arco-íris** sólidos atravessando a pista, **portais de pirulitos gigantes** com bandeirolas pastel
+    e o arco-íris sob a ponte do cruzamento.
+  - `PlushFriends` ("pelúcias"): **ursinhos e coelhinhos de pelúcia** (`blender/cloud_plush.py`:
+    metabolas fundidas num corpo macio, olhos, nariz, boquinha, laço e coração; `blender
+    -b --factory-startup -P blender/build_clouds.py` gera os `.glb` em
+    `assets/track/rainbow_raceway/models/`) em almofadas de nuvem atrás das barreiras, **acenando**
+    para quem passa (`plush.gdshader`: o braço gira em volta do ombro, a cor do pelo e do laço vêm de
+    cada instância), o **Ursinho gigante** da Curva do Ursinho (22 m) e o piquenique na Ilha dos
+    Ursinhos.
+  - `CloudProps` ("doces"): **placas** com coração e tábuas em seta com recados (Label3D na fonte
+    Bungee), o letreiro **RAINBOW RACEWAY** numa nuvem depois da largada, nomes nas ilhas grandes, o
+    **Mirante das Nuvens** (varanda com binóculos de moeda, bancos e vasos, virada para a torre),
+    **caixas de presente** de vidro com coração dentro girando sobre a pista (`gift_box.gdshader`),
+    cachos de **balões de coração** balançando nas barreiras (`balloon.gdshader`) e estrelas grandes
+    acesas girando no ar.
+  - `CloudWorld` ("céu"): mar de nuvens pastel lá embaixo (`cloud_deck.gdshader` mais fechado, fundo
+    lilás), nuvens 3D em tons de rosa, lilás e branco em quatro camadas, **arco-íris gigantes** saindo
+    do mar de nuvens, **brilhinhos** piscando no ar (`sparkle.gdshader`), **balões de ar quente** (gomos
+    pastel ou coração estufado, passeando com o `SceneryAnimator`), pombinhas e as equipes nos boxes. `apply_mood` deixa o céu pastel em todos os períodos (azul e rosa de dia, pêssego e violeta
+    no entardecer, índigo estrelado à noite), as nuvens lilases de luar à noite, menos perspectiva
+    aérea e um pouco mais de saturação; o `_EnvKeeper` devolve o Environment do Daylight ao sair.
+- **Teste**: `tests/rainbow_raceway_test.gd` (traçado e desnível, o cruzamento com folga e projeção no
+  nível certo, asfalto em cima e embaixo da ponte, pisos, grid e 14 boxes, barreira em toda a volta,
+  vão livre e nada acima do asfalto, o mundo gerado, arcos e enfeites a mais de 5,5 m sobre a pista,
+  as caixas no alto, as nuvens da ponte acima da pista de baixo, ilhas longe da plataforma,
+  cachoeiras, enfeites e casinhas, a torre no meio da espiral, pelúcias atrás das barreiras, placas e
+  textos, luzes à noite, o ambiente de volta ao sair e o carro parado no grampo, na espiral, em cima e
+  embaixo da ponte e na chicane); capturas em `tests/rainbow_raceway_shots.gd` (com janela, `--offline`).
+
 ## Vitrine: balões de personagem, outdoors e murais
 
 `scripts/track/track_showcase.gd` (etapa "vitrine" da geração, nas duas pistas; o servidor pula):
@@ -2057,6 +2149,8 @@ godot --path . -s res://tests/sky_aerobase_shots.gd -- <pasta> [horário] [prefi
 godot --headless --path . -s res://tests/atlantis_abyss_test.gd # Atlantis Abyss: traçado abaixo/acima da água, Chicane do Tridente, barreiras em toda a volta, tubo cobrindo a pista submersa, cânion, montanhas, cenário, linha d'água (névoa) e carro parado nas rampas
 godot --path . -s res://tests/atlantis_models_gallery.gd -- <pasta> [só,estas] --offline  # galeria da Atlantis Abyss: cada peça do fundo do mar sozinha, de perto, num leito plano longe da pista (bichos, polvo, peixes, peixes-voadores, águas-vivas, estátuas, os 22 tipos de coral e de vida presa, naufrágio, praça, templo redondo, fonte, estátuas no pedestal, tombada e enterradas, arco de pedra, pináculos, ânforas, âncora, baú, poça de vida, vulcão e chaminé, colunas, lanterna, torre, prédio e aqueduto)
 godot --path . -s res://tests/atlantis_abyss_shots.gd -- <pasta> [horário] [prefixo] [só,estes]  # screenshots da Atlantis Abyss (tubo, cânion com pontes e fachadas, túnel de cristal, aqueduto, montanhas, cachoeiras largas e aquedutos sobre a pista, abismo, as duas chicanes e o tridente gigante, espelho d'água, vulcões, recifes, kelp, relíquias, cardumes, águas-vivas, bichos e baleias de perto, barcos)
+godot --headless --path . -s res://tests/rainbow_raceway_test.gd # Rainbow Raceway: traçado com a espiral por baixo da Reta do Mirante, barreiras em toda a volta, vão livre, arcos e enfeites altos, nuvens da ponte, ilhas longe da plataforma, pelúcias atrás das barreiras, noite e carro parado em cima e embaixo da ponte
+godot --path . -s res://tests/rainbow_raceway_shots.gd -- <pasta> [horário] [prefixo] [só,estes] --offline  # screenshots da Rainbow Raceway (Arco do Coração, túnel, espiral e torre, ponte, castelo, ilhas, ursinhos, mirante, presentes, vistas do alto)
 godot --headless --path . -s res://tests/monaco_test.gd     # Mônaco: traçado, desnível, pisos, túnel coberto, cidade, porto, carro na rampa
 godot --path . -s res://tests/monaco_shots.gd -- <pasta> [horário] [ambiente] [prefixo]  # screenshots de Mônaco (+ calçadas, navios, balões, dirigíveis e o céu visto da pista)
 godot --headless --path . -s res://tests/suzuka_test.gd     # Suzuka: traçado, desnível, cruzamento (folga, projeção nos dois níveis), nada acima do asfalto, terreno, carro na ponte e embaixo dela

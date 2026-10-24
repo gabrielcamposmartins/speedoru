@@ -56,6 +56,15 @@ extends Resource
 ## Onde a pista sai da água as paredes viram montanhas (sem precisar de trecho próprio).
 @export var canyons := PackedVector4Array()
 
+@export_group("Nuvens")
+## Pista fofa nas nuvens (Rainbow Raceway): sem chão nem cidade. A pista de asfalto rosa flutua sobre
+## almofadas de nuvem, com barreiras acolchoadas de corações, entre ilhas voadoras (castelo de
+## algodão-doce, cachoeiras, árvores de pirulito), arco-íris e ursinhos de pelúcia; o túnel (tunnel)
+## vira o Túnel do Arco-Íris. Barreira em toda a volta: ninguém cai.
+@export var clouds := false
+## Altura do mar de nuvens lá embaixo (m).
+@export var cloud_floor := -320.0
+
 @export_group("Relevo")
 ## Relevo de base do terreno dos circuitos de campo com subidas (gerado por tools/build_suzuka.py):
 ## grade de alturas suave presa à altura da pista; os morros somam por cima. Vazio = plano.

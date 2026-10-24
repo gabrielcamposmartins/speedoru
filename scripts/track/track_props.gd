@@ -76,7 +76,7 @@ static func _finish_lights(track: RaceTrack, mb: MeshBuilder, lamps: MeshBuilder
 			if track.layout.has_pit and side == track.layout.pit_side and track.pit_width[i] > 0.5:
 				d += PitComplex.DEPTH + 3.0
 				height += 6.0
-			if track.layout.sky or track.layout.undersea:
+			if track.layout.sky or track.layout.undersea or track.layout.clouds:
 				d = minf(d, track.deck_edge(i, side) - p.half_width(i, side) - 1.0)
 			var base := track.edge_point(i, side, d)
 			var to_track := -p.lefts[i] * side
@@ -185,6 +185,10 @@ static func _street_lamps(track: RaceTrack, f: TrackFeature, mb: MeshBuilder, la
 		if track.layout.undersea:
 			_sea_lamp(track, i, base, to_track, mb, lamps, parent)
 			continue
+		if track.layout.clouds:
+			if not _under_crossing(track, i):
+				_cloud_lamp(track, i, base, to_track, mb, lamps, parent)
+			continue
 		var height := 9.0
 		var dark := Color(0.16, 0.17, 0.2)
 		mb.posts().cylinder(Transform3D(Basis(), base), 0.16, 0.1, height, dark, 7)
@@ -234,6 +238,53 @@ static func _sky_lamp(track: RaceTrack, i: int, base: Vector3, to_track: Vector3
 	mb.box(Transform3D(bar, tip), Vector3(2.6, 0.22, 0.5), metal * 0.7)
 	lamps.box(Transform3D(bar, tip + Vector3.DOWN * 0.12), Vector3(2.4, 0.03, 0.36), LAMP)
 	night_light(parent, tip + Vector3.DOWN * 0.3, p.points[i] + to_track * 0.5 + Vector3.UP * 0.1, 7.5, 70.0)
+
+
+## Pista fofa nas nuvens: bengala de doce (listras brancas e cor-de-rosa) com o gancho curvado sobre a
+## pista e uma estrela acesa pendurada na ponta; à noite, a luz branca de cima.
+static func _cloud_lamp(track: RaceTrack, i: int, base: Vector3, to_track: Vector3, mb: MeshBuilder, lamps: MeshBuilder,
+		parent: Node3D) -> void:
+	var p := track.path
+	var height := 7.0
+	var hook := 1.0
+	var stripe := 0.5
+	var r := 0.16
+	mb.posts().cylinder(Transform3D(Basis(), base), 0.42, 0.34, 0.3, CloudLook.CREAM, 10)
+	var y := 0.3
+	var k := 0
+	while y < height:
+		var h := minf(stripe, height - y)
+		mb.posts().cylinder(Transform3D(Basis(), base + Vector3.UP * y), r, r, h, CloudLook.HOT_PINK if k % 2 == 0 else Color.WHITE, 10, false)
+		y += h
+		k += 1
+	# Gancho: meia-volta saindo da vertical por cima da pista e descendo um pouco na ponta
+	var center := base + Vector3.UP * height + to_track * hook
+	var prev := base + Vector3.UP * height
+	var segs := 9
+	for n in range(1, segs + 1):
+		var a := PI * n / segs
+		var q := center - to_track * hook * cos(a) + Vector3.UP * hook * sin(a)
+		var dir := (q - prev).normalized()
+		var x := dir.cross(Vector3.UP).normalized() if absf(dir.y) < 0.99 else p.tangents[i]
+		mb.posts().cylinder(Transform3D(Basis(x, dir, x.cross(dir)).orthonormalized(), prev), r, r, prev.distance_to(q) + 0.02,
+			CloudLook.HOT_PINK if n % 2 == 0 else Color.WHITE, 10, false)
+		prev = q
+	# Estrela pendurada (de frente para quem vem) num cordão
+	var tip := prev + Vector3.DOWN * 0.55
+	mb.posts().cylinder(Transform3D(Basis(), tip), 0.02, 0.02, 0.55, CloudLook.CREAM, 4, false)
+	var face := Basis(p.lefts[i], Vector3.UP, -p.tangents[i]).orthonormalized()
+	CloudLook.slab(lamps, CloudLook.star(0.42, 0.48), Transform3D(face, tip + Vector3.DOWN * 0.3), 0.16, CloudLook.BUTTER)
+	night_light(parent, tip + Vector3.DOWN * 0.5, p.points[i] + to_track * 0.5 + Vector3.UP * 0.1, 7.0, 68.0)
+
+
+## Amostra do trecho de baixo de um cruzamento, debaixo da pista de cima (postes altos ali furariam
+## a almofada de nuvem da pista de cima).
+static func _under_crossing(track: RaceTrack, i: int) -> bool:
+	var p := track.path
+	for c in p.crossings:
+		if track.in_span(p.s_at(i), c.x - 45.0, c.x + 45.0):
+			return true
+	return false
 
 
 ## Pista no fundo do mar: coluna de pedra canelada com capitel e um braço de bronze curvo sobre a
@@ -338,6 +389,12 @@ static func _bridge(track: RaceTrack, f: TrackFeature, mb: MeshBuilder, ads: Mes
 	var i := p.index_at(s)
 	var fwd := p.tangents[i]
 	var left := p.lefts[i]
+	# Pista fofa nas nuvens: a estrutura é o Arco do Coração (HeartArches), que segura a viga das
+	# luzes na mesma altura; aqui só as luzes
+	if track.layout.clouds:
+		if start:
+			_start_lights(track, parent, p.position_at(s), left, fwd, START_BEAM - 1.0)
+		return
 	var dl := p.width_left[i] + track.outer_distance(i, 1) + 1.0
 	var dr := p.width_right[i] + track.outer_distance(i, -1) + 1.0
 	if track.layout.has_pit and track.layout.pit_side < 0 and track.pit_width[i] > 0.0:
@@ -345,7 +402,7 @@ static func _bridge(track: RaceTrack, f: TrackFeature, mb: MeshBuilder, ads: Mes
 	elif track.layout.has_pit and track.layout.pit_side > 0 and track.pit_width[i] > 0.0:
 		dl = minf(dl, p.width_left[i] + 1.5)
 	var center := p.position_at(s)
-	var height := 7.5 if not start else 6.8
+	var height := 7.5 if not start else START_BEAM
 	var beam_h := 2.8
 	for lat: float in [dl, -dr]:
 		var base := center + left * lat
@@ -369,13 +426,21 @@ static func _bridge(track: RaceTrack, f: TrackFeature, mb: MeshBuilder, ads: Mes
 			ads.quad(c - hx - hy, c + hx - hy, c + hx + hy, c - hx + hy, Color.WHITE, normal,
 				Vector2(uv.position.x, uv.end.y), Vector2(uv.end.x, uv.end.y), Vector2(uv.end.x, uv.position.y), uv.position)
 	if start:
-		var lights := StartLights.new()
-		lights.name = "StartLights"
-		parent.add_child(lights)
-		lights.setup()
 		# As lâmpadas ficam abaixo da viga, no centro da pista
-		lights.global_transform = Transform3D(Basis(left, Vector3.UP, fwd), center + Vector3.UP * (height - 1.0))
-		track.start_lights = lights
+		_start_lights(track, parent, center, left, fwd, height - 1.0)
+
+
+## Altura (m) da viga do pórtico de largada (as luzes ficam 1 m abaixo).
+const START_BEAM := 6.8
+
+
+static func _start_lights(track: RaceTrack, parent: Node3D, center: Vector3, left: Vector3, fwd: Vector3, y: float) -> void:
+	var lights := StartLights.new()
+	lights.name = "StartLights"
+	parent.add_child(lights)
+	lights.setup()
+	lights.global_transform = Transform3D(Basis(left, Vector3.UP, fwd), center + Vector3.UP * y)
+	track.start_lights = lights
 
 
 ## Placa quadrada (atlas) num poste, virada para quem se aproxima.

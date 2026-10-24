@@ -40,6 +40,18 @@ const SEA_VERGE := Color(0.62, 0.62, 0.6)
 const SEA_LED := Color(0.25, 0.95, 1.0)
 const SEA_LED_WIDTH := 0.16
 const SEA_LED_INSET := 0.2
+## Pista fofa nas nuvens: asfalto rosa envernizado com corações brancos pintados, zebras de arco-íris,
+## faixa creme até a barreira com as listras de arco-íris no pé dela e estrelas acesas no piso na
+## saída das curvas lentas.
+const CLOUD_ASPHALT := Color(0.84, 0.3, 0.54)
+const CLOUD_PIT_ASPHALT := Color(0.88, 0.48, 0.68)
+const CLOUD_VERGE := Color(1.0, 0.78, 0.88)
+## Largura de cada listra de arco-íris no pé da barreira.
+const CLOUD_BAND := 0.2
+## Corações pintados no asfalto: intervalo (m) nas retas e curvas abertas.
+const HEART_SPACING := 55.0
+## Estrelas acesas no piso: quantos metros depois do fim das curvas lentas.
+const STAR_AFTER := 28.0
 
 ## Cores das listras das zebras (a pista do fundo do mar troca o vermelho por ciano).
 static var _kerb_colors := [KERB_RED, KERB_WHITE]
@@ -54,10 +66,15 @@ static func build(track: RaceTrack, parent: Node3D) -> void:
 	var runoff := MeshBuilder.new()
 	var paint := MeshBuilder.new()
 	var sea := track.layout.undersea
+	var clouds := track.layout.clouds
 	var leds := MeshBuilder.new()
 	var asphalt := SKY_ASPHALT if track.layout.sky else (SEA_ASPHALT if sea else ASPHALT)
 	var pit_asphalt := SKY_PIT_ASPHALT if track.layout.sky else (SEA_PIT_ASPHALT if sea else PIT_ASPHALT)
 	_kerb_colors = [SEA_KERB, KERB_WHITE] if sea else [KERB_RED, KERB_WHITE]
+	if clouds:
+		asphalt = CLOUD_ASPHALT
+		pit_asphalt = CLOUD_PIT_ASPHALT
+		_kerb_colors = CloudLook.RAINBOW
 	for i in n:
 		var j := (i + 1) % n
 		var hl_i := p.width_left[i]
@@ -80,7 +97,7 @@ static func build(track: RaceTrack, parent: Node3D) -> void:
 			var kw_j := track.layout.kerb_width * smoothstep(0.0, 1.0, track.kerb[k][j])
 			if kw_i > 0.05 or kw_j > 0.05:
 				_kerb(kerbs, p, i, j, side, e_i, e_j, kw_i, kw_j)
-			if track.city or track.layout.sky or sea:
+			if track.city or track.layout.sky or sea or clouds:
 				# Do fim da zebra (ou da faixa dos boxes, onde ela afunila) até a barreira
 				var pit_side: bool = side == track.layout.pit_side
 				var in_i := maxf(kw_i, track.pit_width[i] if pit_side else 0.0)
@@ -96,6 +113,8 @@ static func build(track: RaceTrack, parent: Node3D) -> void:
 						ROAD_Y - 0.004, verge)
 					_strip(runoff, p, i, j, side * (e_i + h_i), side * (e_j + h_j), side * (e_i + b_i), side * (e_j + b_j),
 						ROAD_Y - 0.002, HAZARD_YELLOW if i % 2 == 0 else HAZARD_DARK)
+				elif clouds and (b_i > in_i + 0.05 or b_j > in_j + 0.05):
+					_cloud_verge(runoff, p, i, j, side, e_i, e_j, in_i, in_j, maxf(b_i, in_i), maxf(b_j, in_j))
 				elif b_i > in_i + 0.05 or b_j > in_j + 0.05:
 					_strip(runoff, p, i, j, side * (e_i + in_i), side * (e_j + in_j), side * (e_i + maxf(b_i, in_i) + 0.2),
 						side * (e_j + maxf(b_j, in_j) + 0.2), ROAD_Y - 0.004, verge)
@@ -115,6 +134,10 @@ static func build(track: RaceTrack, parent: Node3D) -> void:
 
 	_paint_start(track, paint)
 	_paint_pit(track, paint)
+	var stars := MeshBuilder.new()
+	if clouds:
+		_paint_hearts(track, paint)
+		_paint_stars(track, paint, stars)
 
 	_add_surface(parent, "Road", road, TrackMaterials.surface("asphalt"), TrackSurface.Type.ASPHALT)
 	_add_surface(parent, "Kerbs", kerbs, TrackMaterials.surface("kerb"), TrackSurface.Type.KERB)
@@ -128,8 +151,8 @@ static func build(track: RaceTrack, parent: Node3D) -> void:
 		runoff_mat = TrackMaterials.sea_stone("runoff", false, {"no_outline": true, "panel_size": 1.5,
 			"grime_strength": 0.3, "moss_amount": 0.25, "coral_amount": 0.03})
 	_add_surface(parent, "Runoff", runoff, runoff_mat, TrackSurface.Type.RUNOFF)
-	# Pista no céu e no fundo do mar: não há chão de colisão embaixo dos pisos
-	if track.layout.sky or sea:
+	# Pista no céu, no fundo do mar e nas nuvens: não há chão de colisão embaixo dos pisos
+	if track.layout.sky or sea or clouds:
 		_deck_floor(track, parent)
 	if not leds.is_empty():
 		var led_mi := MeshInstance3D.new()
@@ -142,6 +165,12 @@ static func build(track: RaceTrack, parent: Node3D) -> void:
 	mi.mesh = paint.commit(null, TrackMaterials.surface("paint"))
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	parent.add_child(mi)
+	if not stars.is_empty():
+		var star_mi := MeshInstance3D.new()
+		star_mi.name = "StarPads"
+		star_mi.mesh = stars.commit(null, CloudLook.glow(1.3, 2.6, 0.5))
+		star_mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		parent.add_child(star_mi)
 
 
 ## Pista no céu: laje de colisão de 1 m logo abaixo dos pisos, de uma borda da plataforma à outra.
@@ -212,9 +241,10 @@ static func _strip(mb: MeshBuilder, p: TrackPath, i: int, j: int, a_i: float, a_
 		mb.quad(a0.lerp(b0, t0), a0.lerp(b0, t1), a1.lerp(b1, t1), a1.lerp(b1, t0), color)
 
 
-## Zebra elevada: sobe na borda da pista, plana e desce no fim. Listras de ~2 m.
+## Zebra elevada: sobe na borda da pista, plana e desce no fim. Listras de ~2 m (nas nuvens, as seis
+## cores do arco-íris em sequência).
 static func _kerb(mb: MeshBuilder, p: TrackPath, i: int, j: int, side: int, e_i: float, e_j: float, w_i: float, w_j: float) -> void:
-	var color: Color = _kerb_colors[i % 2]
+	var color: Color = _kerb_colors[i % _kerb_colors.size()]
 	# Perfil (fração da largura, altura)
 	var profile := [Vector2(0.0, ROAD_Y), Vector2(0.18, KERB_Y), Vector2(0.85, KERB_Y), Vector2(1.0, ROAD_Y + 0.005)]
 	for k in profile.size() - 1:
@@ -225,6 +255,74 @@ static func _kerb(mb: MeshBuilder, p: TrackPath, i: int, j: int, side: int, e_i:
 		var pa_j := p.points[j] + p.lefts[j] * side * (e_j + w_j * a.x) + Vector3.UP * a.y
 		var pb_j := p.points[j] + p.lefts[j] * side * (e_j + w_j * b.x) + Vector3.UP * b.y
 		mb.quad(pa_i, pb_i, pb_j, pa_j, color)
+
+
+## Pista fofa nas nuvens: faixa creme do fim da zebra (ou da borda) até a barreira, com as seis
+## listras do arco-íris correndo junto ao pé dela (a última passa um pouco por baixo do muro).
+static func _cloud_verge(mb: MeshBuilder, p: TrackPath, i: int, j: int, side: int, e_i: float, e_j: float,
+		in_i: float, in_j: float, b_i: float, b_j: float) -> void:
+	var bands: int = CloudLook.RAINBOW.size()
+	var w_i := minf(CLOUD_BAND * bands, maxf(b_i - in_i, 0.0))
+	var w_j := minf(CLOUD_BAND * bands, maxf(b_j - in_j, 0.0))
+	var r_i := b_i - w_i
+	var r_j := b_j - w_j
+	if r_i > in_i + 0.02 or r_j > in_j + 0.02:
+		_strip(mb, p, i, j, side * (e_i + in_i), side * (e_j + in_j), side * (e_i + r_i), side * (e_j + r_j), ROAD_Y - 0.004, CLOUD_VERGE)
+	for k in bands:
+		var a_i := r_i + w_i * k / bands
+		var a_j := r_j + w_j * k / bands
+		var c_i := r_i + w_i * (k + 1) / bands + (0.2 if k == bands - 1 else 0.0)
+		var c_j := r_j + w_j * (k + 1) / bands + (0.2 if k == bands - 1 else 0.0)
+		_strip(mb, p, i, j, side * (e_i + a_i), side * (e_j + a_j), side * (e_i + c_i), side * (e_j + c_j), ROAD_Y - 0.003,
+			CloudLook.RAINBOW[bands - 1 - k])
+
+
+## Corações brancos pintados no asfalto rosa (pista fofa nas nuvens): um grande vazado no meio da
+## pista a cada HEART_SPACING m nas retas e curvas abertas, e um par de pequenos cheios nas faixas a
+## cada dois. Fora do grid e dos trechos com zebra.
+static func _paint_hearts(track: RaceTrack, mb: MeshBuilder) -> void:
+	var p := track.path
+	var big := CloudLook.heart(3.4)
+	var small := CloudLook.heart(1.3)
+	var count := int(p.length / HEART_SPACING)
+	for k in count:
+		var s := (k + 0.5) * p.length / count
+		if track.in_span(s, -track.layout.grid_slots * track.layout.grid_spacing - 20.0, 20.0):
+			continue
+		var i := p.index_at(s)
+		if absf(p.curvature[i]) > 1.0 / 250.0 or track.kerb[0][i] > 0.05 or track.kerb[1][i] > 0.05:
+			continue
+		# (x para a direita, y para a frente: os lóbulos para a frente, a ponta para quem vem)
+		var f := p.frame_at(s, 0.0, PAINT_Y + 0.002)
+		var xf := Transform3D(Basis(-f.basis.x, f.basis.y, -f.basis.z), f.origin)
+		CloudLook.outline(mb, big, xf, 0.32, LINE, Vector3.UP)
+		if k % 2 == 0:
+			for lat: float in [-3.6, 3.6]:
+				var g := p.frame_at(s + 9.0, lat, PAINT_Y + 0.002)
+				CloudLook.fill(mb, small, Transform3D(Basis(-g.basis.x, g.basis.y, -g.basis.z), g.origin), Color(1.0, 0.86, 0.93), Vector3.UP)
+
+
+## Estrelas acesas no piso (pista fofa nas nuvens): três em fila na saída de cada curva lenta (raio
+## menor que 60 m), com o contorno branco pintado em volta.
+static func _paint_stars(track: RaceTrack, paint: MeshBuilder, glow: MeshBuilder) -> void:
+	var p := track.path
+	var n := p.size()
+	var shape := CloudLook.star(1.25, 0.5)
+	var rim := CloudLook.star(1.55, 0.5)
+	var i := 0
+	while i < n:
+		if absf(p.curvature[i]) > 1.0 / 60.0:
+			while i < n and absf(p.curvature[i]) > 1.0 / 90.0:
+				i += 1
+			var s0 := p.s_at(i) + STAR_AFTER
+			var grid := track.layout.grid_slots * track.layout.grid_spacing
+			if not track.in_tunnel(p.index_at(s0)) and not track.in_span(s0, -grid - 30.0, 30.0):
+				for k in 3:
+					var f := p.frame_at(s0 + k * 6.0, 0.0, PAINT_Y + 0.004)
+					var xf := Transform3D(Basis(-f.basis.x, f.basis.y, -f.basis.z), f.origin)
+					CloudLook.fill(paint, rim, xf, LINE, Vector3.UP)
+					CloudLook.fill(glow, shape, Transform3D(xf.basis, xf.origin + Vector3.UP * 0.003), CloudLook.BUTTER * 1.3, Vector3.UP)
+		i += 1
 
 
 ## Friso de LED (fundo do mar) de i até j, entre os deslocamentos laterais a - SEA_LED_WIDTH e a;

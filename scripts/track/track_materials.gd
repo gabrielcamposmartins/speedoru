@@ -12,6 +12,9 @@ static var metal := false
 ## Pista no fundo do mar (Atlantis Abyss): as construções viram pedra de Atlântida (mármore com
 ## musgo, coral e a cáustica da água, sea_stone.gdshader). O RaceTrack liga/desliga ao gerar.
 static var marble := false
+## Pista fofa nas nuvens (Rainbow Raceway): as construções viram plástico pastel de brinquedo (cinzas
+## viram lilás, rosa e creme; candy.gdshader). O RaceTrack liga/desliga ao gerar.
+static var candy := false
 ## Materiais com a cáustica da água (pedra, leito, pista): o SeaWorld troca os parâmetros conforme
 ## o período do dia (set_sea) em todos de uma vez.
 static var _sea: Array[ShaderMaterial] = []
@@ -25,12 +28,16 @@ static func _cached(key: String, maker: Callable) -> Material:
 
 
 ## Piso (asfalto, zebra, cascalho, pintura): cor de vértice + granulação.
-## Na pista no céu (metal) sem o sombreamento toon.
+## Na pista no céu (metal) sem o sombreamento toon; na pista fofa nas nuvens (candy), com verniz.
 static func surface(kind: String) -> Material:
 	var smooth := metal
-	return _cached("surface_%s_%s" % [kind, smooth], func() -> Material:
+	var gloss := candy and not metal
+	return _cached("surface_%s_%s_%s" % [kind, smooth, gloss], func() -> Material:
 		var mat := ShaderMaterial.new()
-		mat.shader = load("res://shaders/track/track_surface_smooth.gdshader" if smooth else "res://shaders/track/track_surface.gdshader")
+		var shader := "res://shaders/track/track_surface_smooth.gdshader" if smooth else "res://shaders/track/track_surface.gdshader"
+		if gloss:
+			shader = "res://shaders/track/track_surface_gloss.gdshader"
+		mat.shader = load(shader)
 		match kind:
 			"asphalt":
 				mat.set_shader_parameter("grain_strength", 0.07)
@@ -93,6 +100,8 @@ static func building(key: String, two_sided := false, params := {}) -> Material:
 		return metal_plate(key, two_sided, params.get("no_outline", false))
 	if marble:
 		return sea_stone(key, two_sided, params)
+	if candy:
+		return candy_plastic(key, two_sided, params.get("no_outline", false), params.get("panel_size", 0.0))
 	return _cached("building_" + key, func() -> Material:
 		var mat := ShaderMaterial.new()
 		mat.shader = load("res://shaders/track/building_two_sided.gdshader" if two_sided else "res://shaders/track/building.gdshader")
@@ -119,6 +128,20 @@ static func sea_stone(key: String, two_sided := false, params := {}) -> Material
 		# Sem o contorno anime nas construções do fundo do mar (pedra, ruínas, falésias, estátuas)
 		mat.set_shader_parameter("no_outline", true)
 		register_sea(mat)
+		return mat)
+
+
+## Plástico pastel da Rainbow Raceway (shaders/track/candy*.gdshader): cinzas e brancos da cor de vértice
+## viram lilás, rosa e creme; cores fortes ficam (clareadas). `params` ajusta o shader (dark_tint,
+## mid_tint, light_tint, pastel, sparkle, rim_amount).
+static func candy_plastic(key: String, two_sided := false, no_outline := false, panel_size := 0.0, params := {}) -> Material:
+	return _cached("candy_%s_%s_%s" % [key, two_sided, no_outline], func() -> Material:
+		var mat := ShaderMaterial.new()
+		mat.shader = load("res://shaders/track/candy_two_sided.gdshader" if two_sided else "res://shaders/track/candy.gdshader")
+		mat.set_shader_parameter("no_outline", no_outline)
+		mat.set_shader_parameter("panel_size", panel_size)
+		for k in params:
+			mat.set_shader_parameter(k, params[k])
 		return mat)
 
 

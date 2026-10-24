@@ -67,7 +67,8 @@ static var _warming := {}
 var _for_cache := false
 const SERVER_SKIP := ["arquibancadas", "atrações", "árvores", "folhas", "pinheiros", "cenário", "grama", "prédios", "túnel", "porto",
 	"jardins", "entorno", "navios", "detalhes", "vitrine", "marcos", "neon", "plataforma", "mar e nuvens", "base aérea",
-	"leito", "aqueduto", "tubo", "cânion", "ruínas", "vulcões", "relíquias", "portão", "recifes", "oceano", "vida marinha"]
+	"leito", "aqueduto", "tubo", "cânion", "ruínas", "vulcões", "relíquias", "portão", "recifes", "oceano", "vida marinha",
+	"almofadas", "ilhas", "castelo", "arcos", "pelúcias", "doces", "céu"]
 
 var terrain: TrackTerrain
 ## Circuito de rua: dados da cidade (layout.city); nulo nos circuitos de campo.
@@ -136,6 +137,7 @@ func rebuild(staged := false) -> void:
 	city = TrackCity.load_city(layout.city) if layout.city != "" else null
 	TrackMaterials.metal = layout.sky
 	TrackMaterials.marble = layout.undersea and not layout.sky
+	TrackMaterials.candy = layout.clouds and not layout.sky and not layout.undersea
 	_compute_profile()
 	# [nome no log, texto na tela de carregamento, peso (≈ ms), etapa]
 	var steps := [
@@ -176,6 +178,24 @@ func rebuild(staged := false) -> void:
 		steps.append_array([
 			["mar e nuvens", "Mar e nuvens", 200, func(): SkyWorld.build(self, _root)],
 			["base aérea", "Base aérea", 300, func(): SkyBase.build(self, _root)],
+		])
+	elif layout.clouds:
+		# Pista fofa nas nuvens (Rainbow Raceway): almofadas de nuvem sob a pista (a laje de colisão é
+		# do TrackRoad), o Túnel do Arco-Íris, as ilhas voadoras com cachoeiras, árvores de pirulito e
+		# casinhas, o Castelo de Algodão-Doce, o Arco do Coração na largada e os arcos de arco-íris
+		# sobre a pista, os ursinhos de pelúcia acenando, as placas, mirantes, caixas de presente e
+		# doces na beira da pista e o céu pastel com o mar de nuvens, arco-íris e brilhos; nada de chão
+		CloudWorld.reset()
+		steps.append(["almofadas", "Almofadas de nuvem", 300, func(): CloudDeck.build(self, _root)])
+		if has_tunnel():
+			steps.append(["túnel", "Túnel do Arco-Íris", 80, func(): RainbowTunnel.build(self, layout.tunnel.x, layout.tunnel.y, _root)])
+		steps.append_array([
+			["ilhas", "Ilhas voadoras e cachoeiras", 500, func(): CloudIslands.build(self, _root)],
+			["castelo", "Castelo de algodão-doce", 200, func(): CandyCastle.build(self, _root)],
+			["arcos", "Arco do Coração e arco-íris", 150, func(): HeartArches.build(self, _root)],
+			["pelúcias", "Ursinhos de pelúcia", 150, func(): PlushFriends.build(self, _root)],
+			["doces", "Placas, mirantes e doces", 250, func(): CloudProps.build(self, _root)],
+			["céu", "Céu, nuvens e arco-íris", 200, func(): CloudWorld.build(self, _root)],
 		])
 	elif layout.undersea:
 		# Fundo do mar (Atlantis Abyss): leito com montanhas, laje e arcos de aqueduto sob a pista, o
@@ -522,6 +542,8 @@ func apply_mood(time_of_day: int, biome: int) -> void:
 		SkyWorld.apply_mood(self, time_of_day)
 	if layout and layout.undersea and _root:
 		SeaWorld.apply_mood(self, time_of_day)
+	if layout and layout.clouds and _root:
+		CloudWorld.apply_mood(self, time_of_day)
 
 
 func _apply_current_mood() -> void:
